@@ -1,0 +1,15 @@
+.ipynb_checkpoints
+.DS_Store
+
+*.slurm
+
+/output*
+/kaggle
+notebooks/.pybiomart.sqlite
+src/__pycache__/
+input/
+test/
+notebooks/__pycache__/
+draw/.*
+resources/
+draw/pngs/*
