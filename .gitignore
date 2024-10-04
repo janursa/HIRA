@@ -1,15 +1,34 @@
-.ipynb_checkpoints
+# mac os x
 .DS_Store
 
-*.slurm
-
-/output*
-/kaggle
-notebooks/.pybiomart.sqlite
-src/__pycache__/
+# related to files
+.pybiomart.sqlite
 input/
-test/
-notebooks/__pycache__/
-draw/.*
-resources/
-draw/pngs/*
+logs/
+params*
+resources*
+output/
+target/
+out/
+local/
+datasets_raw/
+state*
+trace*
+tw*
+
+# related to python
+.ipynb_checkpoints
+__pycache__/
+
+# ?
+.$*
+bin*
+bin/
+
+# related to nextflow
+work
+.nextflow*
+
+# IDE related
+.idea
+.vscode
