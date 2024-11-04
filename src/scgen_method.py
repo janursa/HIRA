@@ -8,7 +8,7 @@ import argparse
 
 ## VIASH START
 par = {
-    'batch_key': 'plate_name',
+    'batch_key': 'donor_id',
     'label_key': 'cell_type'
 }
 ## VIASH END

@@ -10,4 +10,4 @@
 #SBATCH --gres=gpu:1
 
 conda activate scvi
-python src/scvi.py  # Run your Python script
+python src/scvi_method.py  # Run your Python script

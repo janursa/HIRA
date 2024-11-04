@@ -11,7 +11,7 @@ import pandas as pd
 import seaborn as sns
 from scipy import stats
 
-
+from scipy.stats import spearmanr
 import sys
 import matplotlib.pyplot as plt
 import scanpy as sc 
@@ -25,148 +25,14 @@ from scipy.sparse import csr_matrix
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
+import numpy as np
+from scipy.stats import spearmanr, t
+from statsmodels.stats.multitest import multipletests
 
 
 sys.path.insert(0, '../')
 from task_grn_inference.src.utils.util import basic_qc, read_gmt, quantile_transformation, zscore_transformation
 from task_grn_inference.src.process_data.perturbation.normalization.script import normalize_func
-
-
-
-def subset_data():
-    par = {
-    'save_dir' : 'input/full'
-    }
-
-    adata = ad.read_h5ad('/vol/projects/CIIM/Healthy_Single_Cell_Data/initial_data_downloaded/pbmc_ageing/raw_counts_h5ad/pbmc_gex_raw_with_var_obs.h5ad')
-    obs = pd.read_csv('/vol/projects/CIIM/Healthy_Single_Cell_Data/initial_data_downloaded/pbmc_ageing/all_pbmcs/all_pbmcs_metadata.csv', index_col=0)
-
-    obs = obs[['Batch', 'Donor_id','Age','Cluster_names']]
-    obs.columns = ['batch', 'donor_id', 'age', 'cell_type']
-
-    # -- group 
-    plt.figure(figsize=(20, 4))
-    obs_selected = obs.groupby(['batch', 'donor_id', 'age', 'cell_type']).size().rename('size').reset_index()
-    obs_selected = obs_selected[obs_selected.cell_type.isin(['CD4+ T cells'])]
-
-    obs_selected = obs_selected.sort_values(by='size')[::-1][:250].reset_index()
-    obs_selected.sort_values(by='age').plot(kind='bar', x='age', y='size', legend=False, ax=plt.gca())
-    obs_selected = obs_selected[obs_selected.age<=75]
-    plt.show()
-    obs_selected.age.hist(bins=100)
-
-    # --- Define age bins and labels
-    bins = [23, 35, 45, 55, 65, 75]  # Define bins for age groups
-    labels = ['-34', '35_44', '45_54', '55_64', '65_75']  # Define corresponding labels
-    obs_selected['age_group'] = pd.cut(obs_selected['age'], bins=bins, labels=labels, right=False)
-    print('stats of batch, donor, age, etc: \n', obs_selected.nunique())
-    print('\n \n Donors: \n', obs_selected.groupby('age_group')['donor_id'].count())
-
-    # -- equalize donor size for each age_group
-    set_donor_size = 15 
-    n_groups = 2 
-    donor_size_per_group =  n_groups*set_donor_size
-    df = obs_selected.groupby('age_group')['donor_id'].sample(donor_size_per_group)
-    obs_selected = obs_selected[obs_selected.index.isin(df.index)]
-    print('\n \n Donors: \n', obs_selected.groupby('age_group')['donor_id'].count())
-    print('\n \n Cells: \n', obs_selected.groupby('age_group')['size'].sum())
-
-    # -- group into two batches 
-    def assign_batches(group):
-        # Shuffle the group rows
-        group = group.sample(frac=1, random_state=42).reset_index(drop=True)
-        # Split into two batches
-        mid_point = len(group) // 2
-        group['batch_group'] = ['batch_1'] * mid_point + ['batch_2'] * (len(group) - mid_point)
-        return group
-
-    # Apply the function to each age_group
-    obs_selected = obs_selected.groupby('age_group').apply(assign_batches).reset_index(drop=True)
-
-    for batch_name in obs_selected.batch_group.unique():
-        obs_batch = obs_selected[obs_selected.batch_group==batch_name]
-        for i_age_group, age_group in enumerate(obs_batch.age_group.unique()):
-            obs_age_group = obs_batch[obs_batch.age_group.eq(age_group)]
-            for i, (index, row) in enumerate(obs_age_group.iterrows()):
-                mask = (obs.batch==row.batch)&(obs.donor_id==row.donor_id)&(obs.age==row.age)&(obs.cell_type==row.cell_type)
-                adata_donor = adata[mask.reindex(adata.obs.index),:]
-                
-                case_obs = adata_donor.obs.copy()
-                
-                case_obs['batch'] = row['batch']
-                case_obs['donor_id'] = row['donor_id']
-                case_obs['age'] = row['age']
-                case_obs['cell_type'] = row['cell_type']
-                case_obs['age_group'] = row['age_group']
-                case_obs['batch_group'] = row['batch_group']
-                
-                adata_donor.obs = case_obs
-                
-                adata_donor = basic_qc(adata_donor)
-                
-                # merge 
-                if i == 0:
-                    adata_age = adata_donor
-                else:
-                    adata_age = ad.concat([adata_age, adata_donor])
-            
-            
-            if False:
-                sc.pp.highly_variable_genes(adata_age, n_top_genes=7000, flavor='seurat_v3', batch_key='donor_id', subset=True)
-
-            
-            if i_age_group == 0:
-                adata_batch = adata_age
-            else:
-                adata_batch = ad.concat([adata_batch, adata_age])
-        adata_batch.layers['counts'] = adata_batch.X.copy()
-        normalize_func(adata_batch) # normalize
-
-
-        to_save = f"{par['save_dir']}/{batch_name}.h5ad"
-        print(to_save)
-        adata_batch.write(to_save)# --- extract each group and save 
-    for group in df_selected.group.unique():
-        df_group = df_selected[df_selected.group.eq(group)]
-        for i_subgroup, df_group_sub in enumerate([df_group.iloc[:df_group.shape[0]//2, :], df_group.iloc[df_group.shape[0]//2:, :]]): # 2 subgroups
-            for i, (index, row) in enumerate(df_group_sub.iterrows()):
-                mask = (obs.batch==row.batch)&(obs.donor_id==row.donor_id)&(obs.age==row.age)&(obs.cell_type==row.cell_type)
-                adata_donor = adata[mask.reindex(adata.obs.index),:]
-                
-                case_obs = adata_donor.obs.copy()
-                
-                case_obs['batch'] = row['batch']
-                case_obs['donor_id'] = row['donor_id']
-                case_obs['age'] = row['age']
-                case_obs['cell_type'] = row['cell_type']
-                
-                adata_donor.obs = case_obs
-                
-                # merge 
-                if i == 0:
-                    adata_age = adata_donor
-                else:
-                    adata_age = ad.concat([adata_age, adata_donor])
-                    
-            adata_age = basic_qc(adata_age)
-            if False:
-                sc.pp.highly_variable_genes(adata_age, n_top_genes=7000, flavor='seurat_v3', batch_key='donor_id', subset=True)
-
-            model_name = f'{group}_{i_subgroup}'
-            adata_age.obs['group'] = model_name
-            if i_subgroup == 0:
-                adata_group = adata_age
-            else:
-                adata_group = ad.concat([adata_group, adata_age])
-
-        # normalize
-        adata_group.layers['counts'] = adata_group.X.copy()
-        normalize_func(adata_group)
-        
-        
-        to_save = f"{par['save_dir']}/batch_{i_subgroup}.h5ad"
-        print(to_save)
-        adata_group.write(to_save)
 
 def get_genesets():
     geneset_file = 'input/prior/h.all.v2024.1.Hs.symbols.gmt'
@@ -174,8 +40,15 @@ def get_genesets():
     genesets_all = {key:gs['genes'] for key, gs in genesets_all.items()}
     # extract relevant sets 
     gene_sets = {}
-    map_dict = {'HALLMARK_PI3K_AKT_MTOR_SIGNALING': 'PI3K_AKT_MTOR', 'HALLMARK_MTORC1_SIGNALING':'MTORC1', 'HALLMARK_P53_PATHWAY':'P53', 'HALLMARK_TNFA_SIGNALING_VIA_NFKB':'TNFA_NFKB', 'HALLMARK_TGF_BETA_SIGNALING':'TGF_BETA',
-                'HALLMARK_WNT_BETA_CATENIN_SIGNALING':'WNT_BETA_CATENIN', 'HALLMARK_OXIDATIVE_PHOSPHORYLATION': 'OXIDATIVE_PHOSPHORYLATION'}
+    map_dict = {
+        'HALLMARK_PI3K_AKT_MTOR_SIGNALING': 'PI3K/AKT/MTOR',
+        'HALLMARK_MTORC1_SIGNALING': 'MTORC1',
+        'HALLMARK_P53_PATHWAY': 'P53',
+        'HALLMARK_TNFA_SIGNALING_VIA_NFKB': 'TNFA/NFKB',
+        'HALLMARK_TGF_BETA_SIGNALING': 'TGF-Beta',
+        'HALLMARK_WNT_BETA_CATENIN_SIGNALING': 'WNT-Beta Catenin',
+        'HALLMARK_OXIDATIVE_PHOSPHORYLATION': 'Oxidative Phos.'
+    }
     for key, key_simple in map_dict.items():
         gene_sets[key_simple] = genesets_all[key]
 #     return gene_sets
@@ -277,15 +150,8 @@ def calculate_coexp_all(adata_dir='input/adata.h5ad', normalize='sla', corr_meth
     i_all = 0
     for i, age_group in enumerate(adata_all.obs.age_group.unique()):
         adata_age_group= adata_all[adata_all.obs.age_group==age_group]
-
-        if normalize=='sla':
-            print(normalize)
-            sc.pp.normalize_total(adata_age_group)
-            # sc.pp.log1p(adata_age_group)
-        elif normalize=='apr':
-            sc.experimental.pp.normalize_pearson_residuals(adata_age_group)
         
-        coexp_age_group = calculate_coexp(adata_age_group, corr_method=corr_method, denoise=denoise)
+        coexp_age_group = calculate_coexp(adata_age_group, corr_method=corr_method, denoise=denoise, normalize=normalize)
 
         if i_all == 0:
             coexp_all = coexp_age_group
@@ -318,14 +184,40 @@ def corr_latent_space(X, n_components):
     std_dev = np.sqrt(np.diag(covariance_matrix))
     correlation_matrix = covariance_matrix / np.outer(std_dev, std_dev)
     return correlation_matrix
+# Function to compute Pearson correlation matrix and approximate p-values
+def fast_pearson_with_pvalues(X_subset):
+    n_samples, n_vars = X_subset.shape
+    
+    # Compute the correlation matrix
+    corr_matrix = np.corrcoef(X_subset, rowvar=False)
+    
+    # Calculate degrees of freedom for the t-distribution
+    dof = n_samples - 2
+    
+    # Compute the t-statistic for each correlation value
+    t_stats = np.zeros_like(corr_matrix)
+    mask = (np.abs(corr_matrix) < 1)  # Mask for values < 1 in absolute
+    t_stats[mask] = corr_matrix[mask] * np.sqrt(dof / (1 - corr_matrix[mask]**2))
+    t_stats[~mask] = np.inf  # Set t-stats to infinity for perfect correlations
+    
+    
+    # Convert t-statistics to p-values using survival function (one-sided p-value * 2 for two-tailed)
+    p_values = 2 * t.sf(np.abs(t_stats), dof)
+    
+    return corr_matrix, p_values
 
-def calculate_coexp(adata, layer=None, group='age_donor', corr_method='pearson', denoise=False):
+def calculate_coexp(adata, layer=None, group='age_donor', corr_method='pearson', denoise=False, normalize='sla'):
 
         for i_donor, age_donor in enumerate(tqdm(adata.obs[group].unique())):
             adata_age = adata[adata.obs[group].eq(age_donor), :]
 
-            adata_age = basic_qc(adata_age, min_cells_per_gene=10, min_genes_per_cell=10)
+            adata_age = basic_qc(adata_age, min_cells_per_gene=100, min_genes_per_cell=10)
 
+            if normalize=='sla':
+                sc.pp.normalize_total(adata_age)
+                sc.pp.log1p(adata_age)
+            elif normalize=='apr':
+                sc.experimental.pp.normalize_pearson_residuals(adata_age)
 
             X_subset = adata_age.X
             try:
@@ -336,13 +228,22 @@ def calculate_coexp(adata, layer=None, group='age_donor', corr_method='pearson',
             if denoise:
                 X_subset = denoise_func(X_subset)
                 # corr_matrix = corr_latent_space(X_subset, n_components=100)
-            # else:
+   
             if corr_method=='pearson':
-                corr_matrix = np.corrcoef(X_subset.T)
+                # corr_matrix = np.corrcoef(X_subset.T)
+                corr_matrix, p_values = fast_pearson_with_pvalues(X_subset)
             elif corr_method=='spearman':
-                from scipy.stats import spearmanr
                 corr_matrix, p_values = spearmanr(X_subset, nan_policy='raise')
+        
+            # - correct the p value
+            p_values_flat = p_values.flatten()
+            _, p_values_corrected_flat, _, _ = multipletests(p_values_flat, method='fdr_bh')
+            p_values_corrected = p_values_corrected_flat.reshape(p_values.shape)
 
+            mask_non_sig =  p_values_corrected>=0.05
+            corr_matrix[mask_non_sig] = 0
+
+            # - melt
             net = efficient_melting(corr_matrix, adata_age.var_names)
 
             net['link'] = ['_'.join(sorted([str(src), str(tgt)])) for src, tgt in zip(net.source, net.target)]
@@ -701,7 +602,7 @@ if __name__ == '__main__': # srun --time 01:00:00  --mem 250g python src/helper.
     # batch_correction(par)
     # corr_genesets(par)
     for denoise in [False, True]:
-        for normalize in ['sla', 'apr']:
+        for normalize in ['apr']:
             for corr_method in ['pearson','spearman']:
                 calculate_coexp_all(adata_dir='input/adata_bootstrapped.h5ad', normalize=normalize, corr_method=corr_method, write_file=f'output/coexp_adata_{normalize}_{corr_method}_{denoise}.h5ad', denoise=denoise, targeted=True)
                 sig_test_all(coexp_adata_file=f'output/coexp_adata_{normalize}_{corr_method}_{denoise}.h5ad', ctr_group='34-', col_contrast='age_group', col_link='link', save_file=f'output/links_pvalues_vs_34_{normalize}_{corr_method}_{denoise}.csv')

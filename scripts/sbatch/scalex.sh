@@ -9,4 +9,5 @@
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 
-singularity run ../../images/scgen python src/scgen_method.py --adata output/data/adata_34_5donors.h5ad --adata_bc output/data/adata_34_5donors_bc.h5ad --batch_key donor_id --label_key cell_type
+conda activate scalex
+python src/scalex_method.py --adata output/data/adata_34_5donors.h5ad --adata_bc output/data/adata_34_5donors_bc_scalex.h5ad --batch_key donor_id
