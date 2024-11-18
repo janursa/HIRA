@@ -24,6 +24,10 @@ from tqdm import tqdm
 from scipy.sparse import csr_matrix
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+from lightgbm import LGBMRegressor
+from sklearn.model_selection import KFold
+from sklearn.metrics import r2_score
+from sklearn.linear_model import Ridge
 
 import numpy as np
 from scipy.stats import spearmanr, t
@@ -262,6 +266,33 @@ def calculate_coexp(adata, layer=None, group='age_donor', corr_method='pearson',
                 coexp_all = pd.concat([coexp_all, coexp_df], axis=0).fillna(0)
 
         return coexp_all
+def batch_correction():
+    adata_all = ad.read_h5ad('input/dataset_1.h5ad') 
+
+    # - subset to one batch
+    adata_all = adata_all[adata_all.obs.batch_group=='batch_1']
+
+    # - corrected the data and store them in layers
+    # adata_all.layers['combat_corrected'] = csr_matrix(np.zeros(adata_all.shape))
+    for age_group in tqdm(adata_all.obs.age_group.unique()):
+        mask_group = (adata_all.obs.age_group == age_group) 
+        adata_group = adata_all[mask_group]
+
+        if False: # run on raw count
+            combat_corrected = sc.pp.combat(adata_group, key='donor_id', inplace=False)  
+            combat_corrected[(adata_group.X.todense().A==0)] = 0
+            combat_corrected[combat_corrected<0] = 0
+        else: # run on normalized 
+            sc.pp.normalize_total(adata_group, )
+            sc.pp.log1p(adata_group)
+            combat_corrected = sc.pp.combat(adata_group, key='donor_id', inplace=False)  
+
+        combat_corrected = csr_matrix(combat_corrected)
+        adata_all.write('input/dataset_1_corrected_batch1.h5ad') 
+
+        # adata_all.layers['combat_corrected'][mask_group] = combat_corrected 
+    adata_all.layers['counts'] = adata_all.X.copy()
+    adata_all.write('input/dataset_1_corrected_batch1.h5ad') 
 
 def sig_test_all(coexp_adata_file='output/coexp_adata_apr_spearman.h5ad', ctr_group='34-', col_contrast='age_group', col_link='link', save_file='output/links_pvalues_vs_34.csv'):
     import pandas as pd
@@ -537,74 +568,81 @@ def efficient_melting(net, gene_names):
     # print('convert to df')
     net = pd.DataFrame(data, columns=['source', 'target', 'weight'])
     return net
-def run_classifier(adata, model_type='GB', confounder='donor_id', covariate='age', normalize=True):
-    import lightgbm as lgb
-    from sklearn.linear_model import RidgeClassifier, Ridge
-    from sklearn.metrics import r2_score, make_scorer, accuracy_score
-    from sklearn.model_selection import cross_validate
-    from sklearn.preprocessing import MaxAbsScaler 
-    import scanpy as sc  
-    
-    if normalize:
-        print('normalize start')
-        sc.pp.normalize_total(adata)
-        sc.pp.log1p(adata)
-        sc.pp.scale(adata)
-        print('normalize end')
-    
-    scores = {}
-    # classifer for confounder
-    y = adata.obs[confounder]
-    X = adata.X
-    print('Batch classifier')
-    if model_type=='ridge':
-        model = RidgeClassifier(alpha=1)
-        X = MaxAbsScaler().fit_transform(X)
-    elif model_type=='GB':
-        model = lgb.LGBMClassifier(silent=True, verbose=-1, n_jobs=20)
-    else: 
-        raise ValueError('Define the classifier')
-    
-    scoring = {
-        'accuracy_score': make_scorer(accuracy_score)
-    }
-    score = 1 - cross_validate(model, X, y, cv=5, scoring=scoring, return_train_score=False)['test_accuracy_score'].mean()
-    scores[confounder] = score
-    scores[f"{confounder}_random_classifer_score"] = 1 - (1/y.nunique())
-    # regressor for covariate
-    print('Age regressor')
-    if model_type=='ridge':
+def predict_celltype_ratio_from_coexp(reg_type='ridge', save_tag=''):
+    # - fit a regression model to predict g-g-corr from cell type ratio
+    # Define the input features and targets
+    X_df = pd.read_csv('output/feature_importances/X_df.csv', index_col=0)
+    X = X_df.values
+
+    Y_df = pd.read_csv('output/feature_importances/Y_df.csv', index_col=0)
+    target_links = Y_df.columns
+    Y = Y_df.values
+
+    # Initialize K-Fold cross-validation
+    kf = KFold(n_splits=5, random_state=32, shuffle=True)
+    test_indices_per_fold = [test_index for _, test_index in kf.split(X)]
+
+    # Initialize dictionary to store results
+    r2_scores = {}
+    feature_importances = {}
+
+    # Scale features
+    if reg_type=='ridge':
+        scaler = StandardScaler()
+        X = scaler.fit_transform(X)
         model = Ridge(alpha=1)
-        X = MaxAbsScaler().fit_transform(adata.X)
-    elif model_type=='GB':
-        model = lgb.LGBMRegressor(silent=True, verbose=-1, n_jobs=20)
-    else: 
-        raise ValueError('Define the classifier')
-    y = adata.obs[covariate]
-    scoring = {
-        'r2_score': make_scorer(r2_score)
-    }
-    score = cross_validate(model, X, y, cv=5, scoring=scoring, return_train_score=False)['test_r2_score'].mean()
-    scores[covariate] = score
-    return scores
+    else:
+        # Set up the LightGBM model with 20 CPUs
+        model = LGBMRegressor(n_jobs=20, verbose=-1, min_child_samples=5,       # Relaxing minimum child samples
+            min_split_gain=0.01        # Small positive gain for flexibility in splits
+        )
+
+    # Iterate over each target link
+    for i, target_link in enumerate(tqdm(target_links)):
+        Y_i = Y[:, i]
+        scores = []
+        fold_importances = []
+
+        # Perform cross-validation
+        for train_index, test_index in kf.split(X):
+            X_train, X_test = X[train_index], X[test_index]
+            y_train, y_test = Y_i[train_index], Y_i[test_index]
+
+            # Fit the model and predict
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+
+            # Calculate R² score for this fold
+            scores.append(r2_score(y_test, y_pred))
+
+            # Collect the feature importances for each fold
+            if reg_type=='ridge':
+                fold_importances.append(model.coef_)
+            else:
+                fold_importances.append(model.feature_importances_)
+
+        # Store R² scores and average feature importances for this target
+        r2_scores[target_link] = scores
+        feature_importances[target_link] = np.mean(fold_importances, axis=0)
+
+    # Convert the results into DataFrames 
+    r2_scores_df = pd.DataFrame(r2_scores)
+    feature_importances_df = pd.DataFrame(feature_importances, index=X_df.columns) 
+
+
+    feature_importances_df.to_csv(f'output/feature_importances/feature_importances_df_{reg_type}{save_tag}.csv')
+    r2_scores_df.to_csv(f'output/feature_importances/r2_scores_df_{reg_type}{save_tag}.csv')
 # run_classifier(adata)
 if __name__ == '__main__': # srun --time 01:00:00  --mem 250g python src/helper.py 
-    # par = {
-    # 'input_dir': 'input/',
-    # 'batch1': ['-34_0', '35_44_0', '45_54_0', '55_64_0', '65_75_0'], 
-    # 'batch2': ['-34_1', '35_44_1', '45_54_1', '55_64_1', '65_75_1'], 
-    
-    # 'models': ['-34_0', '35_44_0', '45_54_0', '55_64_0', '65_75_0', '-34_1', '35_44_1', '45_54_1', '55_64_1', '65_75_1'],
-    # # 'models': ['35_44_1', '45_54_1'],
-    # }
-    # subset_data()
-    # corr_genesets(par)
-    # batch_correction(par)
-    # corr_genesets(par)
-    for denoise in [False, True]:
-        for normalize in ['apr']:
-            for corr_method in ['pearson','spearman']:
-                calculate_coexp_all(adata_dir='input/adata_bootstrapped.h5ad', normalize=normalize, corr_method=corr_method, write_file=f'output/coexp_adata_{normalize}_{corr_method}_{denoise}.h5ad', denoise=denoise, targeted=True)
-                sig_test_all(coexp_adata_file=f'output/coexp_adata_{normalize}_{corr_method}_{denoise}.h5ad', ctr_group='34-', col_contrast='age_group', col_link='link', save_file=f'output/links_pvalues_vs_34_{normalize}_{corr_method}_{denoise}.csv')
+    if False: # correlation analysis
+        for denoise in [False, True]:
+            for normalize in ['apr']:
+                for corr_method in ['pearson','spearman']:
+                    calculate_coexp_all(adata_dir='input/adata_bootstrapped.h5ad', normalize=normalize, corr_method=corr_method, write_file=f'output/coexp_adata_{normalize}_{corr_method}_{denoise}.h5ad', denoise=denoise, targeted=True)
+                    sig_test_all(coexp_adata_file=f'output/coexp_adata_{normalize}_{corr_method}_{denoise}.h5ad', ctr_group='34-', col_contrast='age_group', col_link='link', save_file=f'output/links_pvalues_vs_34_{normalize}_{corr_method}_{denoise}.csv')
 
+    if False:
+        predict_celltype_ratio_from_coexp('GB')
     
+    if True:
+        batch_correction()
