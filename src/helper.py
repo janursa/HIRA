@@ -35,9 +35,26 @@ from statsmodels.stats.multitest import multipletests
 
 
 sys.path.insert(0, '../')
-from task_grn_inference.src.utils.util import basic_qc, read_gmt, quantile_transformation, zscore_transformation
-from task_grn_inference.src.process_data.perturbation.normalization.script import normalize_func
+from task_grn_inference.src.utils.util import basic_qc, read_gmt
 
+def plot_enrichment(df, figsize=(5, 6)):
+    # Calculate -log10 of Adjusted P-value for a clearer visualization
+    df['-log10(Adjusted P-value)'] = -np.log10(df['Adjusted P-value'])
+    
+
+    # Sort the DataFrame by significance (optional)
+    df = df.sort_values(by='-log10(Adjusted P-value)', ascending=False)
+
+    # Plotting the enrichment analysis
+    plt.figure(figsize=figsize)
+    sns.barplot(data=df, y='Term', x='-log10(Adjusted P-value)', palette="viridis")
+
+    # Add plot labels and title
+    plt.xlabel("-log10(Adjusted P-value)")
+    plt.title("Enrichment Analysis Results")
+    plt.tight_layout()
+
+    
 def get_genesets():
     geneset_file = 'input/prior/h.all.v2024.1.Hs.symbols.gmt'
     genesets_all = read_gmt(geneset_file) 
@@ -632,7 +649,169 @@ def predict_celltype_ratio_from_coexp(reg_type='ridge', save_tag=''):
 
     feature_importances_df.to_csv(f'output/feature_importances/feature_importances_df_{reg_type}{save_tag}.csv')
     r2_scores_df.to_csv(f'output/feature_importances/r2_scores_df_{reg_type}{save_tag}.csv')
-# run_classifier(adata)
+def diff_corr(expression_ctr, expression_sample, gene_names, 
+                     cell_type_ctr, cell_type_sample, n_permutations=1000,
+                     parallel=True, sig_t=.05, mode='zscore') -> pd.DataFrame:
+    ''' Permutation based calculation of differentation correlation'''
+    from joblib import Parallel, delayed
+    assert mode in ['fisher', 'permut']
+
+    def compute_correlation(X):
+        corr, _ = spearmanr(X, nan_policy='raise')
+        return corr
+    # check if any gene has zero std -> would generate nan in the corr
+    assert expression_ctr.shape[1] == expression_sample.shape[1]
+
+    mask_zero_std_ctr = np.std(expression_ctr, axis=0)==0
+    mask_zero_std_sample = np.std(expression_sample, axis=0)==0
+
+    expression_ctr = expression_ctr[:, (~mask_zero_std_ctr)&(~mask_zero_std_sample)]
+    expression_sample = expression_sample[:, (~mask_zero_std_ctr)&(~mask_zero_std_sample)]
+
+    assert expression_ctr.shape[1] == expression_sample.shape[1]
+
+    gene_names  = gene_names[(~mask_zero_std_ctr)&(~mask_zero_std_sample)]
+
+    # stats
+    n_samples_ctr = expression_ctr.shape[0]
+    n_samples_sample = expression_sample.shape[0]
+    n_genes = expression_ctr.shape[1]
+
+    # Compute correlation matrices for young and old groups
+    corr_ctr = compute_correlation(expression_ctr)
+    corr_sample = compute_correlation(expression_sample)
+
+    assert np.isnan(corr_ctr).any()==False
+    assert np.isnan(corr_sample).any()==False
+
+    # Compute differences in correlations
+    corr_diff = corr_sample - corr_ctr
+    assert np.isnan(corr_diff).any()==False
+
+    if mode=='permut': # - permutation based p value
+        # Combine the data
+        combined_data = np.concatenate([expression_ctr, expression_sample], axis=0)
+
+        # Run permutations in parallel
+        if False:
+            def single_permutation(seed): #
+                np.random.seed(seed)  
+                shuffled_data = np.random.permutation(combined_data)
+                perm_ctr = shuffled_data[:n_samples_ctr, :]
+                perm_sample = shuffled_data[n_samples_ctr:, :]
+                
+                perm_corr_ctr = compute_correlation(perm_ctr)
+                perm_corr_sample = compute_correlation(perm_sample)
+                
+                perm_corr_diff = perm_corr_sample - perm_corr_ctr
+                assert np.isnan(perm_corr_diff).any()==False
+                return perm_corr_diff
+        else: # stratified by cell type
+            def single_permutation(seed): 
+                np.random.seed(seed)
+                perm_ctr = []
+                perm_sample = []
+                unique_cell_types = np.unique(cell_type_ctr)
+                
+                for cell_type in unique_cell_types:
+                    idx_ctr = np.where(cell_type_ctr == cell_type)[0]
+                    idx_sample = np.where(cell_type_sample == cell_type)[0]
+                    combined_indices = np.concatenate([idx_ctr, idx_sample])
+                    np.random.shuffle(combined_indices)
+
+                    perm_ctr.append(combined_data[combined_indices[:len(idx_ctr)], :])
+                    perm_sample.append(combined_data[combined_indices[len(idx_ctr):], :])
+
+                perm_ctr = np.vstack(perm_ctr)
+                perm_sample = np.vstack(perm_sample)
+
+                perm_corr_ctr = compute_correlation(perm_ctr)
+                perm_corr_sample = compute_correlation(perm_sample)
+                return perm_corr_sample - perm_corr_ctr
+        seeds = np.arange(n_permutations)  # Unique seed for each permutation
+        
+        if parallel:
+            perm_diffs = Parallel(n_jobs=-1, backend="loky")(
+                delayed(single_permutation)(seed) for seed in tqdm(seeds)
+            )
+            perm_diffs = np.array(perm_diffs)
+        else:
+            perm_diffs = np.zeros((n_permutations, n_genes, n_genes))
+            for p, seed in tqdm(enumerate(seeds)):
+                perm_diffs[p] = single_permutation(seed)
+        
+        
+        # Compute p-values for observed differences
+        p_values = np.ones((n_genes, n_genes))
+        for i in range(n_genes):
+            for j in range(i + 1, n_genes):
+                observed_diff = corr_diff[i, j]
+                perm_distribution = perm_diffs[:, i, j]
+                p_value = (np.sum(np.abs(perm_distribution) >= np.abs(observed_diff)) + 1) / (n_permutations + 1) # - check this
+                p_values[i, j] = p_value
+                p_values[j, i] = p_value
+
+        # Adjust p-values for multiple testing using FDR
+        p_values_flat = p_values[np.triu_indices(n_genes, k=1)]
+        _, p_values_corrected, _, _ = multipletests(p_values_flat, method='fdr_bh')
+
+        p_values_corrected_matrix = np.zeros_like(p_values)
+        p_values_corrected_matrix[np.triu_indices(n_genes, k=1)] = p_values_corrected
+        p_values_corrected_matrix += p_values_corrected_matrix.T
+    elif mode=='fisher': # fisher z test
+        def fisher_z_test(corr1, n1, corr2, n2):
+            """Perform Fisher's Z-Test for two correlation coefficients."""
+            from scipy.stats import spearmanr, norm
+            # Fisher's Z-transformation
+            z1 = 0.5 * np.log((1 + corr1) / (1 - corr1))
+            z2 = 0.5 * np.log((1 + corr2) / (1 - corr2))
+            
+            # Standard error of the Z-difference
+            se_diff = np.sqrt(1 / (n1 - 3) + 1 / (n2 - 3))
+            
+            # Z-difference test statistic
+            z_diff = (z2-z1) / se_diff
+            
+            # Two-tailed p-value
+            p_value = 2 * norm.sf(np.abs(z_diff))
+            
+            return p_value
+        
+        p_values = fisher_z_test(corr_sample, n_samples_sample, corr_ctr, n_samples_ctr)
+        p_values_corrected_matrix = p_values
+
+    # Reshape corrected p-values back into a matrix
+    
+
+    # - only keep the sig change
+    mask_sig = p_values_corrected_matrix<sig_t 
+    corr_diff[~mask_sig] = 0
+
+    # - efficient melting 
+    upper_triangle_indices = np.triu_indices_from(corr_diff, k=1)
+
+    # Extract the source and target gene names based on the indices
+    sources = np.array(gene_names)[upper_triangle_indices[0]]
+    targets = np.array(gene_names)[upper_triangle_indices[1]]
+    link = np.asarray(['_'.join(sorted([str(src), str(tgt)])) for src, tgt in zip(sources, targets)])
+
+    # Extract the corresponding correlation values
+    diff_values = corr_diff[upper_triangle_indices]
+    
+    ctr_values = corr_ctr[upper_triangle_indices]
+    sample_values = corr_sample[upper_triangle_indices]
+    p_values = p_values_corrected_matrix[upper_triangle_indices]
+
+
+    mask_zeros = diff_values == 0 
+    # Create a structured array
+    data = np.column_stack((link[~mask_zeros], ctr_values[~mask_zeros].round(2), sample_values[~mask_zeros].round(2), diff_values[~mask_zeros].round(2), p_values[~mask_zeros].round(5)))
+
+    # Convert to DataFrame
+    net = pd.DataFrame(data, columns=['link', 'ctr_corr', 'corr', 'diff', 'adj_pvalue']).set_index('link')
+    net = net.astype(float)
+    return net
+
 if __name__ == '__main__': # srun --time 01:00:00  --mem 250g python src/helper.py 
     if False: # correlation analysis
         for denoise in [False, True]:
