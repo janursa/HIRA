@@ -35,9 +35,71 @@ from scipy.stats import spearmanr, t
 from statsmodels.stats.multitest import multipletests
 
 
+cell_type_mapping = {
+    "CD4Naive": "CD4+ T cells",
+    "CD4TCM": "CD4+ T cells",
+    "CD4TEM": "CD4+ T cells",
+    "CD4CTL": "CD4+ T cells",
+    "Treg": "CD4+ T cells",
+    "CD4Proliferating": "CD4+ T cells",
+    "CD8Naive": "CD8+ T cells",
+    "CD8TCM": "CD8+ T cells",
+    "CD8TEM": "CD8+ T cells",
+    "TRAV1-2- CD8+ T cells": "CD8+ T cells",
+    "CD8Proliferating": "CD8+ T cells",
+    "NK": "NK cells",
+    "NK_CD56bright": "NK cells",
+    "NKProliferating": "NK cells",
+    "Bnaive": "B cells",
+    "Bmemory": "B cells",
+    "Bintermediate": "B cells",
+    "Plasmablast": "B cells",
+    "CD14Mono": "Myeloid cells",
+    "CD16Mono": "Myeloid cells",
+    "cDC1": "Myeloid cells",
+    "cDC2": "Myeloid cells",
+    "pDC": "Myeloid cells",
+    "ASDC": "Myeloid cells",
+    "gdT": "gd T cells",
+    "MAIT": "MAIT cells",
+    "HSPC": "Progenitor cells",
+    "Platelet": "Platelet",
+    "Eryth": "Erythroid cells",
+    "ILC": "ILC",
+    "Doublet": "Doublet",
+    "dnT": "DN T cells",
+    "DN T cells": "DN T cells"
+}
+colors_blind = [
+          '#E69F00',  # Orange
+          '#56B4E9',  # Sky Blue
+          '#009E73',  # Bluish Green
+          '#F0E442',  # Yellow
+          '#0072B2',  # Blue
+          '#D55E00',  # Vermillion
+          '#CC79A7']  # Reddish Purple
+
+
+major_cell_types = ['B cells', 'CD4+ T cells', 'CD8+ T cells', 'Myeloid cells', 'NK cells']
+cell_type_palette = {name: color for name, color in zip(major_cell_types, colors_blind[:len(major_cell_types)])}
+
+map_cell_type_genernib = {
+        'CD4+ T cells': 'T cells',
+        'TRAV1-2- CD8+ T cells': 'T cells',
+        'CD8+ T cells': 'T cells',
+        'gd T cells': 'T cells',
+        'DN T cells': 'T cells',
+        'MAIT cells': 'T cells',
+        'Progenitor cells': 'Myeloid cells',
+        'B cells': 'B cells',
+        'NK cells': 'NK cells',
+        'Myeloid cells': 'Myeloid cells'
+    }
+
 sys.path.insert(0, '../')
 from task_grn_inference.src.utils.util import basic_qc, read_gmt
 
+surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All batches', '34-':'35 below', '35_44':'35-45', '45_54':'45-55', '55_64':'55-65', '65_75':'65-75'}
 
 def determine_centrality(net, use_weight=True):
     """
@@ -68,7 +130,8 @@ def determine_centrality(net, use_weight=True):
             target="target",
             create_using=nx.DiGraph()
         )
-        centrality = dict(G.degree())  # Regular degree centrality (ignores weights)
+        # centrality = dict(G.degree())  # Regular degree centrality (ignores weights)
+        centrality = nx.degree_centrality(G)
 
     # Convert centrality results to DataFrame
     net_centrality = pd.DataFrame.from_dict(centrality, orient="index", columns=["centrality"])

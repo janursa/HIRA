@@ -70,7 +70,9 @@ def exp_plots(groups, cell_type=True):
     
     cellcount_dist = groups.size().reset_index(name='cell_count')
     donor_dist = groups['donor_id'].nunique().reset_index(name='donor_n')
+
     age_donor_dist = groups['age_donor'].nunique().reset_index(name='age_donor')
+
     age2donor_dist = groups.apply(lambda df: df.groupby('donor_id')['age'].nunique()).reset_index(name='count')
 
 
