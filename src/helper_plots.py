@@ -35,7 +35,207 @@ from scipy.stats import spearmanr, t
 from statsmodels.stats.multitest import multipletests
 
 
+sys.path.insert(0, './')
 
+from src.helper import colors_blind
+
+
+
+def plot_gene_centrality_vs_expression(df_merged):
+    hub_genes = df_merged[df_merged['is_hub_gene']]['gene'].unique()
+
+    # - Generate a color palette
+    color_palette = sns.color_palette('tab20', len(hub_genes))  # 'husl' is an example; choose any palette
+    color_map = {gene:color for gene, color in zip(hub_genes, color_palette)}
+
+    # - actual plot
+    fig, axes = plt.subplots(1,2, figsize=(8,3.5), sharey=True, dpi=100)
+    df_merged['show_name'] = 'Others'
+    df_merged.loc[df_merged['is_hub_gene'], 'show_name'] = df_merged.loc[df_merged['is_hub_gene'], 'gene']
+    hue_order = df_merged['show_name'].unique()
+
+    for i, batch in enumerate(df_merged['batch_group'].unique()):
+        ax = axes[i]
+        df_merged_b = df_merged[df_merged['batch_group'].eq(batch)]
+
+        sns.scatterplot(df_merged_b, x='-fc_log10_pvalue', y='diff', hue='show_name', hue_order=hue_order,ax=ax, palette={'Others':'grey', **color_map}, style='is_tf')
+        if i == 0:
+            ax.get_legend().remove()
+        else:  
+            ax.legend(loc=(1.05, 0))
+        ax.set_title(batch)
+        # ax.set_xscale('log')
+    plt.tight_layout()
+
+def plot_centrality_heatmap_metadata(df, metadata,  length=8, width=3, cluster_offset=0.1, var_name='gene', value_name='centrality'):
+    import scipy.cluster.hierarchy as sch
+    from matplotlib.gridspec import GridSpec
+    from src.helper import surrogate_names
+    # - main data (used for clustering)
+
+    data_heatmap = df.copy()
+    data_heatmap = data_heatmap.pivot(index=var_name, columns='age_group', values=value_name).fillna(0)
+    # - Perform hierarchical clustering on the first batch data
+    linkage = sch.linkage(data_heatmap, method='ward')
+    dendrogram = sch.dendrogram(linkage, no_plot=True)
+    cluster_order = [data_heatmap.index[i] for i in dendrogram['leaves'][::-1]]
+   
+    # Plot 
+    fig = plt.figure(figsize=(width, length))  # Adjust overall figure size
+    gs = GridSpec(1, 4, figure=fig)
+
+    # - Dendrogram subplot
+    axes = []
+    ax_dendro = fig.add_subplot(gs[0, 0])
+    axes.append(ax_dendro)
+    sch.dendrogram(linkage, labels=data_heatmap.index, orientation='left', ax=ax_dendro)
+    ax_dendro.spines[['top', 'right', 'bottom', 'left']].set_visible(False)
+    ax_dendro.tick_params(left=False, bottom=False, right=False, top=False) 
+    ax_dendro.set_xticks([])
+
+    # Heatmap subplot
+    ax = fig.add_subplot(gs[0, 1])
+    data_heatmap = data_heatmap.reindex(cluster_order) 
+    normalized_data = data_heatmap.div(data_heatmap.max(axis=1), axis=0)
+
+    sns.heatmap(
+        normalized_data,
+        annot=data_heatmap,  
+        fmt=".0f", 
+        cmap="viridis", 
+        ax=ax,
+        cbar=None,
+        annot_kws={"size": 8}
+    )
+    # ax.set_title(batch)
+    ax.set_ylabel('')
+    ax.set_xlabel('')
+    ax.set_yticklabels([])
+    # ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
+    ax.set_xticks(np.array(range(len(normalized_data.columns)))+.5)  # Set the correct number of ticks
+    ax.set_xticklabels(normalized_data.columns, rotation=45, ha='right')  # Set the labels explicitly
+    ax.set_xlabel('Age group', loc='left')
+    ax_main=ax
+
+    # Metadata subplot (part 1) -> consistency and significance
+    meta_df = metadata.reindex(cluster_order) 
+    meta_df_1 = meta_df[[col for col in meta_df.columns if col !='TF']]
+    normalized_data = meta_df_1.div(meta_df_1.max(axis=0), axis=1)
+    ax = fig.add_subplot(gs[0, 2])
+    sns.heatmap(
+        normalized_data,
+        annot=meta_df_1,  
+        fmt=".02f", 
+        cmap=None, 
+        ax=ax,
+        cbar=None,
+        annot_kws={"size": 8}
+    )
+    ax.set_yticks([])
+    ax.set_ylabel('')
+    ax.set_xticks(np.array(range(len(normalized_data.columns)))+.5)  
+    ax.set_xticklabels(normalized_data.columns, rotation=45, ha='right')  
+    ax_meta_1 = ax
+
+    # Metadata subplot (part 2) -> TF
+    meta_df_2 = meta_df[[col for col in meta_df.columns if col =='TF']]
+    meta_df_2_show = meta_df_2.copy()
+    meta_df_2_show['TF'] = meta_df_2_show['TF'].map({1:'True', 0:''})
+
+    # meta_df_2_show = 
+    ax = fig.add_subplot(gs[0, 3])
+    from matplotlib.colors import ListedColormap
+
+    sns.heatmap(
+        meta_df_2,
+        annot = meta_df_2_show,
+        ax=ax,
+        fmt="s",
+        cmap=ListedColormap(["white", colors_blind[1]]),
+        annot_kws={"size": 8},
+        cbar=False
+    )
+    ax.set_yticks([])
+    ax.set_ylabel('')
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
+    ax_meta_2 = ax
+    
+    ax_dendro.set_position([0.01, 0.1, 0.22, 0.75])  
+    width_heatmap = 0.6
+    ax_main.set_position([0.6+cluster_offset, 0.1, width_heatmap, 0.75]) 
+    width_meta = 0.8
+    ax_meta_1.set_position([0.6+width_heatmap+.05+cluster_offset, 0.1, width_meta, 0.75])  
+    ax_meta_2.set_position([0.6+width_heatmap+width_meta+.08+cluster_offset, 0.1, 0.1, 0.75])  
+def plot_heatmap_multiple(df, title='', length=8, width=3, cluster_offset=0.1, col_batch='batch_group', ref_batch='all_batches', var_name='gene', value_name='weight'):
+
+    import scipy.cluster.hierarchy as sch
+    from matplotlib.gridspec import GridSpec
+    batch_groups = df[col_batch].unique()
+
+    # - Create a pivot table for the first batch (used for clustering)
+    assert ref_batch in df[col_batch].unique()
+    first_batch_data = df[df[col_batch] == ref_batch]
+    df_pivot = first_batch_data.pivot(index=var_name, columns='age_group', values=value_name).fillna(0)
+
+    # - Perform hierarchical clustering on the first batch data
+    linkage = sch.linkage(df_pivot, method='ward')
+    dendrogram = sch.dendrogram(linkage, no_plot=True)
+    cluster_order = [df_pivot.index[i] for i in dendrogram['leaves'][::-1]]
+
+
+    # Plot 
+    fig = plt.figure(figsize=(width * len(batch_groups) + 3, length))  # Adjust overall figure size
+    gs = GridSpec(1, len(batch_groups) + 1, figure=fig)
+
+    # - Dendrogram subplot
+    axes = []
+    ax_dendro = fig.add_subplot(gs[0, 0])
+    axes.append(ax_dendro)
+    sch.dendrogram(linkage, labels=df_pivot.index, orientation='left', ax=ax_dendro)
+    ax_dendro.spines[['top', 'right', 'bottom', 'left']].set_visible(False)
+    ax_dendro.tick_params(left=False, bottom=False, right=False, top=False) 
+    ax_dendro.set_xticks([])
+    
+
+    # Heatmap subplots
+    batch_groups =[ref_batch]+ [batch for batch in batch_groups if batch!=ref_batch]
+    for i, batch in enumerate(batch_groups):
+        ax = fig.add_subplot(gs[0, i + 1])
+        axes.append(ax)
+
+        batch_data = df[df[col_batch] == batch]
+        df_pivot = batch_data.pivot(index=var_name, columns='age_group', values=value_name).fillna(0)
+        df_pivot = df_pivot.reindex(cluster_order)  # Reorder genes based on clustering
+        
+
+        # Normalize data
+        normalized_data = df_pivot.div(df_pivot.max(axis=1), axis=0)
+
+        # Plot heatmap
+        sns.heatmap(
+            normalized_data,
+            annot=df_pivot,  
+            fmt=".0f", 
+            cmap="viridis", 
+            ax=ax,
+            cbar=None,
+            annot_kws={"size": 8}
+        )
+        ax.set_xticks(np.array(range(len(normalized_data.columns)))+.5)  # Set the correct number of ticks
+        ax.set_title(batch)
+        ax.set_ylabel('')
+        ax.set_xlabel('')
+        # if i!=0:
+        ax.set_yticklabels([])
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
+
+    axes[0].set_position([0.01, 0.1, 0.17, 0.75])  
+    axes[1].set_position([0.29+cluster_offset, 0.1, 0.17, 0.75])  
+    axes[2].set_position([0.48+cluster_offset, 0.1, 0.17, 0.75])
+    axes[3].set_position([0.67+cluster_offset, 0.1, 0.17, 0.75]) 
+    
+    axes[1].set_xlabel('Age group')
+    plt.suptitle(title, fontsize=14)
 def plot_pathway_interactions(pathway_interactions_df, ax):
     # plot
     all_pathways = pd.Index(np.unique(np.union1d(pathway_interactions_df['pathway_1'], pathway_interactions_df['pathway_2'])))
@@ -59,6 +259,126 @@ def plot_pathway_interactions(pathway_interactions_df, ax):
     ax.set_xlabel('')
     ax.set_ylabel('')
 
+def plot_joint_centrality_heatmap(df, title='', length=8, width=3, cluster_offset=0.1, ref_batch='all_batches'):
+
+    import scipy.cluster.hierarchy as sch
+    from matplotlib.gridspec import GridSpec
+    batch_groups = sorted(df['batch_group'].unique())
+
+    # - Create a pivot table for the first batch (used for clustering)
+    assert ref_batch in df['batch_group'].unique()
+    first_batch_data = df[df['batch_group'] == ref_batch]
+    df_pivot = first_batch_data.pivot(index='gene', columns='age_group', values='centrality').fillna(0)
+
+    # - Perform hierarchical clustering on the first batch data
+    linkage = sch.linkage(df_pivot, method='ward')
+    dendrogram = sch.dendrogram(linkage, no_plot=True)
+    cluster_order = [df_pivot.index[i] for i in dendrogram['leaves'][::-1]]
+
+
+    # Plot 
+    fig = plt.figure(figsize=(width * len(batch_groups) + 3, length))  # Adjust overall figure size
+    gs = GridSpec(1, len(batch_groups) + 1, figure=fig)
+
+    # - Dendrogram subplot
+    axes = []
+    ax_dendro = fig.add_subplot(gs[0, 0])
+    axes.append(ax_dendro)
+    sch.dendrogram(linkage, labels=df_pivot.index, orientation='left', ax=ax_dendro)
+    ax_dendro.spines[['top', 'right', 'bottom', 'left']].set_visible(False)
+    ax_dendro.tick_params(left=False, bottom=False, right=False, top=False) 
+    ax_dendro.set_xticks([])
+    
+
+    # Heatmap subplots
+    for i, batch in enumerate(batch_groups):
+        ax = fig.add_subplot(gs[0, i + 1])
+        axes.append(ax)
+
+        batch_data = df[df['batch_group'] == batch]
+        df_pivot = batch_data.pivot(index='gene', columns='age_group', values='centrality').fillna(0)
+        df_pivot = df_pivot.reindex(cluster_order)  # Reorder genes based on clustering
+        
+
+        # Normalize data
+        normalized_data = df_pivot.div(df_pivot.max(axis=1), axis=0)
+
+        # Plot heatmap
+        sns.heatmap(
+            normalized_data,
+            annot=df_pivot,  
+            fmt=".0f", 
+            cmap="viridis", 
+            ax=ax,
+            cbar=None,
+            annot_kws={"size": 8}
+        )
+        ax.set_title(batch)
+        ax.set_ylabel('')
+        ax.set_xlabel('')
+        # if i!=0:
+        ax.set_yticklabels([])
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
+
+    axes[0].set_position([0.01, 0.1, 0.17, 0.75])  
+    axes[1].set_position([0.29+cluster_offset, 0.1, 0.17, 0.75])  
+    axes[2].set_position([0.48+cluster_offset, 0.1, 0.17, 0.75])
+    axes[3].set_position([0.67+cluster_offset, 0.1, 0.17, 0.75]) 
+    
+    axes[1].set_xlabel('Age group')
+    plt.suptitle(title, fontsize=14)
+    # plt.tight_layout()
+    # plt.tight_layout()
+    # plt.show()
+
+def plot_joint_centrality_wrapper(centrality_df, key_value, top_n_genes, title, batch_col='batch_group', horizontal=True):
+    # - identify top genes consistent between two batches 
+    
+    top_genes = centrality_df.groupby(['age_group']).apply(lambda df: find_consistency_between_batches(df, key_value, top_n_genes, batch_col=batch_col))
+    top_genes = list(set([gene for sublist in top_genes for gene in sublist]))
+    color_palette = sns.color_palette('tab20', len(top_genes))  # 'husl' is an example; choose any palette
+    color_map = {gene:color for gene, color in zip(top_genes, color_palette)}
+
+    plot_joint_centrality(centrality_df, title=title, color_map=color_map, key_value=key_value, top_n_genes=top_n_genes, horizontal=horizontal)
+    return top_genes
+
+def plot_joint_centrality(centrality_df, color_map, title='', key_value='centrality', batch_col='batch_group', top_n_genes=10, horizontal=True):   
+    
+    def add_show_name(df):
+        df['show_name'] = 'Others'
+        genes = find_consistency_between_batches(df, key_value, top_n_genes, batch_col=batch_col)
+        mask = df['gene'].isin(genes)
+        df.loc[mask, 'show_name'] = df.loc[mask, 'gene']
+        return df
+    age_groups = centrality_df['age_group'].unique()
+    if horizontal:
+        fig, axes = plt.subplots(1, len(age_groups), figsize=(4*len(age_groups), 3.5), sharey=False, dpi=100)
+    else:
+        fig, axes = plt.subplots(len(age_groups), 1, figsize=(4, 3*len(age_groups)), sharey=False, dpi=100)
+    
+    for ii, age_group in enumerate(age_groups):
+        c_age = centrality_df.groupby('age_group').get_group((age_group))
+        # c_age = add_show_name(c_age)
+        c_age_pivot = c_age.pivot(index='gene', columns=['batch_group'], values=key_value).reset_index()
+        c_age_pivot = c_age_pivot.merge(c_age[['gene','show_name','is_tf']], on='gene', how='left').reset_index()
+        c_age_pivot = c_age_pivot.dropna(axis=0)
+        
+        ax = axes[ii]
+        sns.scatterplot(c_age_pivot, x='batch_1', y='batch_2', 
+                hue='show_name', 
+                ax=ax, palette={'Others':'grey', **color_map}, 
+                style='is_tf'
+                )
+        ax.set_title(f'Age: {age_group}')
+        ax.legend(loc=(1.05, 0), fontsize=8)
+
+        # ax.get_legend().remove()
+    if horizontal:
+        plt.suptitle(title, y=1.1)
+    else:
+        plt.suptitle(title)
+    plt.tight_layout()
+    
 
 def exp_plots(groups, cell_type=True):
         

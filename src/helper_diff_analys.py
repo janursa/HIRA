@@ -42,16 +42,18 @@ sys.path.insert(0, '../')
 from task_grn_inference.src.utils.util import basic_qc, read_gmt
 from task_grn_inference.src.process_data.perturbation.opsca.script import sum_by
 sys.path.insert(0, './')
-from src.helper import get_genesets, get_gene2pathway, efficient_melting, determine_centrality, surrogate_names, colors_blind
+from src.helper import get_genesets, get_gene2pathway, efficient_melting, determine_centrality, surrogate_names
 
 
-def find_consistency_between_batches(df, key_value='centrality', top_n_genes=10):
-    df_pivot = df.pivot(index='gene', columns=['batch_group'], values=key_value)
+def find_consistency_between_batches(df, key_value='centrality', top_n_genes=10, batch_col='batch_group'):
+    df_pivot = df.pivot(index='gene', columns=[batch_col], values=key_value).fillna(0)
+    
 
     prod_df = df_pivot.prod(axis=1).to_frame(name='prod')
     
     # print(df_pivot.merge(rank_df, left_index=True, right_index=True).sort_values('rank', ascending=False)[:top_n_genes].index.tolist())
     return df_pivot.merge(prod_df, left_index=True, right_index=True).sort_values('prod', ascending=False)[:top_n_genes].index.tolist()
+
 def filter_noisy_genes(centrality_all, threshold=1):
     """
     this is essential to interpret centrality. it remove genes that are zero centrality in both batches for either of ref or sample:
@@ -74,49 +76,6 @@ def filter_noisy_genes(centrality_all, threshold=1):
         filtered_dfs.append(filtered_df)
 
     return pd.concat(filtered_dfs, ignore_index=True)
-def determine_diff_centrality_all(centrality_df):
-    diff_centrality_all = []
-
-    batch_groups = centrality_df.batch_group.unique()
-    cell_types = centrality_df.cell_type.unique()
-    age_groups = centrality_df.age_group.unique()
-
-    for batch_group in batch_groups:
-        for cell_type in cell_types:
-            mask = (centrality_df.cell_type==cell_type)&(centrality_df.batch_group==batch_group)
-            centrality_sub = centrality_df[mask]
-            df_ref = centrality_sub[centrality_sub.age_group=='34-'][['gene','centrality']].set_index('gene')
-            for age_group in age_groups:
-                if age_group == '34-':
-                    continue
-                df_sample = centrality_sub[centrality_sub.age_group==age_group][['gene','centrality']].set_index('gene')
-                df_merged = df_sample.merge(df_ref, left_index=True, right_index=True, suffixes=['_sample','_ref'], how='outer').fillna(0)
-
-                # - main
-                pseudocount = 1e-6
-                c_ref = df_merged['centrality_ref'] + pseudocount
-                c_sample = df_merged['centrality_sample'] + pseudocount
-                df_merged['diff'] = c_sample-c_ref
-                df_merged['fold_change'] = np.where(
-                    c_sample > c_ref,
-                    c_sample / c_ref,
-                    c_ref / c_sample
-                )
-                df_merged['signed_fold_change'] = np.sign(df_merged['diff'])*df_merged['fold_change']
-                df_merged['log2_fold_change'] = np.log2(df_merged['fold_change'])
-                df_merged['signed_log2_fold_change'] = np.sign(df_merged['diff'])*df_merged['log2_fold_change']
-                
-
-                df_merged['batch_group'] = batch_group
-                df_merged['cell_type'] = cell_type
-                df_merged['age_group'] = age_group
-
-                diff_centrality_all.append(df_merged)
-
-    diff_centrality_all = pd.concat(diff_centrality_all)
-
-    
-    return diff_centrality_all
 
 def sort_based_on_consistency(df) -> list[str]:
     # Get unique batch groups
@@ -158,102 +117,6 @@ def sort_based_on_consistency(df) -> list[str]:
 
     return sorted_genes
 
-def plot_centrality_heatmap_metadata(df, metadata,length=8, width=3, cluster_offset=0.1):
-    import scipy.cluster.hierarchy as sch
-    from matplotlib.gridspec import GridSpec
-    # - main data (used for clustering)
-
-    data_heatmap = df.copy()
-    data_heatmap = data_heatmap.pivot(index='gene', columns='age_group', values='centrality').fillna(0)
-    # - Perform hierarchical clustering on the first batch data
-    linkage = sch.linkage(data_heatmap, method='ward')
-    dendrogram = sch.dendrogram(linkage, no_plot=True)
-    cluster_order = [data_heatmap.index[i] for i in dendrogram['leaves'][::-1]]
-   
-    # Plot 
-    fig = plt.figure(figsize=(width, length))  # Adjust overall figure size
-    gs = GridSpec(1, 4, figure=fig)
-
-    # - Dendrogram subplot
-    axes = []
-    ax_dendro = fig.add_subplot(gs[0, 0])
-    axes.append(ax_dendro)
-    sch.dendrogram(linkage, labels=data_heatmap.index, orientation='left', ax=ax_dendro)
-    ax_dendro.spines[['top', 'right', 'bottom', 'left']].set_visible(False)
-    ax_dendro.tick_params(left=False, bottom=False, right=False, top=False) 
-    ax_dendro.set_xticks([])
-
-    # Heatmap subplot
-    ax = fig.add_subplot(gs[0, 1])
-    data_heatmap = data_heatmap.reindex(cluster_order) 
-    normalized_data = data_heatmap.div(data_heatmap.max(axis=1), axis=0)
-
-    sns.heatmap(
-        normalized_data,
-        annot=data_heatmap,  
-        fmt=".0f", 
-        cmap="viridis", 
-        ax=ax,
-        cbar=None,
-        annot_kws={"size": 8}
-    )
-    # ax.set_title(batch)
-    ax.set_ylabel('')
-    ax.set_xlabel('')
-    ax.set_yticklabels([])
-    # ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
-    ax.set_xticks(np.array(range(len(normalized_data.columns)))+.5)  # Set the correct number of ticks
-    ax.set_xticklabels(normalized_data.columns, rotation=45, ha='right')  # Set the labels explicitly
-    ax.set_xlabel('Age group', loc='left')
-    ax_main=ax
-
-    # Metadata subplot (part 1) -> consistency and significance
-    meta_df = metadata.reindex(cluster_order) 
-    meta_df_1 = meta_df[[col for col in meta_df.columns if col !='TF']]
-    normalized_data = meta_df_1.div(meta_df_1.max(axis=0), axis=1)
-    ax = fig.add_subplot(gs[0, 2])
-    sns.heatmap(
-        normalized_data,
-        annot=meta_df_1,  
-        fmt=".02f", 
-        cmap=None, 
-        ax=ax,
-        cbar=None,
-        annot_kws={"size": 8}
-    )
-    ax.set_yticks([])
-    ax.set_ylabel('')
-    ax.set_xticks(np.array(range(len(normalized_data.columns)))+.5)  
-    ax.set_xticklabels(normalized_data.columns, rotation=45, ha='right')  
-    ax_meta_1 = ax
-
-    # Metadata subplot (part 2) -> TF
-    meta_df_2 = meta_df[[col for col in meta_df.columns if col =='TF']]
-    meta_df_2_show = meta_df_2.copy()
-    meta_df_2_show['TF'] = meta_df_2_show['TF'].map({1:'True', 0:''})
-
-    # meta_df_2_show = 
-    ax = fig.add_subplot(gs[0, 3])
-    from matplotlib.colors import ListedColormap
-
-    sns.heatmap(
-        meta_df_2,
-        annot = meta_df_2_show,
-        ax=ax,
-        fmt="s",
-        cmap=ListedColormap(["white", colors_blind[1]]),
-        annot_kws={"size": 8},
-        cbar=False
-    )
-    ax.set_yticks([])
-    ax.set_ylabel('')
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
-    ax_meta_2 = ax
-    
-    ax_dendro.set_position([0.01, 0.1, 0.22, 0.75])  
-    ax_main.set_position([0.6+cluster_offset, 0.1, 0.6, 0.75]) 
-    ax_meta_1.set_position([0.6+0.6+.05+cluster_offset, 0.1, 0.6, 0.75])  
-    ax_meta_2.set_position([0.6+0.6+0.6+.08+cluster_offset, 0.1, 0.1, 0.75])  
 
 def metrics_consistency(batch1, batch2):
     ref_age = '34-'
@@ -269,171 +132,67 @@ def metrics_consistency(batch1, batch2):
 
         from scipy.stats import spearmanr
         correlation, _ = spearmanr(norm_diff_ref, norm_diff_val)
+        # if np.isnan(correlation):
+        #     print(index, batch1)
+        #     aaa
         corr_scores.append(correlation)
         sign_score = (np.sign(norm_diff_ref)==np.sign(norm_diff_val)).sum()-1
         sign_score = sign_score/4
         sign_scores.append(sign_score)
     return corr_scores, sign_scores
-def get_metadata(df, tf_all, col_comparision='batch_group', ref_dataset='pbmc_ageing', val_dataset='data1'):
+def get_metadata(df, tf_all, ref_dataset='pbmc_ageing', val_datasets=['data1'], var_name='gene', value_name='centrality'):
     """
     
     """
     from sklearn.metrics.pairwise import cosine_similarity
+    from src.helper import surrogate_names
+
     df_ref = df[(df['dataset'] == ref_dataset)]
-    df_val = df[(df['dataset'] == val_dataset)]
     
-    df_ref_AllBatch = df_ref[df_ref['batch_group'] == 'all_batches']
-    df_ref_AllBatch_table = df_ref_AllBatch.pivot(index='gene', columns='age_group', values='centrality').fillna(0)
-    meta_data = {'gene':df_ref_AllBatch_table.index.values}
+    if 'batch_group' in df_ref.columns:
+        df_ref_AllBatch = df_ref[df_ref['batch_group'] == 'all_batches']
+    else:
+        df_ref_AllBatch = df_ref
+    df_ref_AllBatch_table = df_ref_AllBatch.pivot(index=var_name, columns='age_group', values=value_name).fillna(0)
+    meta_data = {var_name:df_ref_AllBatch_table.index.values}
     # - label tfs 
     tf_col = df_ref_AllBatch_table.index.isin(tf_all).astype(int)
     meta_data['TF'] = tf_col
     # - significane of change
     norm_std = df_ref_AllBatch_table.std(axis=1)/df_ref_AllBatch_table.mean(axis=1)
     meta_data['Significance of change'] = norm_std.values
-    # - similarity between two batches of ref dataset 
-    batch_1 = df_ref[df_ref['batch_group']=='batch_1'].pivot(index='gene', columns='age_group', values='centrality').fillna(0)
-    batch_2 = df_ref[df_ref['batch_group']=='batch_2'].pivot(index='gene', columns='age_group', values='centrality').fillna(0)
-    batch_2 = batch_2.reindex(batch_1.index).fillna(0)
-    assert len(batch_2) == len(batch_1)
-    # similarity_matrix_batches = cosine_similarity(batch_1, batch_2)
-    # similarity_matrix_batches = np.asarray([similarity_matrix_batches[idx, idx] for idx in range(batch_1.shape[0])])
-    # meta_data['Consistency (batches)'] = similarity_matrix_batches
-    corr_scores, sign_scores = metrics_consistency(batch_1, batch_2)
-    meta_data['Spearman (batches)'] = corr_scores
-    meta_data['Sign (batches)'] = sign_scores
+    if 'batch_group' in df_ref.columns:
+        # - similarity between two batches of ref dataset 
+        batch_1 = df_ref[df_ref['batch_group']=='batch_1'].pivot(index=var_name, columns='age_group', values=value_name).fillna(0)
+        batch_2 = df_ref[df_ref['batch_group']=='batch_2'].pivot(index=var_name, columns='age_group', values=value_name).fillna(0)
+        batch_2 = batch_2.reindex(batch_1.index).fillna(0)
+        assert len(batch_2) == len(batch_1)
+        # similarity_matrix_batches = cosine_similarity(batch_1, batch_2)
+        # similarity_matrix_batches = np.asarray([similarity_matrix_batches[idx, idx] for idx in range(batch_1.shape[0])])
+        # meta_data['Consistency (batches)'] = similarity_matrix_batches
+        corr_scores, sign_scores = metrics_consistency(batch_1, batch_2)
+        meta_data['Spearman (batches)'] = corr_scores
+        meta_data['Sign (batches)'] = sign_scores
 
 
     # similarity between dataset 1 and 2 
-    df_val_AllBatch_table = df_val[df_val['batch_group']=='all_batches'].pivot(index='gene', columns='age_group', values='centrality').fillna(0)
-    df_val_AllBatch_table = df_val_AllBatch_table.reindex(df_ref_AllBatch_table.index).fillna(0)
-    assert len(df_val_AllBatch_table) == len(df_ref_AllBatch_table)
-    corr_scores, sign_scores = metrics_consistency(df_val_AllBatch_table, df_ref_AllBatch_table)
-    meta_data['Spearman (datasets)'] = corr_scores
-    meta_data['Sign (datasets)'] = sign_scores
+    for val_dataset in val_datasets:
+        df_val = df[(df['dataset'] == val_dataset)]
+        if 'batch_group' in df_ref.columns:
+            df_val_AllBatch_table = df_val[df_val['batch_group']=='all_batches'].pivot(index=var_name, columns='age_group', values=value_name).fillna(0)
+        else:
+            df_val_AllBatch_table = df_val.pivot(index=var_name, columns='age_group', values=value_name).fillna(0)
+        df_val_AllBatch_table = df_val_AllBatch_table.reindex(df_ref_AllBatch_table.index).fillna(0)
+        assert len(df_val_AllBatch_table) == len(df_ref_AllBatch_table)
+        corr_scores, sign_scores = metrics_consistency(df_ref_AllBatch_table, df_val_AllBatch_table)
+        meta_data[f'Spearman ({surrogate_names.get(val_dataset, val_dataset)})'] = corr_scores
+        meta_data[f'Sign ({surrogate_names.get(val_dataset, val_dataset)})'] = sign_scores
 
     
     # combine metadata
-    meta_df = pd.DataFrame(meta_data).set_index('gene')      
+    meta_df = pd.DataFrame(meta_data).set_index(var_name)      
     return meta_df
 
-def plot_joint_centrality_heatmap(df, title='', length=8, width=3, cluster_offset=0.1, ref_batch='all_batches'):
-
-    import scipy.cluster.hierarchy as sch
-    from matplotlib.gridspec import GridSpec
-    batch_groups = sorted(df['batch_group'].unique())
-
-    # - Create a pivot table for the first batch (used for clustering)
-    assert ref_batch in df['batch_group'].unique()
-    first_batch_data = df[df['batch_group'] == ref_batch]
-    df_pivot = first_batch_data.pivot(index='gene', columns='age_group', values='centrality').fillna(0)
-
-    # - Perform hierarchical clustering on the first batch data
-    linkage = sch.linkage(df_pivot, method='ward')
-    dendrogram = sch.dendrogram(linkage, no_plot=True)
-    cluster_order = [df_pivot.index[i] for i in dendrogram['leaves'][::-1]]
-
-
-    # Plot 
-    fig = plt.figure(figsize=(width * len(batch_groups) + 3, length))  # Adjust overall figure size
-    gs = GridSpec(1, len(batch_groups) + 1, figure=fig)
-
-    # - Dendrogram subplot
-    axes = []
-    ax_dendro = fig.add_subplot(gs[0, 0])
-    axes.append(ax_dendro)
-    sch.dendrogram(linkage, labels=df_pivot.index, orientation='left', ax=ax_dendro)
-    ax_dendro.spines[['top', 'right', 'bottom', 'left']].set_visible(False)
-    ax_dendro.tick_params(left=False, bottom=False, right=False, top=False) 
-    ax_dendro.set_xticks([])
-    
-
-    # Heatmap subplots
-    for i, batch in enumerate(batch_groups):
-        ax = fig.add_subplot(gs[0, i + 1])
-        axes.append(ax)
-
-        batch_data = df[df['batch_group'] == batch]
-        df_pivot = batch_data.pivot(index='gene', columns='age_group', values='centrality').fillna(0)
-        df_pivot = df_pivot.reindex(cluster_order)  # Reorder genes based on clustering
-        
-
-        # Normalize data
-        normalized_data = df_pivot.div(df_pivot.max(axis=1), axis=0)
-
-        # Plot heatmap
-        sns.heatmap(
-            normalized_data,
-            annot=df_pivot,  
-            fmt=".0f", 
-            cmap="viridis", 
-            ax=ax,
-            cbar=None,
-            annot_kws={"size": 8}
-        )
-        ax.set_title(batch)
-        ax.set_ylabel('')
-        ax.set_xlabel('')
-        # if i!=0:
-        ax.set_yticklabels([])
-        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
-
-    axes[0].set_position([0.01, 0.1, 0.17, 0.75])  
-    axes[1].set_position([0.29+cluster_offset, 0.1, 0.17, 0.75])  
-    axes[2].set_position([0.48+cluster_offset, 0.1, 0.17, 0.75])
-    axes[3].set_position([0.67+cluster_offset, 0.1, 0.17, 0.75]) 
-    
-    axes[1].set_xlabel('Age group')
-    plt.suptitle(title, fontsize=14)
-    # plt.tight_layout()
-    # plt.tight_layout()
-    # plt.show()
-    
-def plot_joint_centrality_wrapper(centrality_df, key_value, top_n_genes, title, horizontal=True):
-    # - identify top genes consistent between two batches 
-    top_genes = centrality_df.groupby(['age_group']).apply(lambda df: find_consistency_between_batches(df, key_value, top_n_genes))
-    top_genes = list(set([gene for sublist in top_genes for gene in sublist]))
-    color_palette = sns.color_palette('tab20', len(top_genes))  # 'husl' is an example; choose any palette
-    color_map = {gene:color for gene, color in zip(top_genes, color_palette)}
-
-    plot_joint_centrality(centrality_df, title=title, color_map=color_map, key_value=key_value, top_n_genes=top_n_genes, horizontal=horizontal)
-    return top_genes
-def plot_joint_centrality(centrality_df, color_map, title='', key_value='centrality', top_n_genes=10, horizontal=True):   
-    
-    def add_show_name(df):
-        df['show_name'] = 'Others'
-        genes = find_consistency_between_batches(df, key_value, top_n_genes)
-        mask = df['gene'].isin(genes)
-        df.loc[mask, 'show_name'] = df.loc[mask, 'gene']
-        return df
-    age_groups = centrality_df['age_group'].unique()
-    if horizontal:
-        fig, axes = plt.subplots(1, len(age_groups), figsize=(4*len(age_groups), 3.5), sharey=False, dpi=100)
-    else:
-        fig, axes = plt.subplots(len(age_groups), 1, figsize=(4, 3*len(age_groups)), sharey=False, dpi=100)
-    
-    for ii, age_group in enumerate(age_groups):
-        c_age = centrality_df.groupby('age_group').get_group((age_group))
-        c_age = add_show_name(c_age)
-        c_age_pivot = c_age.pivot(index='gene', columns=['batch_group'], values=key_value).reset_index()
-        c_age_pivot = c_age_pivot.merge(c_age[['gene','show_name','is_tf']], on='gene', how='left').reset_index()
-        c_age_pivot = c_age_pivot.dropna(axis=0)
-        
-        ax = axes[ii]
-        sns.scatterplot(c_age_pivot, x='batch_1', y='batch_2', 
-                hue='show_name', 
-                ax=ax, palette={'Others':'grey', **color_map}, 
-                style='is_tf'
-                )
-        ax.set_title(f'Age: {age_group}')
-        ax.legend(loc=(1.05, 0), fontsize=8)
-        # ax.get_legend().remove()
-    if horizontal:
-        plt.suptitle(title, y=1.1)
-    else:
-        plt.suptitle(title)
-    plt.tight_layout()
-    
 def determine_centrality_all(net_all, use_weight=False):
     ii = 0
     for (cell_type, batch_group, age_group, dataset), group_df in net_all.groupby(['cell_type', 'batch_group', 'age_group', 'dataset']):
@@ -613,245 +372,6 @@ def enrich_pathway_interaction(df_subset, df_all, pathway_df):
     merged_counts['-log10_pvalue'] = -np.log10(merged_counts['p_adj'])
 
     return merged_counts
-def sparse_corrcoef(A, B=None):
-
-    if B is not None:
-        A = sparse.vstack((A, B), format='csr')
-
-    A = A.astype(np.float64)
-    n = A.shape[1]
-
-    # Compute the covariance matrix
-    rowsum = A.sum(1)
-    centering = rowsum.dot(rowsum.T.conjugate()) / n
-    C = (A.dot(A.T.conjugate()) - centering) / (n - 1)
-
-    # The correlation coefficients are given by
-    # C_{i,j} / sqrt(C_{i} * C_{j})
-    d = np.diag(C)
-    coeffs = C / np.sqrt(np.outer(d, d))
-
-    return coeffs
-def infer_grn(X, gene_names):
-    from scipy.stats import spearmanr
-    std_devs = sparse_std(X)
-    mask_zero_std = std_devs == 0
-    gene_names = gene_names[~mask_zero_std]
-    X_filtered = X[:, ~mask_zero_std]
-    if False:
-        corr, _ = spearmanr(X_filtered, nan_policy='raise')
-    else:
-        print('start corr calculation')
-        corr = sparse_corrcoef(X_filtered.T)
-        print(corr.shape)
-    try:
-        net = efficient_melting(corr.A, gene_names)
-    except:
-        net = efficient_melting(corr, gene_names)
-    return net 
-
-def plot_gene_centrality_vs_expression(df_merged):
-    hub_genes = df_merged[df_merged['is_hub_gene']]['gene'].unique()
-
-    # - Generate a color palette
-    color_palette = sns.color_palette('tab20', len(hub_genes))  # 'husl' is an example; choose any palette
-    color_map = {gene:color for gene, color in zip(hub_genes, color_palette)}
-
-    # - actual plot
-    fig, axes = plt.subplots(1,2, figsize=(8,3.5), sharey=True, dpi=100)
-    df_merged['show_name'] = 'Others'
-    df_merged.loc[df_merged['is_hub_gene'], 'show_name'] = df_merged.loc[df_merged['is_hub_gene'], 'gene']
-    hue_order = df_merged['show_name'].unique()
-
-    for i, batch in enumerate(df_merged['batch_group'].unique()):
-        ax = axes[i]
-        df_merged_b = df_merged[df_merged['batch_group'].eq(batch)]
-
-        sns.scatterplot(df_merged_b, x='-fc_log10_pvalue', y='diff', hue='show_name', hue_order=hue_order,ax=ax, palette={'Others':'grey', **color_map}, style='is_tf')
-        if i == 0:
-            ax.get_legend().remove()
-        else:  
-            ax.legend(loc=(1.05, 0))
-        ax.set_title(batch)
-        # ax.set_xscale('log')
-    plt.tight_layout()
-
-def infer_grns_all(input_file,folder_tag='grn'):
-    
-    par = {
-            'dataset_file':input_file,
-            'save_dir': f'output/{folder_tag}/',
-            'min_cells_per_gene': 500,
-            'weight_t': .05,
-            # 'tf_all': f'../task_grn_inference/resources/prior/tf_all.csv'
-        }
-    par['net_all'] = f"{par['save_dir']}/net_all.csv"
-    os.makedirs(par['save_dir'], exist_ok=True)
-    # - dependencies
-    adata = ad.read_h5ad(par['dataset_file'])
-
-    batches = ['batch_1', 'batch_2', 'all_batches']
-    cell_types = list(adata.obs['cell_type'].unique())
-    # batches = ['all_batches']
-    # cell_types = ['all_celltypes']
-
-    # - infer grns 
-    i_exp = 0
-    grns_store = []
-    for i_cell_type, cell_type in enumerate(cell_types):
-        if cell_type == 'all_celltypes':
-            cell_type_mask = np.asarray([True for i in range(adata.shape[0])])
-        else:
-            cell_type_mask = (adata.obs['cell_type'] == cell_type)   
-        
-        for age_group in list(adata.obs['age_group'].unique()): # only age groups for -1 cell type
-            age_group_mask = (adata.obs['age_group'] == age_group)
-            for batch_group in batches:
-                if batch_group == 'all_batches':
-                    batch_group_mask = np.asarray([True for i in range(adata.shape[0])])
-                else:
-                    batch_group_mask = (adata.obs['batch_group'] == batch_group)
-                save_file_name = os.path.abspath(f"{par['save_dir']}/net_{cell_type}_{age_group}_{batch_group}.csv")
-
-                print(save_file_name)
-                if os.path.exists(save_file_name):
-                    print(f"File already exists. Skipping: {save_file_name}")
-                    continue
-                print(cell_type, age_group, batch_group)
-                mask_sample = batch_group_mask & age_group_mask & cell_type_mask
-                print(cell_type, age_group, batch_group)
-
-                adata_sample = basic_qc(adata[mask_sample, :], min_cells_per_gene=par['min_cells_per_gene'], min_genes_per_cell=10)
-
-                if (adata_sample.shape[0]==0):
-                    continue
-                    
-                if adata_sample.shape[1]==0:
-                    continue
-
-                # - normalize 
-                X_norm = sc.pp.normalize_total(adata_sample, inplace=False)['X']
-                adata_sample.layers['X_norm'] = sc.pp.log1p(X_norm, copy=True)
-
-                # - actual subset 
-                expression_sample = adata_sample.layers['X_norm']
-                gene_names = adata_sample.var_names
-
-                # - infer grn
-                net = infer_grn(expression_sample, gene_names)
-
-                # net = net[net['source'].isin(tf_all)]
-
-                net['weight'] = pd.to_numeric(net['weight'], errors='coerce')
-
-                # net_short = net.loc[net['weight'].abs().nlargest(par['n_max_links']).index]
-                net = net[net['weight'].abs()>par['weight_t']]
-
-                # - save 
-                net.to_csv(save_file_name)
-                net['batch_group'] = batch_group
-                net['cell_type'] = cell_type
-                net['age_group'] = age_group
-
-                grns_store.append(net)
-                i_exp+=1
-    grns = pd.concat(grns_store)
-    grns.to_csv(par['net_all'])
-def infer_grns_selected():
-    map_cell_type_genernib = {
-        'CD4+ T cells': 'T cells',
-        'TRAV1-2- CD8+ T cells': 'T cells',
-        'gd T cells': 'T cells',
-        'DN T cells': 'T cells',
-        'MAIT cells': 'T cells',
-        'Progenitor cells': 'Myeloid cells',
-        'B cells': 'B cells',
-        'NK cells': 'NK cells',
-        'Myeloid cells': 'Myeloid cells'
-    }
-
-    par = {
-            'dataset_file': 'input/dataset_1_2.h5ad',
-            'save_dir': f'output/grns',
-            'min_cells_per_gene': 500,
-            'n_max_links': 200_000,
-            'tf_all': f'../task_grn_inference/resources/prior/tf_all.csv'
-        }
-    os.makedirs(par['save_dir'], exist_ok=True)
-    # - dependencies
-    adata = ad.read_h5ad(par['dataset_file'])
-    tf_all = np.loadtxt(par['tf_all'], dtype=str)
-    # - fix the granualariy of the cell typs based on geneRNIB
-    adata.obs['cell_type_major'] = adata.obs['cell_type'].map(map_cell_type_genernib)
-    adata.obs['cell_type_major'].unique()
-
-    # Map 'age' to 'age_group_major' based on the threshold of 50
-    adata.obs['age_group_major'] = adata.obs['age'].apply(lambda x: 'young' if x < 50 else 'old')
-    adata.obs['age_group_major'].unique()
-
-    # - infer grns for 10 conditions
-    i_exp = 0
-    # for i_cell_type, cell_type in enumerate(list(adata.obs['cell_type_major'].unique())+['all_celltypes']):
-    for i_cell_type, cell_type in enumerate(['all_celltypes']):
-        if cell_type == 'all_celltypes':
-            cell_type_mask = np.asarray([True for i in range(adata.shape[0])])
-        else:
-            cell_type_mask = (adata.obs['cell_type_major'] == cell_type)   
-        
-        for age_group in list(adata.obs['age_group_major'].unique())+['all_ages']: # only age groups for -1 cell type
-            if age_group == 'all_ages':
-                age_group_mask = np.asarray([True for i in range(adata.shape[0])])
-            else:
-                if cell_type != 'all_celltypes': # only for all cell types
-                    continue 
-                age_group_mask = (adata.obs['age_group_major'] == age_group)
-            for batch_group in ['all_batches', 'batch_1']:
-                
-                if batch_group == 'all_batches':
-                    batch_group_mask = np.asarray([True for i in range(adata.shape[0])])
-                else:
-                    if cell_type != 'all_celltypes': # only for all cell types
-                        continue 
-                    batch_group_mask = (adata.obs['batch_group'] == batch_group)
-
-                mask_sample = batch_group_mask & age_group_mask & cell_type_mask
-                print(cell_type, age_group, batch_group)
-
-                adata_sample = basic_qc(adata[mask_sample, :], min_cells_per_gene=par['min_cells_per_gene'], min_genes_per_cell=10)
-
-                if (adata_sample.shape[0]==0):
-                    continue
-                    
-                if adata_sample.shape[1]==0:
-                    continue
-
-                # - normalize 
-                X_norm = sc.pp.normalize_total(adata_sample, inplace=False)['X']
-                adata_sample.layers['X_norm'] = sc.pp.log1p(X_norm, copy=True)
-
-                # - actual subset 
-                # expression_sample = adata_sample.layers['X_norm'].todense().A
-                expression_sample = adata_sample.layers['X_norm']
-                gene_names = adata_sample.var_names
-
-                # - infer grn
-                net = infer_grn(expression_sample, gene_names)
-
-                net = net[net['source'].isin(tf_all)]
-
-                net['weight'] = pd.to_numeric(net['weight'], errors='coerce')
-
-                net_short = net.loc[net['weight'].abs().nlargest(par['n_max_links']).index]
-
-                # - save 
-                net_short.to_csv(f"{par['save_dir']}/net_{cell_type}_{age_group}_{batch_group}.csv")
-                i_exp+=1
-def sparse_std(X):
-    from sklearn.preprocessing import StandardScaler
-    scalar = StandardScaler(with_mean=False)
-    scalar.fit(X)
-    X_var = scalar.var_
-    return X_var
 
 def consistency_metrics(net_all_file):
     import networkx as nx
@@ -1045,26 +565,3 @@ def run_DEA():
     final_results = pd.concat(results, ignore_index=True)
     final_results.to_csv(par['save_file'], index=False)
 
-
-if __name__ == '__main__': 
-    if True: #- GRN inference
-        parser = argparse.ArgumentParser()
-        parser.add_argument(
-            '--data_file',
-            type=str,
-            required=True,
-            help="Path to save the dataset file (e.g., 'input/dataset_1.h5ad')."
-        )
-        
-        args = parser.parse_args()
-        data_file=args.data_file
-
-        file_name = data_file.split('/')[-1].split('.')[0]
-        folder_tag = f'grns/{file_name}'
-        print(folder_tag, data_file)
-        
-
-        infer_grns_all(input_file=data_file, folder_tag=folder_tag)
-
-
-    # run_DEA()
