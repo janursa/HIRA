@@ -24,7 +24,7 @@ from tqdm import tqdm
 from scipy.sparse import csr_matrix
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from lightgbm import LGBMRegressor
+# from lightgbm import LGBMRegressor
 from sklearn.model_selection import KFold
 from sklearn.metrics import r2_score
 from sklearn.linear_model import Ridge

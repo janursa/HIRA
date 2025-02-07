@@ -40,7 +40,7 @@ from statsmodels.stats.multitest import multipletests
 
 sys.path.insert(0, '../')
 from task_grn_inference.src.utils.util import basic_qc, read_gmt
-from task_grn_inference.src.process_data.perturbation.opsca.script import sum_by
+# from task_grn_inference.src.process_data.perturbation.opsca.script import sum_by
 sys.path.insert(0, './')
 from src.helper import get_genesets, get_gene2pathway, efficient_melting, determine_centrality, surrogate_names
 
@@ -137,7 +137,7 @@ def metrics_consistency(batch1, batch2):
         #     aaa
         corr_scores.append(correlation)
         sign_score = (np.sign(norm_diff_ref)==np.sign(norm_diff_val)).sum()-1
-        sign_score = sign_score/4
+        sign_score = sign_score/(row_ref.shape[0]-1)
         sign_scores.append(sign_score)
     return corr_scores, sign_scores
 def get_metadata(df, tf_all, ref_dataset='pbmc_ageing', val_datasets=['data1'], var_name='gene', value_name='centrality'):
@@ -161,23 +161,26 @@ def get_metadata(df, tf_all, ref_dataset='pbmc_ageing', val_datasets=['data1'], 
     # - significane of change
     norm_std = df_ref_AllBatch_table.std(axis=1)/df_ref_AllBatch_table.mean(axis=1)
     meta_data['Significance of change'] = norm_std.values
-    if 'batch_group' in df_ref.columns:
-        # - similarity between two batches of ref dataset 
-        batch_1 = df_ref[df_ref['batch_group']=='batch_1'].pivot(index=var_name, columns='age_group', values=value_name).fillna(0)
-        batch_2 = df_ref[df_ref['batch_group']=='batch_2'].pivot(index=var_name, columns='age_group', values=value_name).fillna(0)
-        batch_2 = batch_2.reindex(batch_1.index).fillna(0)
-        assert len(batch_2) == len(batch_1)
-        # similarity_matrix_batches = cosine_similarity(batch_1, batch_2)
-        # similarity_matrix_batches = np.asarray([similarity_matrix_batches[idx, idx] for idx in range(batch_1.shape[0])])
-        # meta_data['Consistency (batches)'] = similarity_matrix_batches
-        corr_scores, sign_scores = metrics_consistency(batch_1, batch_2)
-        meta_data['Spearman (batches)'] = corr_scores
-        meta_data['Sign (batches)'] = sign_scores
+    if ('batch_group' in df_ref.columns):
+        if df_ref['batch_group'].nunique()>1:
+            # - similarity between two batches of ref dataset 
+            batch_1 = df_ref[df_ref['batch_group']=='batch_1'].pivot(index=var_name, columns='age_group', values=value_name).fillna(0)
+            batch_2 = df_ref[df_ref['batch_group']=='batch_2'].pivot(index=var_name, columns='age_group', values=value_name).fillna(0)
+            batch_2 = batch_2.reindex(batch_1.index).fillna(0)
+            assert len(batch_2) == len(batch_1)
+            # similarity_matrix_batches = cosine_similarity(batch_1, batch_2)
+            # similarity_matrix_batches = np.asarray([similarity_matrix_batches[idx, idx] for idx in range(batch_1.shape[0])])
+            # meta_data['Consistency (batches)'] = similarity_matrix_batches
+            corr_scores, sign_scores = metrics_consistency(batch_1, batch_2)
+            meta_data['Spearman (batches)'] = corr_scores
+            meta_data['Sign (batches)'] = sign_scores
 
 
     # similarity between dataset 1 and 2 
+    print('Similarity between datasets')
     for val_dataset in val_datasets:
         df_val = df[(df['dataset'] == val_dataset)]
+        assert df_val.shape[0]!=0, f'{val_dataset} not found in the data'
         if 'batch_group' in df_ref.columns:
             df_val_AllBatch_table = df_val[df_val['batch_group']=='all_batches'].pivot(index=var_name, columns='age_group', values=value_name).fillna(0)
         else:
@@ -230,66 +233,7 @@ def determine_centrality_consistency(net_all):
     centrality_consistency_scores = pd.concat([centrality_scores_age_group, centrality_scores_celltypes])
 
     return centrality_consistency_scores
-def evaluate_batch_effect_on_hub_genes():
-    adata = ad.read_h5ad('input/dataset_1_2.h5ad')
-    # - subset to only one age group
-    adata = adata[adata.obs['age_group']=='34-']
-    # - subset to only one cell type
-    adata.obs['cell_type_major'] = adata.obs['cell_type'].map(map_cell_type_genernib)
-    adata = adata[adata.obs['cell_type_major'] =='T cells']
-    # - determine the net for top 5 batches
-    top_batches = adata.obs.groupby('donor_id').size().sort_values()[::-1][:5].index
-    for ii, batch in enumerate(top_batches):
-        print(batch)
-        adata_sample = adata[adata.obs['donor_id'] == batch]
 
-        adata_sample = basic_qc(adata_sample, min_cells_per_gene=500, min_genes_per_cell=10)
-
-        if (adata_sample.shape[0]==0):
-            continue
-            
-        if adata_sample.shape[1]==0:
-            continue
-
-        # - normalize 
-        X_norm = sc.pp.normalize_total(adata_sample, inplace=False)['X']
-        adata_sample.layers['X_norm'] = sc.pp.log1p(X_norm, copy=True)
-
-        # - actual subset 
-        expression_sample = adata_sample.layers['X_norm']
-        gene_names = adata_sample.var_names
-
-        # - infer grn
-        net = infer_grn(expression_sample, gene_names)
-
-        # net = net[net['source'].isin(tf_all)]
-
-        net['weight'] = pd.to_numeric(net['weight'], errors='coerce')
-
-        # net_short = net.loc[net['weight'].abs().nlargest(par['n_max_links']).index]
-        net = net[net['weight'].abs()>.05]
-
-        net['batch'] = batch
-
-        if ii == 0:
-            net_all = net 
-        else:
-            net_all = pd.concat([net_all, net])
-
-    # - for the reference net, determine the hub genes
-    net_ref = pd.read_csv(os.path.abspath(f"{par['read_dir']}/net_T cells_34-_all_batches.csv"), index_col=0)
-    centrality_ref = determine_centrality_weight(net_ref)
-    hub_genes_ref = centrality_ref.sort_values('centrality', ascending=False)[:100].index
-
-    # - for each batch, calculate the recall of the hub genes
-    recall_list = []
-    for batch in net_all['batch'].unique():
-        net = net_all[net_all['batch'] == batch]
-        centrality_ref = determine_centrality_weight(net)
-        hub_genes = centrality_ref.sort_values('centrality', ascending=False)[:100].index
-        recall_list.append(np.intersect1d(hub_genes, hub_genes_ref).shape)
-        print(recall_list)
-    return recall_list
 def enrich_pathway_interaction(df_subset, df_all, pathway_df):
     '''Calculates enriched pathway interacttions between df_subset and df_all. Both these dfs should have two columns of g1 and g2. All genes given should be present in pathway_df, which has gene as index and corrosponding pathway'''
     # Map genes to their pathways as sets for efficient lookup

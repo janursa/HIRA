@@ -67,7 +67,7 @@ def plot_gene_centrality_vs_expression(df_merged):
         # ax.set_xscale('log')
     plt.tight_layout()
 
-def plot_centrality_heatmap_metadata(df, metadata,  length=8, width=3, cluster_offset=0.1, var_name='gene', value_name='centrality'):
+def plot_centrality_heatmap_metadata(df, metadata,  length=8, width=3, cluster_offset=0.1, var_name='gene', value_name='centrality', fmt=".0f"):
     import scipy.cluster.hierarchy as sch
     from matplotlib.gridspec import GridSpec
     from src.helper import surrogate_names
@@ -101,7 +101,7 @@ def plot_centrality_heatmap_metadata(df, metadata,  length=8, width=3, cluster_o
     sns.heatmap(
         normalized_data,
         annot=data_heatmap,  
-        fmt=".0f", 
+        fmt=fmt, 
         cmap="viridis", 
         ax=ax,
         cbar=None,
@@ -163,14 +163,18 @@ def plot_centrality_heatmap_metadata(df, metadata,  length=8, width=3, cluster_o
     ax_dendro.set_position([0.01, 0.1, 0.22, 0.75])  
     width_heatmap = 0.6
     ax_main.set_position([0.6+cluster_offset, 0.1, width_heatmap, 0.75]) 
-    width_meta = 0.8
+
+    width_meta = 0.1*meta_df.shape[1]
     ax_meta_1.set_position([0.6+width_heatmap+.05+cluster_offset, 0.1, width_meta, 0.75])  
     ax_meta_2.set_position([0.6+width_heatmap+width_meta+.08+cluster_offset, 0.1, 0.1, 0.75])  
+
+
 def plot_heatmap_multiple(df, title='', length=8, width=3, cluster_offset=0.1, col_batch='batch_group', ref_batch='all_batches', var_name='gene', value_name='weight'):
 
     import scipy.cluster.hierarchy as sch
     from matplotlib.gridspec import GridSpec
     batch_groups = df[col_batch].unique()
+    print(batch_groups)
 
     # - Create a pivot table for the first batch (used for clustering)
     assert ref_batch in df[col_batch].unique()
