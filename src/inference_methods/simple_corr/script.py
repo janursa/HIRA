@@ -19,7 +19,7 @@ args = parser.parse_args()
 par = vars(args)
 
 meta = {
-    'resources_dir' : 'utils/'
+    'resources_dir' : 'src/utils/'
 }
 sys.path.append(meta['resources_dir'])
 from util import efficient_melting, basic_qc
@@ -67,6 +67,7 @@ def sparse_corrcoef(A, B=None):
 
 
 def main(par):
+    print(par['rna'])
     adata = ad.read_h5ad(par['rna'])
     # Subset and QC
     adata = basic_qc(adata, min_cells_per_gene=par['min_cells_per_gene'], min_genes_per_cell=par['min_genes_per_cell'])

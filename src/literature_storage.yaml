@@ -1,0 +1,48 @@
+
+study:
+  - title: "Impact of Ageing on Myeloid Cell Populations"
+    year: 2023
+    doi: "10.1234/example" # optional
+    source: "Nature Aging" # optional
+
+    methods:
+      evaluation_target:
+        organism: "Human"
+        tissue: "Blood"
+        cell_types:
+          - "Monocytes"
+          - "Macrophages"
+      data:
+        datasets:
+          - name: "Public Dataset XYZ" # if not a known cohort, name or describe it
+            sample_size: 500
+            time_points: [30, 50, 70] 
+            sequencing_tech: "scRNA-seq"
+          - name: "In-house study"
+            sample_size: 200
+            time_points: [40, 60, 80]
+            sequencing_tech: "ATAC-seq"
+      analysis:
+        - type: "Differential Expression Analysis"
+          method: "DESeq2" # optional
+          description: "Differential expression of genes between age groups"
+        - type: "Cell Type Proportion Analysis"
+          description: "Changes in cell type proportions with age"
+        - type: "Gene Regulatory Network Inference"
+          method: "SCENIC"
+          description: "Transcription factor activity associated with ageing"
+
+    findings:
+      - category: "Differentially Expressed Genes"
+        details:
+          - case: "GATA2"
+            pattern: "upregulated"
+          - case: "RUNX1"
+            pattern: "downregulated"
+
+      - category: "Pathway Changes"
+        details:
+          - case: "Oxidative Stress"
+            pattern: "upregulated"
+          - case: "DNA Repair"
+            pattern: "downregulated"

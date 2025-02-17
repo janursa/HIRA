@@ -1,0 +1,40 @@
+
+study:
+  - title: "out aging work on pbmcs"
+    year: 2025
+
+
+    methods:
+      evaluation_target:
+        organism: "Human"
+        tissue: "Blood"
+        cell_types:
+          - "Monocytes"
+          - "B cells"
+          - "T CD4+ cells"
+          - "T CD8+ cells"
+          - "NK cells"
+      data: #TODO: fix this 
+        datasets:
+          - name: "Public Dataset XYZ" # if not a known cohort, name or describe it
+            description: "Public dataset of ageing in human PBMCs"
+            sample_size: 500
+            time_points: [30, 50, 70] 
+            sequencing_tech: "scRNA-seq"
+          - name: "In-house study"
+            description: "Public dataset of ageing in human PBMCs"
+            sample_size: 200
+            time_points: [40, 60, 80]
+            sequencing_tech: "ATAC-seq"
+      analysis:
+        - type: "TF activity trajectory analysis"
+          description: "Inferring GRNs per age group, and using it to calculate TF activities based on the expression data of target genes;
+                        We calculate the activity trajector in the coarse of age per dataset and find consistent ones." 
+
+
+    findings:
+      - category: "MONO: TF activity with age"
+        description: ""
+        details:
+          - case: ""
+            pattern: ""

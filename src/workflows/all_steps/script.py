@@ -49,6 +49,13 @@ parser.add_argument('--bulk_dataset_file',
     required=True,
     help="Processed dataset file after filtering, bulked"
     )
+
+parser.add_argument('--max_workers', 
+    type=int,
+    required=False,
+    default=10,
+    help="Processed dataset file after filtering, bulked"
+    )
  
 parser.add_argument(
     '--downsample',
@@ -73,6 +80,7 @@ parser.add_argument(
     action='store_true',
     help="Force to rewrite existing files (only grns)."
 )
+
 parser.add_argument('--datasets', nargs='+', help='List of datasets to include', required=True)
 
 args = parser.parse_args()
@@ -97,12 +105,12 @@ par = {
     # - grn inference parameters
         'weight_t': 0.05,
         'batches': ['all_batches'],
-        'cell_types': ['MONO'],
-        'age_groups': ['all_agegroups'], # ['all_agegroups']
+        'cell_types': ['B', 'CD4T', 'CD8T', 'MONO', 'NK'],
+        'age_groups': ['all_agegroups', '65_75', '55_64', '75+', '34-', '35_44', '45_54'], # ['all_agegroups']
         'min_genes_per_cell': 10, 
         'max_genes_per_cell': 5000, 
         'min_cells_per_gene': 2500,
-        'max_workers': 10,
+        'max_workers': args.max_workers,
         'force': args.force,
         'save_grns_dir': args.save_grns_dir,
         'temp_dir': 'output/grns/temp/'
@@ -124,14 +132,31 @@ def wrapper_grn(task, par):
     '''
         Take the task and run the GRN inference, save the results to the file. 
     '''
-    (obs, save_file_name) = task
-    batch_group = obs['batch_group'].unique()[0]
-    cell_type = obs['cell_type'].unique()[0]
-    age_group = obs['age_group'].unique()[0]
+    (batch_group, cell_type, age_group, save_file_name) = task
+
 
     # Read dataset
     adata = ad.read_h5ad(par['processed_dataset_file'], backed='r')
-    mask_sample = adata.obs.index.isin(obs.index)
+    obs = adata.obs.copy()
+
+    # Filter for the specific cell type, age group and batch group
+    # Determine masks
+    if cell_type == 'all_celltypes':
+        cell_type_mask = np.full(obs.shape[0], True, dtype=bool)
+    else:
+        cell_type_mask = (obs['cell_type'] == cell_type)
+    if batch_group == 'all_batches':
+        batch_group_mask = np.full(obs.shape[0], True, dtype=bool)
+    else:
+        batch_group_mask = (obs['batch_group'] == batch_group)
+    if age_group == 'all_agegroups':
+        age_group_mask = np.full(obs.shape[0], True, dtype=bool)
+    else:
+        age_group_mask = (obs['age_group'] == age_group)
+    mask_sample = cell_type_mask & batch_group_mask & age_group_mask
+    if mask_sample.sum() == 0:
+        print(f"Error: No cells left after filtering for {cell_type}_{age_group}_{batch_group}")
+        return  
     adata_sample = adata[mask_sample, :].to_memory()
     
     # Infer GRN
@@ -182,30 +207,13 @@ def infer_grns_all(par):
     for cell_type in cell_types:
         for age_group in age_groups:
             for batch_group in batches:
-                # Determine masks
-                if cell_type == 'all_celltypes':
-                    cell_type_mask = np.full(obs.shape[0], True, dtype=bool)
-                else:
-                    cell_type_mask = (obs['cell_type'] == cell_type)
-                if batch_group == 'all_batches':
-                    batch_group_mask = np.full(obs.shape[0], True, dtype=bool)
-                else:
-                    batch_group_mask = (obs['batch_group'] == batch_group)
-                if age_group == 'all_agegroups':
-                    age_group_mask = np.full(obs.shape[0], True, dtype=bool)
-                else:
-                    age_group_mask = (obs['age_group'] == age_group)
-                # Combine masks
-                mask_sample = batch_group_mask & age_group_mask & cell_type_mask
-                obs_sample = obs[mask_sample].copy()
-      
                 save_file_name = os.path.abspath(f"{par['save_grns_dir']}/net_{cell_type}_{age_group}_{batch_group}.csv")
                 if par['force']:
-                    tasks.append((obs_sample, save_file_name))
+                    tasks.append((batch_group, cell_type, age_group, save_file_name))
                 else:
                     if not os.path.exists(save_file_name):  
-                        tasks.append((obs_sample, save_file_name))
-    
+                        tasks.append((batch_group, cell_type, age_group, save_file_name))
+
     print('number of tasks: ', len(tasks))
     # - run tasks 
     with ProcessPoolExecutor(max_workers=par['max_workers']) as executor:

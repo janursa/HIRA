@@ -6,12 +6,33 @@ from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
 import scipy.sparse as sp
 import sys
+import scanpy as sc
 meta = {
-    'task_grn_inference_dir': '/home/jnourisa/projs/ongoing/task_grn_inference'
+    'task_grn_inference_dir': '/home/jnourisa/projs/ongoing/'
 }
 sys.path.append(meta['task_grn_inference_dir'])
-from src.utils.util import sum_by
+from task_grn_inference.src.utils.util import sum_by, read_gmt
 
+def get_canonical_pathways():
+    geneset_file = '/home/jnourisa/projs/ongoing/ciim/input/prior/h.all.v2024.1.Hs.symbols.gmt'
+    genesets_all = read_gmt(geneset_file) 
+    genesets_all = {key: gs['genes'] for key, gs in genesets_all.items()}
+
+    # Create a list of gene-to-pathway mappings (one-to-one mapping)
+    gene_to_pathway_list = [
+        (gene, pathway)
+        for pathway, genes in genesets_all.items()
+        for gene in genes
+    ]
+
+    # Convert the list to a DataFrame
+    df_pathway = pd.DataFrame(gene_to_pathway_list, columns=["gene", "pathway"])
+    df_pathway = df_pathway.set_index("gene")
+    df_pathway['pathway'] = df_pathway['pathway'].str.replace('HALLMARK_','')
+    df_pathway['pathway'] = df_pathway['pathway'].str.replace('_',' ')
+    df_pathway['pathway'] = df_pathway['pathway'].str.title()
+
+    return df_pathway
 
 def efficient_melting(net, gene_names):
     '''to replace pandas melting'''
