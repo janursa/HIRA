@@ -105,7 +105,7 @@ par = {
     # - grn inference parameters
         'weight_t': 0.05,
         'batches': ['all_batches'],
-        'cell_types': ['B', 'CD4T', 'CD8T', 'MONO', 'NK'],
+        'cell_types': ['B', 'CD4T', 'CD8T', 'MONO', 'NK', 'T'],
         'age_groups': ['all_agegroups', '65_75', '55_64', '75+', '34-', '35_44', '45_54'], # ['all_agegroups']
         'min_genes_per_cell': 10, 
         'max_genes_per_cell': 5000, 
@@ -143,6 +143,8 @@ def wrapper_grn(task, par):
     # Determine masks
     if cell_type == 'all_celltypes':
         cell_type_mask = np.full(obs.shape[0], True, dtype=bool)
+    elif cell_type == 'T':
+        cell_type_mask = (obs['cell_type'].isin(['CD4T', 'CD8T']))
     else:
         cell_type_mask = (obs['cell_type'] == cell_type)
     if batch_group == 'all_batches':

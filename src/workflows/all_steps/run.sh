@@ -12,14 +12,14 @@
 
 set -e
 # Define run flags
-RUN_PREPROCESS=true
-RUN_PROCESS_DATASET=true
+RUN_PREPROCESS=false
+RUN_PROCESS_DATASET=false
 RUN_GRN=true
 
 MAX_WORKERS=10
 
 # datasets to include
-dataset="data7_allTPs_jalil" 
+dataset="data1" 
 DATASETS=($dataset) #('data1' 'data2' 'data3' 'data4' 'data5' 'data7' 'data8' 'data9' 'data11') data7_allTPs_jalil
 
 # Define others flags
