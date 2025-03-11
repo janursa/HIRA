@@ -10,7 +10,7 @@ meta = {
 }
 sys.path.append(meta['helper_dir'])
 from helper import enrich_tfs, convert_long_table_2_adata, find_central_tfs, \
-                   find_robust_predictors, determine_stats, run_pseudotime_analysis, net_lambda, adata_cell_type_lambda, tf_all
+                   find_robust_predictors, determine_stats, run_pseudotime_analysis, net_lambda, adata_cell_type_lambda, tf_all, summary_func
 
 
 
@@ -81,60 +81,11 @@ def main(par):
     stats_df = pd.concat(stats_store)
 
     # -------------- meta analysis to find mutual top TFs
-    def summary_func(df):
-        pvals = df["p_value_adj"]
-        effect = df["slope"]
-        if effect.prod() < 0: # if the effect is in opposite direction, pvalue is none
-            return None
-        if len(pvals)<2:
-            return 1
-        else:
-            return max(pvals)
-            # combine_pvalues(pvals, method="fisher")[1]
-    meta_p_values = (
-        stats_df.groupby("tf")
-        .apply(summary_func)  
-        .reset_index(name='meta_p_value')
-        
-    )
-    stats_df = stats_df.merge(meta_p_values, on='tf')
-    stats_df = stats_df[stats_df['meta_p_value'] < 0.05].reset_index(drop=True)
-
-    # --------------- add the type of discovery (age, centrality, pseudo) to the stats
-    stats_df["type"] = [[] for _ in range(len(stats_df))]
-    for idx, row in stats_df.iterrows():
-        tf = row["tf"]
-        dataset = row["dataset"]
-        tf_types = []
-
-        if tf in top_central_tfs.get(dataset, []):
-            tf_types.append("central")
-        if tf in top_predictors_age.get(dataset, []):
-            tf_types.append("age")
-        if include_pseudo:
-            if tf in top_predictors_pseudo.get(dataset, []):
-                tf_types.append("pseudo")
-
-        stats_df.at[idx, "type"] = tf_types
-    # --------------- add the stats obtained from expression data (rather than TF activity)
-    sig_tfs_all = stats_df['tf'].unique()
-    stats_store = []
-    for dataset in datasets:
-        adata = adata_dict[dataset]
-        stats = determine_stats(adata, sig_tfs_all)
-        stats['dataset'] = dataset
-        stats_store.append(stats)
-    expression_stats_df = pd.concat(stats_store)
     
-    if expression_stats_df.shape[0] > 0:
-        meta_p_values = (
-            expression_stats_df.groupby("tf")
-            .apply(summary_func)  
-            .reset_index(name='meta_p_value')
-            
-        )
-        expression_stats_df = expression_stats_df.merge(meta_p_values, on='tf')
-        stats_df = stats_df.merge(expression_stats_df[['tf', 'slope', 'p_value_adj', 'meta_p_value', 'dataset']], on=['tf', 'dataset'], suffixes=('', '_expression'), how='left')
+    # stats_df = summary_func(stats_df)
+    # stats_df = stats_df_raw[stats_df_raw['meta_p_value'] < 0.05].reset_index(drop=True)
 
+    
+    
     return stats_df
 

@@ -106,7 +106,7 @@ par = {
         'weight_t': 0.05,
         'batches': ['all_batches'],
         'cell_types': ['B', 'CD4T', 'CD8T', 'MONO', 'NK', 'T'],
-        'age_groups': ['all_agegroups', '65_75', '55_64', '75+', '34-', '35_44', '45_54'], # ['all_agegroups']
+        'age_groups': ['all_agegroups'], # ['all_agegroups', '65_75', '55_64', '75+', '34-', '35_44', '45_54']
         'min_genes_per_cell': 10, 
         'max_genes_per_cell': 5000, 
         'min_cells_per_gene': 2500,
@@ -180,6 +180,7 @@ def wrapper_grn(task, par):
             
         print("Adding metadata to the inferred network")
         net = pd.read_csv(save_file_name)
+        print('----- batch_group: ', batch_group)
         net['batch_group'] = batch_group
         net['cell_type'] = cell_type
         net['age_group'] = age_group

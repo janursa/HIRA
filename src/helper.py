@@ -101,12 +101,13 @@ map_cell_type_genernib = {
         'Myeloid cells': 'Myeloid cells'
     }
 
-sys.path.insert(0, '../')
+sys.path.insert(0, '../../')
 from task_grn_inference.src.utils.util import basic_qc, read_gmt
 
 surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All batches', 
                     '34-':'35 below', '35_44':'35-45', '45_54':'45-55', '55_64':'55-65', '65_75':'65-75',
-                    'data1_male': 'External validation', 'pbmc_ageing_downsample_male': 'Downsampled data'}
+                    'data1_male': 'External validation', 'pbmc_ageing_downsample_male': 'Downsampled data',
+                    'data1': 'Dataset 1', 'data7_allTPs_jalil': 'Dataset 2'}
 
 def determine_centrality(net, use_weight=True):
     """

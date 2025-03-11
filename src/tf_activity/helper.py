@@ -174,8 +174,51 @@ def determine_stats(adata, top_tfs):
     # sig_ones = list(stats_df_t[stats_df_t].index.values)
     # stats_df = stats_df[stats_df['tf'].isin(sig_ones)]
     return stats_df
+def summary_func(stats_df, col='tf'):
+    assert stats_df.shape[0]>0
+    def combine_pvalues(df):
+        pvals = df["p_value_adj"]
+        effect = df["slope"]
+        if effect.prod() < 0: # if the effect is in opposite direction, pvalue is none
+            return None
+        if len(pvals)<2:
+            return 1
+        else:
+            return max(pvals)
+    meta_p_values = (
+        stats_df.groupby(col)
+        .apply(combine_pvalues)  
+        .reset_index().rename(columns={0: "meta_p_value"})
+        
+    )
+    if col not in stats_df.columns:
+        raise ValueError(f"Column {col} is missing in stats_df")
 
-def plot_trends(top_tfs, datasets, data_dict, datasets_colors, cell_type, stats_df=None, is_expression=False):
+    if col not in meta_p_values.columns:
+        raise ValueError(f"Column {col} is missing in meta_p_values")
+    stats_df = stats_df.merge(meta_p_values, on=col)
+
+    return stats_df
+        # combine_pvalues(pvals, method="fisher")[1]
+def efficient_melting(df):
+
+    # Assuming motif_scores_tf has motifs as index and regions as columns
+    index = df.index.to_numpy()
+    columns = df.columns.to_numpy()
+    values = df.to_numpy()
+
+    # Create a long-form DataFrame using NumPy broadcasting
+    df_long = pd.DataFrame(
+        {
+            "index": np.repeat(index, len(columns)),
+            "variable": np.tile(columns, len(index)),
+            "values": values.ravel()
+        }
+    )
+    return df_long
+
+
+def plot_trends(top_tfs, datasets, data_dict, datasets_colors, cell_type, surrogate_names={}, stats_df=None, is_expression=False):
     """
     Plots transcription factor (TF) activity/expression trends across datasets.
 
@@ -202,6 +245,7 @@ def plot_trends(top_tfs, datasets, data_dict, datasets_colors, cell_type, stats_
             expression = adata_sub.X.todense().A.flatten() if scipy.sparse.issparse(adata_sub.X) else adata_sub.X.flatten()
             cell_count = adata_sub.obs['cell_count'].values
             
+            # expression = expression / expression[0]
 
             cell_count_n = cell_count / max(cell_count)
 
@@ -235,20 +279,22 @@ def plot_trends(top_tfs, datasets, data_dict, datasets_colors, cell_type, stats_
                 
 
                 # Create legend handle with both R² and Spearman ρ
-                legend_label = (f"{dataset}\n"
-                                f"β={slope:.2f}, R²={r2:.2f}, p={p_value:.3g}, p_adj={p_value_adj:.3g}\n"
-                                f"spear={spearman_corr:.2f}")
+                dataset_name = surrogate_names.get(dataset, dataset)
+                legend_label = '     ' + dataset_name + '\n' + r' ($p_{adj}$=' + "{:.2e}".format(p_value_adj) + ")"
+
                 handle = mpatches.Patch(color=datasets_colors[dataset], label=legend_label)
                 legend_handles.append(handle)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
 
         ax.set_xlabel('Age')
-        ax.set_ylabel('Expression' if is_expression else 'Activity')
-        ax.set_title(f'{cell_type}: {tf}', pad=15)
+        ax.set_ylabel('Expression' if is_expression else 'TF Activity score')
+        ax.set_title(f'{cell_type}: {tf}', pad=20)
 
         # Add properly formatted legend
-        ax.legend(handles=legend_handles, loc='upper left', bbox_to_anchor=(1.05, 1))
+        ax.legend(handles=legend_handles, loc='upper left', bbox_to_anchor=(1.02, 1), frameon=False)
 
-    plt.show()
+    
 
 
 

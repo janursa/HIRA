@@ -3,29 +3,29 @@
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
-#SBATCH --time=20:00:00
-#SBATCH --mem=1000GB
+#SBATCH --cpus-per-task=2
+#SBATCH --time=10:00:00
+#SBATCH --mem=500GB
 #SBATCH --partition=cpu
 #SBATCH --mail-type=END,FAIL      
 #SBATCH --mail-user=jalil.nourisa@gmail.com   
 
 set -e
 # Define run flags
-RUN_PREPROCESS=false
-RUN_PROCESS_DATASET=false
+RUN_PREPROCESS=true
+RUN_PROCESS_DATASET=true
 RUN_GRN=true
 
 MAX_WORKERS=10
 
 # datasets to include
-dataset="data1" 
-DATASETS=($dataset) #('data1' 'data2' 'data3' 'data4' 'data5' 'data7' 'data8' 'data9' 'data11') data7_allTPs_jalil
+dataset="data10" 
+DATASETS=($dataset) #('data1' 'data2' 'data3' 'data4' 'data5' 'data7' 'data8' 'data9' 'data10' 'data11') data7_allTPs_jalil
 
 # Define others flags
 DOWNSAMPLE=false
 ONLY_MALE=false
-FORCE=false # If true, overwrite the existing files in grns directory
+FORCE=true # If true, overwrite the existing files in grns directory
 
 
 RAW_DATASET_FILE="/vol/projects/jnourisa/datasets/${dataset}_raw.h5ad"
@@ -33,7 +33,6 @@ FILTERED_DATASET_FILE="/vol/projects/jnourisa/datasets/${dataset}_sc.h5ad" # tai
 DATASET_BULK_FILE="/vol/projects/jnourisa/datasets/${dataset}_bulk.h5ad" # tailors raw based on the given flags such as make, downsample, etc.
 
 SAVE_GRNS_DIR="output/grns/${dataset}/"
-
 
 # Initialize the command
 cmd="python src/workflows/all_steps/script.py 
