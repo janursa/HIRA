@@ -19,6 +19,7 @@ def net_lambda(dataset, cell_type):
     net = pd.read_csv(f"/home/jnourisa/projs/ongoing/ciim/output/grns/{dataset}/net_{cell_type}_all_agegroups_all_batches.csv")
     return net.loc[net['source'].isin(tf_all)]
 adata_lambda = lambda dataset: ad.read_h5ad(f"/vol/projects/jnourisa/datasets/{dataset}_bulk.h5ad") 
+adata_sc_lambda = lambda dataset: ad.read_h5ad(f"/vol/projects/jnourisa/datasets/{dataset}_sc.h5ad") 
 def adata_cell_type_lambda(dataset, cell_type):
     adata = adata_lambda(dataset)
     if cell_type=='T':
@@ -441,7 +442,7 @@ def find_robust_predictors(adata, covariates, target, top_q=.9):
     
     return list(top_predictors)
 
-def enrich_tf_local(net, adata_bulk, tf_all=None):
+def tf_activity_local(net, adata_bulk, tf_all=None):
     net = net.pivot(index='source', columns='target', values='weight').fillna(0)
     net = net[[g for g in adata_bulk.var_names if g in net.columns]]
     if tf_all is not None:
@@ -461,42 +462,38 @@ def enrich_tf_local(net, adata_bulk, tf_all=None):
     # - format
     tf_acts = pd.DataFrame(tf_acts, index=net.index, columns=adata_bulk.obs.index)
     tf_acts = tf_acts.reset_index().melt(id_vars='source', var_name='sample', value_name='activity')
-    tf_acts = tf_acts.set_index('sample').merge(adata_bulk.obs[['cell_type', 'donor_id', 'cell_count', 'age']], left_index=True, right_index=True).reset_index(drop=False)
+    if 'cell_count' in adata_bulk.obs.columns:
+        cols = ['cell_type', 'donor_id', 'cell_count', 'age']
+    else:
+        cols = ['cell_type', 'donor_id', 'age']
+    tf_acts = tf_acts.set_index('sample').merge(adata_bulk.obs[cols], left_index=True, right_index=True).reset_index(drop=False)
     # print(f"net: {net.shape}, mat: {mat.shape}, source: {tf_acts['source'].nunique()}")
     
     if 'sample' not in tf_acts.columns:
         tf_acts['sample'] = tf_acts['index']
     # Calculate ranks within each sample
-    tf_acts['rank'] = tf_acts.groupby('sample')['activity'].transform(lambda x: x.abs().rank(method='dense', ascending=False)) 
+    # tf_acts['rank'] = tf_acts.groupby('sample')['activity'].transform(lambda x: x.abs().rank(method='dense', ascending=False)) 
 
     return tf_acts
 
 
 
-def enrich_tfs(adata_bulk, net, tf_all=None):
-    # import decoupler
-    # from scipy.stats import zscore
-
-    # - pseudobulk cell type-donor
-    # sys.path.insert(0, '../')
-    # from task_grn_inference.src.process_data.perturbation.opsca.script import sum_by
-
-    
-    # -enrich TFs
+def calculate_tf_activity(adata, net, tf_all=None):    
+    # - TFs
     if tf_all is not None:
         net = net[net['source'].isin(tf_all)]
 
     if False: # run decoupler
         mat = pd.DataFrame(
-            data=adata_bulk.X.todense(),  
-            columns=adata_bulk.var_names,  
-            index=adata_bulk.obs.index  
+            data=adata.X.todense(),  
+            columns=adata.var_names,  
+            index=adata.obs.index  
         )
 
         tf_acts, tf_pvals = decoupler.run_ulm(mat, net, source='source', target='target', weight='weight', use_raw=False)
         # - formatize
         tf_acts = tf_acts.reset_index().melt(id_vars='index', var_name='source', value_name='activity')
-        obs = adata_bulk.obs[['cell_type', 'donor_id', 'cell_count', 'age']]
+        obs = adata.obs[['cell_type', 'donor_id', 'cell_count', 'age']]
         obs = obs.reset_index()
         
         tf_acts['index'] = tf_acts['index'].astype(str)
@@ -504,11 +501,16 @@ def enrich_tfs(adata_bulk, net, tf_all=None):
         tf_acts = tf_acts.merge(obs, on='index', how='left').drop('index', axis=1)
         assert tf_acts.shape[0]==tf_acts.shape[0]
     else: # run my implementation
-        tf_acts = enrich_tf_local(net, adata_bulk, tf_all)
+        tf_acts = tf_activity_local(net, adata, tf_all)
     
     if 'index' in tf_acts.columns:
         tf_acts = tf_acts.drop('index', axis=1)
-    tf_acts = convert_long_table_2_adata(tf_acts, index_col=["age", "donor_id", "cell_count"])
+    if 'cell_count' in adata.obs.columns:
+        cols = ["sample", "age", "donor_id", "cell_count"]
+    else:
+        cols = ["sample", "age", "donor_id"]
+
+    tf_acts = convert_long_table_2_adata(tf_acts, index_col=cols)
 
 
     return tf_acts

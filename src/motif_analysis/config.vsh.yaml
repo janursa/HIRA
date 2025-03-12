@@ -3,9 +3,9 @@ name: signac
 info:
   label: signac
 
-# resources:
-#   - type: r_script
-#     path: script.R
+resources:
+  - type: r_script
+    path: script.R
 
 engines:
   - type: docker
