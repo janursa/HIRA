@@ -7,12 +7,49 @@ from sklearn.preprocessing import StandardScaler
 import scipy.sparse as sp
 import sys
 import scanpy as sc
-meta = {
-    'task_grn_inference_dir': '/home/jnourisa/projs/ongoing/'
-}
-sys.path.append(meta['task_grn_inference_dir'])
+import matplotlib.pyplot as plt
+
 from task_grn_inference.src.utils.util import sum_by, read_gmt
 
+
+def plot_umap(adata, color='', palette=None, ax=None, X_label='X_umap', on_data=False,
+              bbox_to_anchor=None, legend=True, legend_title='', **kwrds):
+    latent = adata.obsm[X_label]
+    var_unique_sorted = sorted(adata.obs[color].unique())
+    legend_handles = []
+    
+    for i_group, group in enumerate(var_unique_sorted):
+        mask = adata.obs[color] == group
+        sub_data = latent[mask]
+        if palette is None:
+            c = None 
+        else:
+            c = palette[group]
+        # Plot scatter points
+        scatter = ax.scatter(sub_data[:, 0], sub_data[:, 1], label=group, c=c, **kwrds)
+        if palette is None:
+            solid_color = scatter.get_facecolor()[0]
+        else:
+            solid_color = c
+        # plot legend
+        legend_handles.append(plt.Line2D([0], [0], linestyle='none', marker='o', markersize=8, color=solid_color))
+        if on_data:
+            mean_x = np.mean(sub_data[:, 0])
+            mean_y = np.mean(sub_data[:, 1])
+            ax.text(mean_x, mean_y, group, fontsize=9, ha='center', va='top', color='black', weight='bold')
+    ax.spines[['right', 'top', 'left', 'bottom']].set_visible(False)
+    ax.set_xlabel('')
+    ax.set_ylabel('')
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    if legend and not on_data:
+        legend = ax.legend(handles=legend_handles, labels=var_unique_sorted, loc=(1.1,.3), 
+                           bbox_to_anchor=bbox_to_anchor, frameon=False, title=legend_title, 
+                           title_fontproperties={'weight': 'bold', 'size': 9})
+        legend.get_title().set_ha('left')
+        legend._legend_box.align = "left" 
+    
 def get_canonical_pathways():
     geneset_file = '/home/jnourisa/projs/ongoing/ciim/input/prior/h.all.v2024.1.Hs.symbols.gmt'
     genesets_all = read_gmt(geneset_file) 
