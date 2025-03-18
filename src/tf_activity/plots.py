@@ -14,6 +14,52 @@ from matplotlib import rcParams
 from ciim.src.common import surrogate_names, palette_datasets
 
 
+def dotplot(df, ax, color_col='linear_trend', size_col='neg_log10_adj_pval', 
+            x='cell_type', 
+            y='tf', 
+            color_title='Trend',
+            size_title=r'$-log{10}{p_{adj}}$',
+            colors=["green", "red", "gray"], sizes=(20,200)):
+    import matplotlib.patches as mpatches
+    if color_col is not None:
+        palette = {name: color for name, color in zip(df[color_col].cat.categories, colors)}
+        color_legend = [mpatches.Patch(color=color, label=name) for name, color in palette.items()]
+    else:
+        palette = "tab10"
+        color_legend = []
+    # Capture scatter plot object
+    # df[size_col] = df[size_col]/df[size_col].max()
+    scatter = sns.scatterplot(
+        data=df, 
+        x=x, 
+        y=y, 
+        size=size_col, 
+        hue=color_col, 
+        sizes=sizes,
+        palette=palette, 
+        edgecolor="black",
+        legend=False,  # Disable automatic legend
+        ax=ax
+    )
+    # Labels and formatting
+    ax.set_ylabel("Transcription Factor")
+    # ax.set_xlabel("Cell type")
+    # ax.set_title(title)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
+    ax.set_xlabel('')
+    ax.margins(x=.1)
+    ax.spines[['top','right']].set_visible(False)
+    ax.margins(x=.2, y=.1)
+    # 1. Create Color Legend 
+    print(color_legend)
+    color_legend_handle = plt.legend(handles=color_legend, title=color_title, loc=(1.05, .1), frameon=False)
+    # 2. Create Size Legend 
+    size_legend_values = np.linspace(df[size_col].min() , df[size_col].max(), num=6)
+    size_legend_handles = [plt.scatter([], [], s=s * 10, color="black", label=f"{s:.1f}") for s in size_legend_values]
+    size_legend_handle = plt.legend(handles=size_legend_handles, title=size_title, loc=(1.05, .4), frameon=False)
+    plt.gca().add_artist(color_legend_handle)
+    plt.tight_layout()
+
 def tf_gene_interaction_legend():
     # - plot the legend
     import matplotlib.pyplot as plt
@@ -79,6 +125,7 @@ class DotPlotTFtarget:
                     data: pd.DataFrame, 
                     n_top_tfs=20,
                     n_top_targets=40,
+                    filter_criteria='out_degree_c',
                     title='', 
                     figsize=(10, 20), 
                     height_ratios=(4, .2), 
@@ -88,7 +135,12 @@ class DotPlotTFtarget:
         # data['target'] = pd.Categorical(data['target'], categories=sorted_targets, ordered=True)
         
         # Subset to top TFs and targets
-        top_tfs = data.sort_values('meta_p_adj').dropna()['source'].unique()[:n_top_tfs]
+        if filter_criteria == 'meta_p_adj':
+            top_tfs = data.sort_values('meta_p_adj').dropna()['source'].unique()[:n_top_tfs]
+        elif filter_criteria == 'out_degree_c':
+            top_tfs = data.sort_values('out_degree_c', ascending=False).dropna()['source'].unique()[:n_top_tfs]
+        else:
+            raise ValueError(f"Invalid filter criteria: {filter_criteria}")
         top_targets = data.sort_values('meta_p_adj_target').dropna()['target'].unique()[:n_top_targets]
         data = data[data['source'].isin(top_tfs) & data['target'].isin(top_targets)]
         

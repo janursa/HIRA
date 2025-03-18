@@ -44,7 +44,7 @@ def plot_umap(adata, color='', palette=None, ax=None, X_label='X_umap', on_data=
     ax.set_yticks([])
 
     if legend and not on_data:
-        legend = ax.legend(handles=legend_handles, labels=var_unique_sorted, loc=(1.1,.3), 
+        legend = ax.legend(handles=legend_handles, labels=var_unique_sorted, loc=(1.4,.3), 
                            bbox_to_anchor=bbox_to_anchor, frameon=False, title=legend_title, 
                            title_fontproperties={'weight': 'bold', 'size': 9})
         legend.get_title().set_ha('left')
