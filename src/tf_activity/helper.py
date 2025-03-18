@@ -12,6 +12,7 @@ import shap
 import scanpy as sc
 import anndata as ad
 import scipy.sparse as sp
+from ciim.src.helper import determine_centrality
 
 tf_all = np.loadtxt(f"/home/jnourisa/projs/ongoing/task_grn_inference/resources/grn_benchmark/prior/tf_all.csv", dtype=str)
 
@@ -134,6 +135,24 @@ def run_pseudotime_analysis(adata, seed=32):
 #         stats.append(stats_tf)
     
 #     return pd.DataFrame(stats)
+def identify_modules(df):
+    import networkx as nx
+    import igraph as ig
+    import leidenalg as la
+    weight_o = df['weight'].copy()
+    df['weight'] = df['weight'].abs()
+    G = nx.from_pandas_edgelist(df, 'source', 'target', ['weight'])
+
+    # Convert to igraph (better for community detection)
+    ig_graph = ig.Graph.TupleList(df.itertuples(index=False), directed=True, edge_attrs=["weight"])
+
+    # Apply Leiden clustering
+    partition = la.find_partition(ig_graph, la.RBConfigurationVertexPartition, weights="weight")
+
+    # Extract module assignments
+    df['module'] = [partition.membership[ig_graph.vs.find(name=n).index] for n in df['source']]
+    df['weight'] = weight_o
+    return df
 def determine_stats(adata, top_tfs):
     '''
     Calculate p values for the linear regression of the top tfs across datasets with ageing.
@@ -146,9 +165,9 @@ def determine_stats(adata, top_tfs):
 
         ages = adata_sub.obs['age'].values
         expression = adata_sub.X.toarray().flatten()
-        cell_count = adata_sub.obs['cell_count'].values
+        # cell_count = adata_sub.obs['cell_count'].values
         
-        cell_count_n = cell_count / max(cell_count)
+        # cell_count_n = cell_count / max(cell_count)
 
         # Fit linear regression
         if len(ages) > 1:
@@ -219,86 +238,29 @@ def efficient_melting(df):
     return df_long
 
 
-def plot_trends(top_tfs, datasets, data_dict, datasets_colors, cell_type, surrogate_names={}, stats_df=None, is_expression=False):
-    """
-    Plots transcription factor (TF) activity/expression trends across datasets.
-
-    Parameters:
-    - top_tfs: list of top transcription factors to plot
-    - datasets: list of dataset names
-    - data_dict: dictionary containing either tf_acts or adata objects
-    - datasets_colors: dictionary mapping datasets to colors
-    - cell_type: cell type to include in the title
-    - is_adata: if True, expects `data_dict` to contain AnnData objects instead of DataFrames
-    """
-    
-    for tf in top_tfs:
-        fig, ax = plt.subplots(1, 1, figsize=(5, 3))
-        legend_handles = []  # Store handles for the legend
-
-        for dataset in datasets:
-            
-            adata = data_dict[dataset].to_memory()
-            mask_tf = adata.var_names == tf
-            adata_sub = adata[:, mask_tf]
-
-            ages = adata_sub.obs['age'].values
-            expression = adata_sub.X.todense().A.flatten() if scipy.sparse.issparse(adata_sub.X) else adata_sub.X.flatten()
-            cell_count = adata_sub.obs['cell_count'].values
-            
-            # expression = expression / expression[0]
-
-            cell_count_n = cell_count / max(cell_count)
-
-            # Scatter plot
-            ax.scatter(
-                ages, expression, 
-                color=datasets_colors[dataset], 
-                alpha=0.4,  
-                linewidth=1,
-                s=cell_count_n * 100
-            )
-
-            # Fit linear regression
-            if len(ages) > 1:
-                age_range = np.linspace(min(ages), max(ages), 100)
-                spearman_corr, spearman_p = spearmanr(ages, expression)
-                slope, intercept, r_value, p_value, _ = linregress(ages, expression)
-                r2 = r_value**2
-                # - correct for multiple testing
-                if stats_df is not None:
-                    stats_df_sub = stats_df[(stats_df['tf'] == tf) & (stats_df['dataset'] == dataset)]
-                    p_value_adj = stats_df_sub.loc[:, 'meta_p_value'].values[0]
-                    p_value_adj = min([p_value_adj, 1])  # Ensure p-value is not greater than 1
-                else:
-                    n_tests = len(top_tfs)*len(datasets)
-                    p_value_adj = p_value * n_tests
-                # Plot fitted line
-                fitted_line = slope * age_range + intercept
-                ax.plot(age_range, fitted_line, color=datasets_colors[dataset], linestyle='-', linewidth=2)
-
-                
-
-                # Create legend handle with both R² and Spearman ρ
-                dataset_name = surrogate_names.get(dataset, dataset)
-                legend_label = '     ' + dataset_name + '\n' + r' ($p_{adj}$=' + "{:.2e}".format(p_value_adj) + ")"
-
-                handle = mpatches.Patch(color=datasets_colors[dataset], label=legend_label)
-                legend_handles.append(handle)
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-
-        ax.set_xlabel('Age')
-        ax.set_ylabel('Expression' if is_expression else 'TF Activity score')
-        ax.set_title(f'{cell_type}: {tf}', pad=20)
-
-        # Add properly formatted legend
-        ax.legend(handles=legend_handles, loc='upper left', bbox_to_anchor=(1.02, 1), frameon=False)
-
-    
-
-
-
+def compute_linear_trend(df, pval_col='meta_p_adj', slope_col='slope', col='tf'):
+    # Compute -log10(p_value_adj) for dot size
+    df["neg_log10_adj_pval"] = -np.log10(df[pval_col])
+    if 'linear_trend' in df.columns:
+        df.drop('linear_trend', inplace=True, axis=1)
+    # Determine color based on slope sign
+    def determine_sign(x):
+        if x.prod()<0:
+            return "Inconsistent" 
+        elif x.min() > 0:
+            return "Increase"
+        else:
+            return "Decrease"
+    linear_trend = df.groupby([col, 'cell_type'])[slope_col].apply(determine_sign).reset_index(name='linear_trend')
+    linear_trend = linear_trend.dropna()
+ 
+    df = df.merge(linear_trend, on=[col, 'cell_type'], how='left')
+    df["linear_trend"] = pd.Categorical(
+        df["linear_trend"], 
+        categories=["Increase", "Decrease", "Inconsistent"], 
+        ordered=True
+    )
+    return df
 
 def stability_selection_booststrap(X, y, n_bootstrap=100, top_k=10):
     """
@@ -338,7 +300,40 @@ def stability_selection_booststrap(X, y, n_bootstrap=100, top_k=10):
     
     return top_features_idx
 
-def stability_selection_shap(X, y,  top_q=10):
+
+def fit_final_model(X, y, top_features_idx):
+    """
+    Train a final model using only the selected most important features.
+    
+    Parameters:
+    - X: Feature matrix
+    - y: Target vector
+    - top_features_idx: Indices of the top selected features.
+    
+    Returns:
+    - model_final: Fitted Ridge regression model.
+    - y_pred: Predictions of the final model.
+    - r2: R² score of the final model.
+    - spearman: Spearman correlation of the final model.
+    """
+    X_selected = X[:, top_features_idx]
+    
+    # Scale data
+    scaler = StandardScaler()
+    X_selected = scaler.fit_transform(X_selected)
+
+    # Fit final model
+    model_final = Ridge(alpha=1)
+    model_final.fit(X_selected, y)
+    
+    # Predict and evaluate
+    y_pred = model_final.predict(X_selected)
+    r2 = r2_score(y, y_pred)
+    spearman = spearmanr(y_pred, y)[0]
+    
+    return model_final, y_pred, r2, spearman
+
+def stability_selection_shap(X, y,  top_q=80):
     """
     Perform stability selection using SHAP values for feature importance.
 
@@ -379,39 +374,6 @@ def stability_selection_shap(X, y,  top_q=10):
 
 
     return top_features_idx
-
-def fit_final_model(X, y, top_features_idx):
-    """
-    Train a final model using only the selected most important features.
-    
-    Parameters:
-    - X: Feature matrix
-    - y: Target vector
-    - top_features_idx: Indices of the top selected features.
-    
-    Returns:
-    - model_final: Fitted Ridge regression model.
-    - y_pred: Predictions of the final model.
-    - r2: R² score of the final model.
-    - spearman: Spearman correlation of the final model.
-    """
-    X_selected = X[:, top_features_idx]
-    
-    # Scale data
-    scaler = StandardScaler()
-    X_selected = scaler.fit_transform(X_selected)
-
-    # Fit final model
-    model_final = Ridge(alpha=1)
-    model_final.fit(X_selected, y)
-    
-    # Predict and evaluate
-    y_pred = model_final.predict(X_selected)
-    r2 = r2_score(y, y_pred)
-    spearman = spearmanr(y_pred, y)[0]
-    
-    return model_final, y_pred, r2, spearman
-
 def find_robust_predictors(adata, covariates, target, top_q=.9):
     """
     Main function to perform stability selection, feature importance, and model evaluation.
@@ -441,7 +403,33 @@ def find_robust_predictors(adata, covariates, target, top_q=.9):
     # print("Most important predictors:", list(top_predictors))
     
     return list(top_predictors)
+def add_centrality(df, datasets):
+    """
+        for a given df, compute the centrality of the TFs in the network, averaged over the two datasets, and subsetted to the TFs of interest
+    """
+    tfs = df['tf'].unique()
+    cell_type = df['cell_type'].unique()
+    assert len(cell_type) == 1
+    cell_type = cell_type[0]
 
+    net1 = net_lambda(datasets[0], cell_type)
+    net2 = net_lambda(datasets[1], cell_type)
+
+    net1_c = determine_centrality(net1, use_weight=False)
+    net2_c = determine_centrality(net2, use_weight=False)
+
+    net1_c['dataset'] = datasets[0]
+    net2_c['dataset'] = datasets[1]
+
+    c = pd.concat([net1_c, net2_c], axis=0)
+    c = c[c.index.isin(tfs)]
+    assert c.isna().any().any() == False
+    c = c.reset_index().rename(columns={'index': 'tf'})
+    c = c.groupby(['tf'])['centrality'].mean().reset_index()
+    df = df.merge(c, on='tf', how='left')
+    df['centrality'] = df['centrality'].div(df['centrality'].max())
+
+    return df
 def tf_activity_local(net, adata_bulk, tf_all=None):
     net = net.pivot(index='source', columns='target', values='weight').fillna(0)
     net = net[[g for g in adata_bulk.var_names if g in net.columns]]
@@ -514,3 +502,41 @@ def calculate_tf_activity(adata, net, tf_all=None):
 
 
     return tf_acts
+def pathway_analysis_wrapper(df):
+    import gseapy as gp
+    from gseapy import barplot, dotplot
+
+    res2d_store = []
+    for cell_type in df['cell_type'].unique():
+    # for cell_type in ['MONO']:
+        for trend in df['linear_trend'].unique():
+        # for trend in ['Decrease']:
+            mask = (df['cell_type'] == cell_type) & (df['linear_trend'] == trend)
+            if mask.sum() == 0:
+                continue
+            stats_df = df[mask]
+            # - prepare
+            stats_df = stats_df[['tf', 'meta_p_adj']]
+            stats_df = stats_df[~stats_df.duplicated()].reset_index(drop=True)
+            # ranked_genes = stats_df.set_index('tf')['meta_p_adj'].sort_values(ascending=True)
+
+            # - EA
+            print(f"cell_type: {cell_type}, trend: {trend}, n tfs: {stats_df['tf'].nunique()}")
+            np.savetxt('../output/test.csv', stats_df['tf'].unique(), fmt='%s', delimiter=',')
+            rr = gp.enrichr(gene_list='../output/test.csv',
+                            gene_sets=['MSigDB_Hallmark_2020'], #, 'KEGG_2021_Human'
+                            organism='human', 
+                            outdir=None, 
+                            # background=tf_all,
+                            )
+            res2d = rr.res2d
+            res2d = res2d[res2d['Adjusted P-value']<0.05]
+
+            res2d['cell_type'] = cell_type
+            res2d['linear_trend'] = trend
+            res2d_store.append(res2d)
+    if len(res2d_store) == 0:
+        return None
+    
+    res2d_all = pd.concat(res2d_store)
+    return res2d_all

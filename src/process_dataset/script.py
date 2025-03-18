@@ -29,7 +29,8 @@ parser.add_argument('--bulk_dataset_file',
     
 parser.add_argument('--n_cell_t', 
     type=int,
-    required=True,
+    required=False,
+    default=200,
     help="Number of threshold for cell count per donor to include"
     )
 
@@ -39,9 +40,9 @@ parser.add_argument(
     help="Whether to equalize cell counts and donor sizes. Default is False."
 )
 parser.add_argument(
-    '--only_male',
-    action='store_true',
-    help="Whether to subset the data to only males. Default is False."
+    '--gender',
+    type=str,
+    default='both'
 )
 
 args = parser.parse_args()
@@ -92,9 +93,17 @@ def process_obs(obs, par):
     obs = obs[obs.age_donor.isin(sample_size.age_donor)]
     print('size after filtering for donor sinlge cell count: ', obs.shape)
     # - filter for sex 
-    if par['only_male']:
-        obs = obs[obs['sex']=='M']
-        print('size after filtering for Male only: ', obs.shape)
+    gender = par['gender']
+    if gender == 'both':
+        pass
+    else:
+        if gender in ['M', 'F']:
+            if gender not in obs['sex'].unique():
+                obs['sex'] = obs['sex'].map({'Male':'M', 'Female':'F'})
+        
+        assert gender in obs['sex'].unique(), f"{gender} not in obs['sex]"
+        obs = obs[obs['sex']==gender]
+        print('size after filtering for gene given: ', obs.shape)
 
     # - asign batches
     def assign_batches(group):

@@ -1,6 +1,6 @@
 # mac os x
 .DS_Store
-
+.R*
 # related to files
 .pybiomart.sqlite
 input/

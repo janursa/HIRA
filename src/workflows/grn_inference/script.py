@@ -12,61 +12,13 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import subprocess
 
-## VIASH START
 parser = argparse.ArgumentParser()
-parser.add_argument(
-    '--run_preprocess',
-    action='store_true',
-    help="Whether to run preprocess (merging the datasets)"
-)
-
-parser.add_argument(
-    '--run_process_dataset',
-    action='store_true',
-    help="Whether to run process_dataset (filtering the dataset)"
-)
-
-parser.add_argument(
-    '--run_grn',
-    action='store_true',
-    help="Whether to run grn inference"
-)
-
-
-parser.add_argument(
-    '--raw_dataset_file',
-    type=str,
-    required=True,
-    help="The raw dataset file after merging"
-)
-parser.add_argument('--processed_dataset_file', 
+parser.add_argument('--dataset_file', 
     type=str,
     required=True,
     help="Processed dataset file after filtering"
     )
-parser.add_argument('--bulk_dataset_file', 
-    type=str,
-    required=True,
-    help="Processed dataset file after filtering, bulked"
-    )
 
-parser.add_argument('--max_workers', 
-    type=int,
-    required=False,
-    default=10,
-    help="Processed dataset file after filtering, bulked"
-    )
- 
-parser.add_argument(
-    '--downsample',
-    action='store_true',
-    help="Whether to equalize cell counts and donor sizes. Default is False."
-)
-parser.add_argument(
-    '--only_male',
-    action='store_true',
-    help="Whether to subset the data to only males. Default is False."
-)
 
 parser.add_argument(
     '--save_grns_dir',
@@ -81,28 +33,12 @@ parser.add_argument(
     help="Force to rewrite existing files (only grns)."
 )
 
-parser.add_argument('--datasets', nargs='+', help='List of datasets to include', required=True)
-
 args = parser.parse_args()
 
 
 par = {
-    # - run flags
-        'run_preprocess': args.run_preprocess,
-        'run_process_dataset': args.run_process_dataset,
-        'run_grn': args.run_grn,
-    # - preprocess datasets
-        'datasets': args.datasets,
-        'raw_dataset_file': args.raw_dataset_file,
-        'scale': False,
-    # - process dataset
-        'processed_dataset_file': args.processed_dataset_file,
-        'bulk_dataset_file': args.bulk_dataset_file,
-        'n_cell_t': 200, # inclusion minimum number of cells per donor 
-        'only_male': args.only_male,
-        'downsample': args.downsample,
-
     # - grn inference parameters
+        'dataset_file': args.dataset_file,
         'weight_t': 0.05,
         'batches': ['all_batches'],
         'cell_types': ['B', 'CD4T', 'CD8T', 'MONO', 'NK', 'T'],
@@ -110,7 +46,7 @@ par = {
         'min_genes_per_cell': 10, 
         'max_genes_per_cell': 5000, 
         'min_cells_per_gene': 2500,
-        'max_workers': args.max_workers,
+        'max_workers': 20,
         'force': args.force,
         'save_grns_dir': args.save_grns_dir,
         'temp_dir': 'output/grns/temp/'
@@ -119,8 +55,6 @@ par = {
 
 dependencies = {
     'grn_method': '/home/jnourisa/projs/ongoing/ciim/src/inference_methods/simple_corr/script.py',
-    'process_dataset': '/home/jnourisa/projs/ongoing/ciim/src/process_dataset/script.py',
-    'preprocess': '/home/jnourisa/projs/ongoing/ciim/src/preprocess/script.py'
 }
 
 os.makedirs(par['temp_dir'], exist_ok=True)
@@ -136,7 +70,7 @@ def wrapper_grn(task, par):
 
 
     # Read dataset
-    adata = ad.read_h5ad(par['processed_dataset_file'], backed='r')
+    adata = ad.read_h5ad(par['dataset_file'], backed='r')
     obs = adata.obs.copy()
 
     # Filter for the specific cell type, age group and batch group
@@ -197,7 +131,7 @@ def infer_grns_all(par):
     '''
     print(par)
     # - read dataset
-    adata = ad.read_h5ad(par['processed_dataset_file'], backed='r')
+    adata = ad.read_h5ad(par['dataset_file'], backed='r')
     obs = adata.obs.copy()
     
     # - prepare tasks
@@ -223,53 +157,9 @@ def infer_grns_all(par):
         for result in executor.map(partial(wrapper_grn, par=par), tasks):
             pass
 
-def main(par):
-    if par['run_preprocess']:
-        print('running preprocess...')
-        args = f"--raw_dataset_file {par['raw_dataset_file']} "
-        for i, dataset in enumerate(par['datasets']):
-            if i == 0:
-                args += f" --datasets {dataset}"
-            else:
-                args += f" {dataset}"
-        command = f"python {dependencies['preprocess']} {args}"
-
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-
-        if result.returncode != 0:
-            print("STDOUT:", result.stdout)
-            print("STDERR:", result.stderr)
-            raise RuntimeError(f"Error: command proprocess failed with exit code {result.returncode}")
-        print('preprocess completed')
-    if par['run_process_dataset']:
-        args = f"--raw_dataset_file {par['raw_dataset_file']} \
-                --processed_dataset_file {par['processed_dataset_file']} \
-                --bulk_dataset_file {par['bulk_dataset_file']}  \
-                --n_cell_t {par['n_cell_t']}"
-
-        if par['downsample']:
-            args += " --downsample"
-        if par['only_male']:
-            args += " --only_male"
-
-        print('running process dataset...')
-        command = f"python {dependencies['process_dataset']} {args}"
-
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-
-        if result.returncode != 0:
-            print("STDOUT:", result.stdout)
-            print("STDERR:", result.stderr)
-            raise RuntimeError(f"Error: command process dataset failed with exit code {result.returncode}")
-        print('process dataset completed')
-
-    if par['run_grn']:
-        # - run GRN inference
-        print('running grn inference...')
-        os.makedirs(par['save_grns_dir'], exist_ok=True)
-        infer_grns_all(par)
-        print('GRN inference completed')
-
-if __name__ == '__main__': 
-    
-    main(par)
+if __name__ == '__main__':
+    # - run GRN inference
+    print('running grn inference...')
+    os.makedirs(par['save_grns_dir'], exist_ok=True)
+    infer_grns_all(par)
+    print('GRN inference completed')
