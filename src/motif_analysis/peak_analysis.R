@@ -4,9 +4,8 @@ library(Seurat)
 library(GenomicRanges)
 library(ggplot2)
 library(patchwork)
-library(SeuratWrappers)
+library(SeuratWrappers) # remotes::install_github("satijalab/seurat-wrappers", dependencies = TRUE, ask = FALSE)
 library(cicero)
-setwd("/home/jnourisa/projs/ongoing/ciim/notebooks/motif_analysis")
 
 
 # Define mapping of fine-grained cell types to major cell types
@@ -26,7 +25,14 @@ cell_type_mapping <- c(
   "pDC" = "MONO"  # Plasmacytoid dendritic cells, adjust if needed
 )
 
-pbmc = readRDS('pbmc_multiome.rds')
+# main_dir <- "/home/jnourisa/projs/ongoing/ciim/"
+# print(sys.frame)
+# script_dir <- dirname(sys.frame(1)$ofile)
+par = list(
+  pbmc_multiome = 'input/motif_analysis/pbmc_multiome.rds'
+)
+
+pbmc = readRDS(par$pbmc_multiome)
 DefaultAssay(pbmc) <- 'peaks'
 
 # Apply mapping
@@ -34,24 +40,25 @@ pbmc@meta.data$cell_type <- cell_type_mapping[pbmc@meta.data$predicted.id]
 
 pbmc <- SortIdents(pbmc)
 
-if (TRUE){
+if (TRUE){ #TODO: for each cell type
   # convert to CellDataSet format and make the cicero object
   pbmc.cds <- as.cell_data_set(x = pbmc)
+
   pbmc.cicero <- make_cicero_cds(pbmc.cds, reduced_coordinates = reducedDims(pbmc.cds)$UMAP)
   # get the chromosome sizes from the Seurat object
   genome <- seqlengths(pbmc)
 
   # use chromosome 1 to save some time
-  # omit this step to run on the whole genome
-  genome <- genome[1]
+  genome <- genome[1] #TODO: omit this step to run on the whole genome
 
   # convert chromosome sizes to a dataframe
   genome.df <- data.frame("chr" = names(genome), "length" = genome)
 
   # run cicero
   conns <- run_cicero(pbmc.cicero, genomic_coords = genome.df, sample_num = 100)
+  print(head(conns))
 }
-
+aaa
 #  -------------- Plotting genomic regions
 
 

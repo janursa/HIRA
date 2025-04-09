@@ -13,7 +13,7 @@ from task_grn_inference.src.utils.util import sum_by, read_gmt
 
 
 def plot_umap(adata, color='', palette=None, ax=None, X_label='X_umap', on_data=False,
-              bbox_to_anchor=None, legend=True, legend_title='', **kwrds):
+              bbox_to_anchor=None, legend=True, legend_title='', margins=dict(x=.1, y=.1), **kwrds):
     latent = adata.obsm[X_label]
     var_unique_sorted = sorted(adata.obs[color].unique())
     legend_handles = []
@@ -42,9 +42,11 @@ def plot_umap(adata, color='', palette=None, ax=None, X_label='X_umap', on_data=
     ax.set_ylabel('')
     ax.set_xticks([])
     ax.set_yticks([])
+    
+    ax.margins(**margins)
 
     if legend and not on_data:
-        legend = ax.legend(handles=legend_handles, labels=var_unique_sorted, loc=(1.4,.3), 
+        legend = ax.legend(handles=legend_handles, labels=var_unique_sorted, loc=(1.1,.3), 
                            bbox_to_anchor=bbox_to_anchor, frameon=False, title=legend_title, 
                            title_fontproperties={'weight': 'bold', 'size': 9})
         legend.get_title().set_ha('left')
@@ -113,15 +115,3 @@ def basic_qc(adata, min_genes_per_cell = 200, max_genes_per_cell = 5000, min_cel
     print('shape after ', adata_f.shape)
     return adata_f
 
-def bulkify_adata(adata):
-    adata.obs['sum_by'] = '_' + adata.obs['cell_type'].astype(str) + '_' + adata.obs['donor_id'].astype(str) + '_' + adata.obs['age'].astype(str) 
-    adata.obs['sum_by'] = adata.obs['sum_by'].astype('category')
-    adata_bulk = sum_by(adata, 'sum_by', unique_mapping=False)
-    cell_count_df = adata.obs.groupby('sum_by').size().reset_index(name='cell_count')
-    adata_bulk.obs = adata_bulk.obs.merge(cell_count_df, on='sum_by')
-
-    
-    sc.pp.normalize_total(adata_bulk)
-    sc.pp.log1p(adata_bulk)
-
-    return adata_bulk

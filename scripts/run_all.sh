@@ -14,73 +14,81 @@ declare -A dependencies
 
 dependencies=(
     ["grn_inference"]="/home/jnourisa/projs/ongoing/ciim/src/workflows/grn_inference/script.py"
-    ["process_dataset"]="/home/jnourisa/projs/ongoing/ciim/src/process_dataset/script.py"
-    ["preprocess"]="/home/jnourisa/projs/ongoing/ciim/src/preprocess/script.py"
+    ["process_dataset"]="/home/jnourisa/projs/ongoing/ciim/src/process_dataset/preprocess/script.py"
+    ["alis_code"]="/home/jnourisa/projs/ongoing/ciim/src/process_dataset/ali/script.py"
+    ["bulkify_code"]="/home/jnourisa/projs/ongoing/ciim/src/process_dataset/bulkify/script.py"
+    
 )
-
 
 set -e
 # Define run flags
-RUN_PREPROCESS=false
+RUN_ALIS_CODE=false
 RUN_PROCESS_DATASET=true
-RUN_GRN=true
+RUN_PSEUDOBULK=true
+RUN_GRN=false
 
 
 # datasets to include
-datasets="data7_allTPs_jalil data1" 
-genders="M F"
+datasets="SLE " #data12 data7_allTPs_jalil data1 data13
 
-for gender in $genders; do
-        GENDER=$gender
-        for dataset in $datasets; do
-                DATASETS=($dataset) #('data1' 'data2' 'data3' 'data4' 'data5' 'data7' 'data8' 'data9' 'data10' 'data11') data7_allTPs_jalil
+for dataset in $datasets; do
+        DATASETS=($dataset) #('data1' 'data2' 'data3' 'data4' 'data5' 'data7' 'data8' 'data9' 'data10' 'data11') data7_allTPs_jalil
+        RAW_DATASET_FILE="/vol/projects/jnourisa/datasets/${dataset}_raw.h5ad"
+        PROCESSED_DATASET_FILE="/vol/projects/jnourisa/datasets/${dataset}_sc.h5ad" # tailors raw based on the given flags such as make, downsample, etc.
+        BULK_ALL="/vol/projects/jnourisa/datasets/${dataset}_bulk.h5ad"
+        BULK_MINOR_CELLTYPE="/vol/projects/jnourisa/datasets/${dataset}_bulk_minor.h5ad"
+        BULK_M="/vol/projects/jnourisa/datasets/${dataset}_bulk_M.h5ad"
+        BULK_F="/vol/projects/jnourisa/datasets/${dataset}_bulk_F.h5ad"
 
-                RAW_DATASET_FILE="/vol/projects/jnourisa/datasets/${dataset}_raw.h5ad"
 
-                # Define the command
-                if [ "$RUN_PREPROCESS" = true ]; then
-                        args="--datasets $datasets --raw_dataset_file $RAW_DATASET_FILE"
-                        cmd="python ${dependencies["preprocess"]} $args"
-                        echo "Running (bash): $cmd"
-                        $cmd
-                fi
-                if [ "$RUN_PROCESS_DATASET" = true ]; then
-                        # set the flags
-                        DOWNSAMPLE=false
-                        
+        # Define the command
+        if [ "$RUN_ALIS_CODE" = true ]; then
+                args="--datasets $datasets --raw_dataset_file $RAW_DATASET_FILE"
+                cmd="python ${dependencies["alis_code"]} $args"
+                echo "Running (bash): $cmd"
+                $cmd
+        fi
+        if [ "$RUN_PROCESS_DATASET" = true ]; then
+                # set the flags
+                DOWNSAMPLE=false
 
-                        if [ "$GENDER" = both ]; then
-                                PROCESSED_DATASET_FILE="/vol/projects/jnourisa/datasets/${dataset}_sc.h5ad" # tailors raw based on the given flags such as make, downsample, etc.
-                                DATASET_BULK_FILE="/vol/projects/jnourisa/datasets/${dataset}_bulk.h5ad" # tailors raw based on the given flags such as make, downsample, etc.
-                        else
-                                PROCESSED_DATASET_FILE="/vol/projects/jnourisa/datasets/${dataset}_sc_${GENDER}.h5ad" # tailors raw based on the given flags such as make, downsample, etc.
-                                DATASET_BULK_FILE="/vol/projects/jnourisa/datasets/${dataset}_bulk_${GENDER}.h5ad" # tailors raw based on the given flags such as make, downsample, etc.
-                        fi
+                args="--raw_dataset_file $RAW_DATASET_FILE \
+                        --processed_dataset_file $PROCESSED_DATASET_FILE "
+                [ "$DOWNSAMPLE" = true ] && args="${args} --downsample"
+                cmd="python ${dependencies["process_dataset"]} $args"
+                echo "Running (bash): $cmd"
+                $cmd
+        fi
+        if [ "$RUN_PSEUDOBULK" = true ]; then
+                # set the flags
+                DOWNSAMPLE=false
 
-                        args="--raw_dataset_file $RAW_DATASET_FILE \
-                                --processed_dataset_file $PROCESSED_DATASET_FILE \
-                                --bulk_dataset_file $DATASET_BULK_FILE \
-                                --gender $GENDER "
-                        [ "$DOWNSAMPLE" = true ] && args="${args} --downsample"
-                        cmd="python ${dependencies["process_dataset"]} $args"
-                        echo "Running (bash): $cmd"
-                        $cmd
-                fi
-                if [ "$RUN_GRN" = true ]; then
-                        FORCE=true # If true, overwrite the existing files in grns directory
-                        SAVE_GRNS_DIR="output/grns/${dataset}/"
-                        
-                        args="  
-                                --dataset_file $PROCESSED_DATASET_FILE \
-                                --save_grns_dir $SAVE_GRNS_DIR 
-                                "
+                args="--sc_dataset_file $PROCESSED_DATASET_FILE \
+                      --bulk_all $BULK_ALL \
+                      --bulk_minor_celltype $BULK_MINOR_CELLTYPE \
+                      --bulk_M $BULK_M \
+                      --bulk_F $BULK_F "
+                [ "$DOWNSAMPLE" = true ] && args="${args} --downsample"
+                cmd="python ${dependencies["bulkify_code"]} $args"
+                echo "Running (bash): $cmd"
+                $cmd
+        fi
+        if [ "$RUN_GRN" = true ]; then
+                FORCE=true # If true, overwrite the existing files in grns directory
+                SAVE_GRNS_DIR="output/grns/${dataset}/"
+                dataset_file="/vol/projects/jnourisa/datasets/${dataset}_sc_both.h5ad" # we use whole dataset for GRN inference
+                
+                args="  
+                        --dataset_file $PROCESSED_DATASET_FILE \
+                        --save_grns_dir $SAVE_GRNS_DIR 
+                        "
 
-                        [ "$FORCE" = true ] && args="${args} --force"
+                [ "$FORCE" = true ] && args="${args} --force"
 
-                        cmd="python ${dependencies["grn_inference"]} $args"
-                        echo "Running (bash): $cmd"
-                        $cmd
-                fi
+                cmd="python ${dependencies["grn_inference"]} $args"
+                echo "Running (bash): $cmd"
+                $cmd
+        fi
 
-        done
 done
+

@@ -174,7 +174,7 @@ def annotate_celltypes(adata):
 
 def trim_adata(adata):
     adata.var = adata.var[[]]
-    adata.obs = adata.obs[['orig.ident', 'donor_id', 'age', 'sex', 'batch_info', 'ct_major_published', 'Major_CT', 'Sub_CT']]
+    # adata.obs = adata.obs[['orig.ident', 'donor_id', 'age', 'sex', 'batch_info', 'ct_major_published', 'Major_CT', 'Sub_CT']]
     if hasattr(adata, 'uns'):
         del adata.uns
     if hasattr(adata, 'raw'):
@@ -185,7 +185,7 @@ def trim_adata(adata):
 def main(par):
     adata = merge_datasets(par)
     adata = qc_check(adata)
-    
+    adata.obs = adata.obs.astype('str')
     adata = annotate_celltypes(adata)
     adata = trim_adata(adata)
 

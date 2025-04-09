@@ -12,31 +12,28 @@ def check_signs(group):
     '''
     signs = group['slope'].apply(lambda x: 1 if x > 0 else -1 if x < 0 else 0)
     return signs.nunique() == 1
-def check_common(group):
-    '''
-    p value should be given for both dastaets
-    '''
-    return group['dataset'].nunique() == 2
 
-def wrapper_meta_analysis(stats_all):
-    stats_all = stats_all.groupby(['gene', 'cell_type']).filter(check_signs)
-    stats_all = stats_all.groupby(['gene', 'cell_type']).filter(check_common)
+def wrapper_meta_analysis(stats_all, type='max', min_degree=2, temp_dir='../output/tf_activation/'):
+    # stats_all = stats_all.groupby(['gene', 'cell_type']).filter(check_signs)
+    if min_degree is not None:
+        stats_all = stats_all.groupby(['gene', 'cell_type']).filter(lambda group: group['dataset'].nunique() >= min_degree)
+    
     cell_types = stats_all['cell_type'].unique()
     df_meta_store = []
     for cell_type in cell_types:
         df = stats_all[stats_all['cell_type'] == cell_type]
-        df['pvalue'] = df['pvalue']+1E-10 # to avoid 0 p value
+        df['pvalue'] = df['pvalue']+1E-20 # to avoid 0 p value
         
-        file_path = f'../output/tf_activation/stats_{cell_type}.csv'
+        file_path = f'{temp_dir}/stats_{cell_type}.csv'
         df.to_csv(file_path, index=False)
-        out_path = f'../output/tf_activation/stats_{cell_type}_meta.csv'
+        out_path = f'{temp_dir}/stats_{cell_type}_meta.csv'
 
         Rscript_file = f'{current_dir}/meta_analysis.R'
         # try:
         # Run the R script with the provided file paths
         try:
             result = subprocess.run(
-                ["Rscript", Rscript_file, file_path, out_path],
+                ["Rscript", Rscript_file, file_path, out_path, type],
                 check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
@@ -51,7 +48,6 @@ def wrapper_meta_analysis(stats_all):
         df_meta['cell_type'] = cell_type
         print(cell_type, df_meta.shape)
         df_meta_store.append(df_meta)
-    print(len(df_meta_store))
     if df_meta_store:
         df_meta_all = pd.concat(df_meta_store)
     else:

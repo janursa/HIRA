@@ -9,8 +9,11 @@ library(AnnotationHub)
 
 
 task_grn_inference_dir = 'task_grn_inference/'
+# par <- list(
+#   atac = paste0(task_grn_inference_dir, "resources/grn_benchmark/inference_data/op_atac.h5ad") 
+# )
 par <- list(
-  atac = paste0(task_grn_inference_dir, "resources/grn_benchmark/inference_data/op_atac.h5ad") 
+  atac = "resources/grn_benchmark/inference_data/op_atac.h5ad"
 )
 # --------------------- read the data and create a Seurat object
 adata <- anndata::read_h5ad(par$atac)

@@ -39,15 +39,7 @@ sys.path.insert(0, '../../')
 from task_grn_inference.src.utils.util import basic_qc, read_gmt
 
 
-def determine_indegree_centrality(net_o):
-    net = net_o.copy()
-    net['source_'] = net['source']
-    net['source'] = net['target']
-    net['target'] = net['source_']
-    net.drop('source_', axis=1, inplace=True)
 
-    c = determine_centrality(net, use_weight=False)
-    return c
 def determine_centrality(net, use_weight=True):
     """
     Determine centrality based on degree or weight.
