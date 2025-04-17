@@ -1,7 +1,38 @@
 import seaborn as sns
+from matplotlib.colors import LinearSegmentedColormap
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 
 
+surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All batches', 
+                    '34-':'35 below', '35_44':'35-45', '45_54':'45-55', '55_64':'55-65', '65_75':'65-75',
 
+                    'data1': 'C1: European', 'data7_allTPs_jalil': 'C2: European', 'data12': 'C3: European',
+                    'data13_Korean': 'C4: Korean', 'data13_Japanese': 'C4: Japanese',
+                    
+                    'SLE_Asian': 'C5: Asian',
+                    'SLE_Asian_normal': 'C5: Asian Healthy',
+                    'SLE_Asian_systemic lupus erythematosus': 'C5: Asian SLE',
+                    'SLE_European': 'C5: European',
+                    'SLE_European_normal': 'C5: European Healthy',
+                    'SLE_European_systemic lupus erythematosus': 'C5: European SLE',
+                    'Covid_50MHH': 'C6: Covid',
+                    'normal': 'Healthy',
+                    'systemic lupus erythematosus': 'SLE',
+                    'european': 'European',
+                    'asian': 'Asian',}
+
+
+cell_types = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
+
+
+# - datasets
+datasets_e = ['data1', 'data7_allTPs_jalil', 'data12', 'SLE_European']
+datasets_a = ['data13_Korean' , 'data13_Japanese', 'SLE_Asian']
+datasets_all = datasets_e + datasets_a
+
+# - palettes  
 colors_blind = [
           '#E69F00',  # Orange
           '#56B4E9',  # Sky Blue
@@ -10,34 +41,22 @@ colors_blind = [
           '#0072B2',  # Blue
           '#D55E00',  # Vermillion
           '#CC79A7']  # Reddish Purple
-
-major_cell_types = ['B', 'CD4T', 'CD8T', 'MONO', 'NK']
-palette_cell_types = {name: color for name, color in zip(major_cell_types, colors_blind[:len(major_cell_types)])}
-
-surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All batches', 
-                    '34-':'35 below', '35_44':'35-45', '45_54':'45-55', '55_64':'55-65', '65_75':'65-75',
-                    'data1': 'Cohort 1', 'data7_allTPs_jalil': 'Cohort 2',
-                    
-                    'data13': 'Cohort 3', 
-                    'data12': 'Cohort 4',
-                    'SLE': 'SLE Cohort',
-                    'normal': 'Control',
-                    'systemic lupus erythematosus': 'SLE'}
-
-datasets = ['data1', 'data7_allTPs_jalil']
-v_datasets = ['data13', 'data12']
-datasets_disease = ['SLE']
-datasets_healthy = datasets + v_datasets 
-datasets_all = datasets_healthy + datasets_disease
-# - color palette
-
-# palette_datasets = {'Discovery Cohort 1': '#56B4E9', 'Discovery Cohort 2':'#D55E00', 
-#                     'Validation Cohort 1':'#009E73', 'Validation Cohort 2':'#F0E442',
-#                     'SLE Cohort':'#CC79A7'}
-palette_datasets = {d:color for d, color in zip(datasets_all, ['#56B4E9', '#D55E00', '#009E73', '#F0E442', '#CC79A7', '#0072B2'])}
+set2_colors = sns.color_palette("Set2", n_colors=len(datasets_all))
+palette_datasets = {d: color for d, color in zip(datasets_all, set2_colors)}
+palette_datasets_pretty = {surrogate_names[d]: color for d, color in zip(datasets_all, set2_colors)}
 palette_datasets_pretty = {surrogate_names[d]:color for d, color in palette_datasets.items()}
-
 palette_regulation = {'Positive': '#009E73', 'Negative': 'lightcoral'}
+palette_cell_types = {name: color for name, color in zip(cell_types, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}
+palette_genders = {"Male": "#1f78b4", "Female": "#ff7f00", 'Both': '#999999'}
+palette_trend = {'Inconsistent': 'gray', 'Increase in aging': '#E52B50', 'Decrease in aging': '#B0BF1A'}
+cmap_trend = LinearSegmentedColormap.from_list(
+            "aging_map", [palette_trend['Decrease in aging'], '#F0F0F0', palette_trend['Increase in aging']], N=10
+        )
+palette_trend_2 = {key: palette_trend[key] for key in ['Increase in aging', 'Decrease in aging']}
+
+palette_disease_effect = {'Increase in disease': 'Orange', 'Decrease in disease': '#0072B2'}
+
+
 palette_sub_types = {
     'Tem_Trm_CD8': '#E69F00',    
     'Tem_Temra_CD8': '#56B4E9',   
@@ -51,24 +70,7 @@ palette_sub_types = {
     'Classic_MONO': 'lightcoral', 
     'NonClassic_MONO': '#ff7f00',     
 }
-
-
-palette_gender = {"Male": "#1f78b4", "Female": "#ff7f00"}
-palette_trend = {'Inconsistent': 'gray', 'Increase in aging': 'red', 'Decrease in aging': 'green'}
-palette_disease_effect = {'Increase in disease': 'Orange', 'Decrease in disease': '#0072B2'}
-
-palette_twoagegroups = {name:color for name, color in zip(["Below 50", "Above 50"], sns.color_palette("Set2", 2))}
-palette_trend_2 = {key: palette_trend[key] for key in ['Increase in aging', 'Decrease in aging']}
-cell_types = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
-
-# mapping_major_2_minor = {
-#         'MONO': ['Classic_MONO', 'NonClassic_MONO'],
-#         'CD8T': ['MAIT', 'Tcm_Naive_CD8', 'Tem_Temra_CD8', 'Tem_Trm_CD8'],
-#         'CD4T': ['Tcm_Naive_CD4', 'Tem_Effector_CD4', 'Treg'],
-#         'B': ['Memory_B', 'Naive_B'],
-#         'NK': ['CD16_NK', 'NK']
-#     }
-
+# - mapping
 mapping_major_2_minor = {
     'B': ['Naive_B', 'Aged_B', 'Memory_B', 'Plasma_B', 'Plasmablasts_B'],
     'CD4T': ['Tcm_Naive_CD4', 'Tem_Effector_CD4', 'Treg'],
@@ -76,7 +78,6 @@ mapping_major_2_minor = {
     'MONO': ['NonClassic_MONO', 'Classic_MONO'],
     'NK': ['CD16_NK', 'NK']
  }
-
 
 mapping_minor_2_major = {
     'Naive_B': 'B',

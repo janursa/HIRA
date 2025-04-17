@@ -15,11 +15,62 @@ import scipy
 from scipy.stats import spearmanr, linregress
 from pandas.api.types import CategoricalDtype
 
-from ciim.src.common import datasets_healthy, datasets_all ,surrogate_names, palette_datasets, palette_regulation, palette_twoagegroups, palette_trend, palette_datasets_pretty
+from ciim.src.common import colors_blind, datasets_all ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major
 from ciim.src.tf_activity.helper import adata_lambda, net_lambda, calculate_tf_activity, binarize_expression, read_tf_acts
 
 
 
+def plot_tf_act_validation(stats_df, col1='values_control', col2='values_case', col1_name='Control', col2_name='Condition', palette=None):
+    tfs = stats_df['tf'].unique()
+    print(len(tfs))
+    fig, axes = plt.subplots(1, len(tfs), figsize=(2 * len(tfs), 2.5))
+
+    if len(tfs) == 1:
+        axes = [axes]  # Ensure axes is iterable for a single TF
+    i = 0
+    for ax, tf in zip(axes, tfs):
+        plot_tf = stats_df[stats_df['tf'] == tf]
+
+        # Extract values
+        col1_values = np.fromstring(plot_tf[col1].values[0].strip('[]'), sep=' ')
+        col2_values = np.fromstring(plot_tf[col2].values[0].strip('[]'), sep=' ')
+        
+        spread = np.abs(col1_values.max() - col1_values.min())
+        # Prepare DataFrame for plotting
+        plot_df = pd.DataFrame({
+            "Activity": np.concatenate([col1_values, col2_values]),
+            "Condition": [col1_name] * len(col1_values) + [col2_name] * len(col2_values)
+        })
+
+        # Strip plot
+        sns.stripplot(x="Condition", y="Activity", data=plot_df, palette=palette, alpha=0.7, ax=ax)
+
+        # Annotate p-value with bracket
+        adj_p = plot_tf["p_value_adj"].values[0]
+        y_max = plot_df["Activity"].max()  # Highest point in the plot
+
+        # Coordinates for the bracket
+        x1, x2 = 0, 1  # X positions of Young and Old
+        y_bracket = y_max * 1.1
+        y_text = y_max * 1.15
+
+        # Draw the bracket
+        ax.plot([x1, x1, x2, x2], [y_bracket, y_bracket * 1.01, y_bracket * 1.01, y_bracket], lw=1, color="black")
+
+        # Add p-value text
+        ax.text((x1 + x2) / 2, y_text, f"p={adj_p:.3e}", ha="center", fontsize=10, color="black")
+
+        ax.set_title(tf)
+        
+        ax.set_ylabel("TF Activity" if ax == axes[0] else "")
+        ax.margins(y=0.2, x=0.2)
+        ax.set_yticks([])
+        # if i == 0:
+        #     ax.set_xlabel("Age group")
+        # i+=1
+        
+    plt.tight_layout()
+    # plt.show()
 def plot_targets_across_datasets(net, ax=None, show_legend=True):
     from matplotlib.colors import TwoSlopeNorm
     from matplotlib.patches import Patch
@@ -29,7 +80,7 @@ def plot_targets_across_datasets(net, ax=None, show_legend=True):
     cmap = plt.cm.RdYlGn  # Red = negative, Green = positive
     norm = TwoSlopeNorm(vmin=-.1, vcenter=0, vmax=.1)
 
-    net['dataset'] = net['dataset'].astype(CategoricalDtype(categories=datasets_healthy, ordered=True))
+    net['dataset'] = net['dataset'].astype(CategoricalDtype(categories=datasets_all, ordered=True))
     net['dataset'] = net['dataset'].apply(lambda name: surrogate_names.get(name, name))
     net['slope_direction'] = net['slope'].apply(lambda x: 'Increase in aging' if x > 0 else 'Decrease in aging')
 
@@ -65,6 +116,84 @@ def plot_targets_across_datasets(net, ax=None, show_legend=True):
         ]
 
         size_values = np.percentile(net['negative_log10_p_value'], [25, 50, 75])
+        size_legend = [
+            Line2D(
+                [0], [0],
+                marker='o',
+                color='none',  # no line
+                markeredgecolor='none',  # no border
+                markerfacecolor='gray',
+                label=f'-log10(p): {s:.1f}',
+                markersize=np.interp(s, [min(size_values), max(size_values)], [6, 14])
+            )
+            for s in size_values
+        ]
+
+        # Combine and place legends
+        spacer = Line2D([0], [0], linestyle="none", label="")
+
+        all_handles = style_legend + [spacer] + color_legend + [spacer] + size_legend
+
+        ax.legend(
+            handles=all_handles,
+            loc='center left',
+            bbox_to_anchor=(1.01, 0.5),
+            borderaxespad=0,
+            title='',
+            frameon=False
+        )
+
+    # Tweak layout
+    ax.set_ylabel('')
+    plt.xticks(rotation=90)
+    # plt.tight_layout()
+
+
+def plot_targets_across_datasets(net, ax=None, show_legend=True):
+    from matplotlib.colors import TwoSlopeNorm
+    from matplotlib.patches import Patch
+    from matplotlib.lines import Line2D
+    from pandas.api.types import CategoricalDtype
+    # Define a diverging palette: Set the normalization to center at 0
+    cmap = plt.cm.RdYlGn  # Red = negative, Green = positive
+    norm = TwoSlopeNorm(vmin=-.1, vcenter=0, vmax=.1)
+
+    net['dataset'] = net['dataset'].astype(CategoricalDtype(categories=datasets_all, ordered=True))
+    net['dataset'] = net['dataset'].apply(lambda name: surrogate_names.get(name, name))
+    net['slope_direction'] = net['slope'].apply(lambda x: 'Increase in aging' if x > 0 else 'Decrease in aging')
+
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 3))
+    # Sort by target alphabetically
+    net = net.sort_values(by='target')
+    sns.scatterplot(
+        data=net,
+        x='target',
+        y='dataset',
+        hue='weight',
+        palette=cmap,
+        hue_norm=norm,
+        style='slope_direction',
+        markers={'Increase in aging': '^', 'Decrease in aging': 'v'},
+        ax=ax,
+        size='neg_log10_adj_pval',
+        sizes=(20, 200),
+        legend=False  # Suppress default legend
+        )
+    # Custom legend handles
+    if show_legend:
+        style_legend = [
+            Line2D([0], [0], marker='^', color='w', label='Increase in aging', markerfacecolor='gray', markersize=8),
+            Line2D([0], [0], marker='v', color='w', label='Decrease in aging', markerfacecolor='gray', markersize=8)
+        ]
+
+        weight_values = [net['weight'].min(), 0, net['weight'].max()]
+        color_legend = [
+            Line2D([0], [0], marker='o', color='w', label=f'Regulation: {w:.2f}',
+                markerfacecolor=cmap(norm(w)), markersize=10) for w in weight_values
+        ]
+
+        size_values = np.percentile(net['neg_log10_adj_pval'], [25, 50, 75])
         size_legend = [
             Line2D(
                 [0], [0],
@@ -166,8 +295,8 @@ def binarize_age(obs):
     age_groups = ['45-', '45+']  
     obs['age_group'] = pd.cut(obs['age'], bins=bins, labels=age_groups, right=False)
     return obs
-def plot_trend_tfs(cell_type, tfs, dataset='data1', ax=None):
-    adata = adata_lambda(dataset)
+def plot_trend_tfs(cell_type, tfs, type='bulk', dataset='data1', ax=None):
+    adata = adata_lambda(dataset, type=type)
     adata = adata[adata.obs['cell_type'] == cell_type]
     nets = net_lambda(dataset, cell_type)
     tf_acts = calculate_tf_activity(adata, nets)
@@ -243,6 +372,138 @@ def wrapper_heatmap_tf_d_v(cell_type, tfs, cut_off=50, figsize=(4, 4), cmap="mag
         ax.set_xlabel('')
         ax.set_title(f"V {i+1}", pad=10)
 
+def plot_overall_heatmap(stats_all, 
+                        first_col='cell_type', first_col_palette=None,
+                        second_col='dataset', second_col_palette=None,
+                        figsize=(6, 8), 
+                        sig_dots_y_offset=.8,
+                        map_names={},
+                        bbox_to_anchor_col2=(1.1, .75)
+                        ):
+    from ciim.src.common import palette_trend_2
+    from matplotlib.colors import ListedColormap, BoundaryNorm
+    from scipy.cluster.hierarchy import linkage
+    from matplotlib.patches import Patch
+
+
+    # format the data
+    first_col_unique_values = stats_all[first_col].cat.categories
+    second_col_unique_values = stats_all[second_col].cat.categories
+    
+    stats_all = stats_all[stats_all[second_col].isin(second_col_unique_values)]
+    stats_all['trend_int'] = stats_all['slope'].map(lambda value: 1 if value > 0 else (-1 if value < 0 else 0))
+    multi_index = pd.MultiIndex.from_product([first_col_unique_values, second_col_unique_values], names=[first_col, second_col])
+    pivot_df = stats_all.pivot(index="tf", columns=[first_col, second_col], values="trend_int")
+    df_plot = pivot_df.reindex(columns=multi_index).fillna(0)
+
+    # - format the is_sig if needed
+    if 'is_significant' in stats_all.columns:
+        sig_df = stats_all.pivot(index="tf", columns=[first_col, second_col], values="is_significant")
+        sig_df = sig_df.reindex(columns=multi_index).fillna(0)
+    else:
+        sig_df = None
+
+    # prepare for plot
+    col_colors = pd.DataFrame({
+        map_names.get(second_col, second_col): [second_col_palette.get(analysis, "gray") for _, analysis in df_plot.columns],
+        map_names.get(first_col, first_col): [first_col_palette.get(ct, "lightgray") for ct, _ in df_plot.columns]
+    }, index=df_plot.columns)
+
+    row_linkage = linkage(df_plot, method='ward')
+    # print(palette_trend)
+    cmap = ListedColormap([palette_trend['Decrease in aging'], 'white', palette_trend['Increase in aging']])
+    bounds = [-1.5, -0.5, 0.5, 1.5]
+    norm = BoundaryNorm(bounds, cmap.N)
+
+    g = sns.clustermap(
+        df_plot,
+        row_linkage=row_linkage,
+        col_cluster=False,
+        row_cluster=True,
+        cmap=cmap,
+        norm=norm,
+        col_colors=col_colors,
+        linewidths=1,
+        alpha=.8,
+        linecolor=None,
+        figsize=figsize,
+    )
+
+    g.cax.set_visible(False)
+    g.ax_heatmap.set_yticks([])
+    g.ax_heatmap.set_ylabel('', fontsize=10, labelpad=5)
+    
+    g.ax_heatmap.set_xticks([])
+    g.ax_heatmap.set_xlabel('', fontsize=12, labelpad=15)
+
+    # - add sig if given
+    if sig_df is not None:
+        row_order = g.dendrogram_row.reordered_ind
+        col_order = list(df_plot.columns)  # Column order stays the same since col_cluster=False
+
+        cell_height = g.ax_heatmap.get_position().height / len(row_order)
+        cell_width = g.ax_heatmap.get_position().width / len(col_order)
+        # Loop through and add asterisks for significant values
+        for i, row_idx in enumerate(row_order):
+            for j, col in enumerate(col_order):
+                # Extract cell_type and gender from col (tuple format)
+                col1, col2 = col
+                is_significant = sig_df.loc[sig_df.index[row_idx], (col1, col2)]
+                
+                # Check if the value is significant
+                if is_significant:
+                    y_coord = i - sig_dots_y_offset
+                    x_coord = (j + 0.5) 
+                    
+                    g.ax_heatmap.text(
+                        x_coord, y_coord,
+                        '.',
+                        color='black', ha='center', va='center', fontsize=8, fontweight='bold'
+                    )
+    # Legends
+    if True:
+        datasets_legend = [Patch(color=second_col_palette[label], label=map_names.get(label, label)) for label in second_col_unique_values]
+        celltype_legend = [Patch(color=first_col_palette[label], label=map_names.get(label, label)) for label in first_col_unique_values]
+        trend_legend = [Patch(color=color, label=label, alpha=.8) for label, color in palette_trend_2.items()]
+        legend_datasets = g.ax_heatmap.legend(
+            handles=datasets_legend,
+            title=map_names.get(second_col, second_col),
+            bbox_to_anchor=bbox_to_anchor_col2, 
+            loc='upper left',
+            fontsize=9,
+            title_fontsize=9,
+            frameon=False
+        )
+        legend_datasets.get_title().set_fontweight('bold')  
+
+        legend_celltypes = g.ax_heatmap.legend(
+            handles=celltype_legend,
+            title=map_names.get(first_col, first_col),
+            bbox_to_anchor=(1.1, 0.4),
+            loc='upper left',
+            fontsize=9,
+            title_fontsize=9,
+            frameon=False
+        )
+        legend_celltypes.get_title().set_fontweight('bold') 
+
+        legend_trend = g.ax_heatmap.legend(
+            handles=trend_legend,
+            title="Trend",
+            bbox_to_anchor=(1.1, 1),
+            loc='upper left',
+            fontsize=9,
+            title_fontsize=9,
+            frameon=False
+        )
+        legend_trend.get_title().set_fontweight('bold')  
+
+
+        g.ax_heatmap.add_artist(legend_celltypes)
+        g.ax_heatmap.add_artist(legend_datasets) 
+    # Tighten layout to reduce whitespace
+    # plt.subplots_adjust(top=1.1)
+    # plt.show()
 
 def tf_gene_interaction_legend():
     # - plot the legend
@@ -291,8 +552,7 @@ def tf_gene_interaction_legend():
     ax.add_artist(size_legend_handle)
     return fig
 
-
-def plot_joint_scatter(stats_all, col='cell_type', vars=['CD4T', 'CD8T'], annotate=True):
+def plot_joint_scatter(stats_all, col='cell_type', vars=['CD4T', 'CD8T'], annotate=True, figsize=(2.5, 3), ax=None):
     # - plot
     xy_vars = [f'{v}_pval' for v in vars]
     trend_vars = [f'{v}_trend' for v in vars]
@@ -306,8 +566,8 @@ def plot_joint_scatter(stats_all, col='cell_type', vars=['CD4T', 'CD8T'], annota
                             lambda x: 'Increase in aging' if (x[trend_vars[0]]=='Increase in aging' and x[trend_vars[1]]=='Increase in aging') else ('Decrease in aging' if (x[trend_vars[0]]=='Decrease in aging' and x[trend_vars[1]]=='Decrease in aging') else 'Inconsistent') , axis=1)
     stats_all_table['trend'] = stats_all_table['trend'].astype(CategoricalDtype(categories=['Increase in aging', 'Decrease in aging', 'Inconsistent'], ordered=True))
 
-
-    fig, ax = plt.subplots(1, 1, figsize=(3, 3))
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
     scatter = sns.scatterplot(
         data=stats_all_table, 
         x=xy_vars[0], y=xy_vars[1], 
@@ -321,23 +581,39 @@ def plot_joint_scatter(stats_all, col='cell_type', vars=['CD4T', 'CD8T'], annota
     )
 
     # Improve labels and colorbar
-    ax.set_xlabel(f'-log10 adj p-value ({vars[0]})')
-    ax.set_ylabel(f'-log10 adj p-value ({vars[1]})')
-    ax.axvline(x=1.4, color='b', linestyle='--')
-    ax.axhline(y=1.4, color='b', linestyle='--')
+    ax.set_xlabel(vars[0] + '\n' + r'($- \log_{10} p$)')
+    ax.set_ylabel(vars[1] + '\n' + r'($- \log_{10} p$)')
+    ax.axvline(x=1.4, color=colors_blind[0], linestyle='--')
+    ax.axhline(y=1.4, color=colors_blind[0], linestyle='--')
 
     ax.margins(x=0.1, y=0.1)
     ax.spines[['right', 'top']].set_visible(False)
-    ax.legend(loc=(1.05, 0.5), title='Trend', frameon=False)
+    ax.legend(loc=(1.1, 0.2), title='Trend', frameon=False)
+    
     if annotate:
-        high_tf_points = stats_all_table[(stats_all_table[xy_vars[0]] > stats_all_table[xy_vars[0]].quantile(.95))&
-                                                stats_all_table[xy_vars[1]] > stats_all_table[xy_vars[1]].quantile(0)
+        high_tf_points = stats_all_table[(stats_all_table[xy_vars[0]] > stats_all_table[xy_vars[0]].quantile(.2))&
+                                                (stats_all_table[xy_vars[1]] > stats_all_table[xy_vars[1]].quantile(.2))
                                             ]
+        
+        x_offset = 10*np.asarray([-1, -1, 0, -1,-.4, .5, 1, 0, 0, 0, 0, 0])
+        y_offset = 10*np.asarray([ 2,  2, 2, -2, -2, -1, 1, 0, 0, 0, 0, 0])
+
+        ii = 0
         for idx, row in high_tf_points.iterrows():
-            ax.text(
-                row[xy_vars[0]], row[xy_vars[1]], row['tf'], 
-                color='black', fontsize=8, ha='right', va='bottom'
+            
+            # Adjust the annotation position slightly away from the point
+            ax.annotate(
+                row['tf'], 
+                xy=(row[xy_vars[0]], row[xy_vars[1]]), 
+                xytext=(row[xy_vars[0]]  + x_offset[ii], row[xy_vars[1]] + y_offset[ii]),  # Adjust this value for distance
+                textcoords='data',
+                color='black', 
+                fontsize=8, 
+                ha='left', va='top',
+                arrowprops=dict(arrowstyle="->", color='black', lw=0.5)  # Arrow pointing to the point
             )
+            ii += 1
+    # plt.show()
 def cluster_trends(adata):
     
     # Ensure consistent formatting
@@ -363,21 +639,22 @@ def cluster_trends(adata):
         mean_expr = mean_expr.sort_values('cluster').drop(columns=['cluster'])
     mean_expr = mean_expr[age_group_order]  # Keep original order
     return mean_expr
-def plot_net_nx(net, figsize=(6, 6)):
+def plot_net_nx(net, figsize=(6, 6), source_s=1200, target_s=1200, edge_s=2, font_size = 16):
     import networkx as nx
 
     G = nx.DiGraph()
 
-    # Add nodes and edges
-    for source, target, weight in net.values:
-        G.add_edge(source, target, weight=weight)
-    
+
     sources = net['source'].unique()
     targets = net['target'].unique()
     targets = np.setdiff1d(targets, sources)
 
+    # Add nodes and edges
+    for source, target, weight in zip(net['source'], net['target'], net['weight']):
+        G.add_edge(source, target, weight=weight)
+
     # Define node sizes
-    node_size = {node: 1600 if node in sources else 200 for node in G.nodes()}
+    node_size = {node: source_s if node in sources else target_s for node in G.nodes()}
 
     # Define edge colors based on regulation
     edge_colors = [
@@ -392,7 +669,6 @@ def plot_net_nx(net, figsize=(6, 6)):
     # pos = nx.spring_layout(G, k=20, iterations=100, seed=42)
     pos = nx.circular_layout(G)
     fig, ax = plt.subplots(figsize=figsize)
-    # nx.draw(G, pos, with_labels=True, edgecolors='black', ax=ax)
     # Draw source nodes (circular)
     nx.draw_networkx_nodes(
         G, pos, 
@@ -432,7 +708,7 @@ def plot_net_nx(net, figsize=(6, 6)):
     )
 
     # --- Draw labels
-    font_size = 16
+    
     nx.draw_networkx_labels(
         G, pos,
         labels={n: n for n in sources},
@@ -543,33 +819,33 @@ def plot_net_nx_consensus(net, figsize=(6, 6)):
     )
 
     plt.axis("off")
+    if False:
+        # ----------- Draw supporting evidence as stacked bars on edges
+        for (source, target, data) in G.edges(data=True):
+            # Compute midpoint of the edge
+            x, y = np.mean([pos[source], pos[target]], axis=0)
 
-    # ----------- Draw supporting evidence as stacked bars on edges
-    for (source, target, data) in G.edges(data=True):
-        # Compute midpoint of the edge
-        x, y = np.mean([pos[source], pos[target]], axis=0)
+            # Offset downward from edge (along y-axis)
+            offset_y = -0.05  # move below the edge line
 
-        # Offset downward from edge (along y-axis)
-        offset_y = -0.05  # move below the edge line
+            datasets = data['datasets']
+            vertical_spacing = 0.06
+            box_height = 0.05
+            box_width = 0.2
 
-        datasets = data['datasets']
-        vertical_spacing = 0.06
-        box_height = 0.05
-        box_width = 0.2
-
-        for i, dataset in enumerate(datasets):
-            ax.add_patch(
-                plt.Rectangle(
-                    (x - box_width / 2, y + offset_y - i * vertical_spacing),  # center horizontally
-                    box_width,
-                    box_height,
-                    color=palette_datasets[dataset],
-                    alpha=0.9
+            for i, dataset in enumerate(datasets):
+                ax.add_patch(
+                    plt.Rectangle(
+                        (x - box_width / 2, y + offset_y - i * vertical_spacing),  # center horizontally
+                        box_width,
+                        box_height,
+                        color=palette_datasets[dataset],
+                        alpha=0.9
+                    )
                 )
-            )
-    # Show legend
-    handles = [plt.Line2D([0], [0], color=color, lw=4) for color in palette_datasets_pretty.values()]
-    plt.legend(handles, palette_datasets_pretty.keys(), title="", loc=(1.05, .3), frameon=False, fontsize=14)
+        # Show legend
+        handles = [plt.Line2D([0], [0], color=color, lw=4) for color in palette_datasets_pretty.values()]
+        plt.legend(handles, palette_datasets_pretty.keys(), title="", loc=(1.05, .3), frameon=False, fontsize=14)
 
 
 
@@ -598,55 +874,124 @@ def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", 
     ax.set_xlabel("Age Group")
     ax.set_ylabel(y_label)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
+def heamap_plot_minor_cell_types(stats_all, palette, map_names, main_col='major_cell_type', minor_col='cell_type' ,figsize=(6, 8), sig_dots_y_offset = 0.5):
+    from ciim.src.common import palette_trend_2
+    from matplotlib.colors import ListedColormap, BoundaryNorm
+    from scipy.cluster.hierarchy import linkage
+    from matplotlib.patches import Patch
+
+    major_cell_types = stats_all[main_col].cat.categories
+    cell_types = stats_all[minor_col].cat.categories
+
+    stats_all=stats_all[stats_all[minor_col].isin(cell_types)]
     
+    stats_all['trend_int'] = stats_all['slope'].map(lambda value: 1 if value > 0 else (-1 if value < 0 else 0))
+    pivot_df = stats_all.pivot(index='tf', columns=minor_col, values='trend_int').fillna(0)
+    pivot_df = pivot_df.reindex(columns=cell_types)
+    # pivot_df = pivot_df[cell_types]
 
-def wrapper_plot_targets(net_dict):
-    for i, cell_type in enumerate(net_dict.keys()):
-    # for i, cell_type in enumerate(['CD8T', 'CD4T', 'NK']):
-        net = net_dict[cell_type]
-        # - remove those with conflicting slopes across datasets
-        slope_signs = net.pivot(index='target', columns='dataset', values='slope').apply(np.sign)
-        mask = slope_signs.sum(axis=1).abs() == len(datasets_healthy)
-        consistent_targets = slope_signs[mask].index
-        net = net[net['target'].isin(consistent_targets)]
-        # - keep those that are at least in three datasets 
-        top_targets = net.groupby(['target'])['dataset'].nunique().sort_values(ascending=False)
-        top_targets = top_targets[top_targets==len(datasets_healthy)].head(10).index
-        
-        if True: # network plot
-            net = net[net['target'].isin(top_targets)]
-            plot_net_nx_consensus(net, figsize=(5,4))
-            # plt.title(cell_type, fontsize=14, fontweight='bold')
-            plt.tight_layout()
-            plt.show()
+    # - color map
+    cols_names = pivot_df.columns.map(lambda name: mapping_minor_2_major.get(name, name))
+    col_colors = [palette[name] for name in cols_names]
 
-        if True: # target trend plot
-            # - plot target gene expression trend    
-            fig, axes = plt.subplots(1, 4, figsize=(20, .4*len(top_targets)), sharey=False)
-            for i, (dataset) in enumerate(datasets_healthy):
-                # - plot target gene expression trend    
-                ax = axes[i]
-                mean_expr = binarize_expression(cell_type, top_targets, dataset=dataset)
-                if i == 0:
-                    from sklearn.cluster import KMeans
-                    if len(mean_expr) > 2:
-                        kmeans = KMeans(n_clusters=2, random_state=42, n_init=10)
-                        clusters = kmeans.fit_predict(mean_expr)
-                        mean_expr['cluster'] = clusters
-                        mean_expr = mean_expr.sort_values('cluster').drop(columns=['cluster'])
-                    ordered_targets = mean_expr.index
-                else:
-                    mean_expr = mean_expr.loc[ordered_targets]
-                heatplot_age_trend(mean_expr, cmap='viridis', cbar_title="Gene expression", y_label="Targets", ax=ax)
-                ax.set_title(surrogate_names[dataset])
-            plt.tight_layout()
-            plt.suptitle(cell_type, fontsize=12, fontweight='bold', y=1.05)
-            plt.show()
-def plot_tfs_trend_across_datasets(cell_type, tf, datasets=['data1'], ax=None, show_cbar=True, tf_acts_dir='output/tf_activation/tf_acts/'):
+    # print(palette_trend)
+    cmap = ListedColormap([palette_trend['Decrease in aging'], 'white', palette_trend['Increase in aging']])
+    bounds = [-1.5, -0.5, 0.5, 1.5]
+    norm = BoundaryNorm(bounds, cmap.N)
+
+    g = sns.clustermap(
+        pivot_df,
+        row_linkage=linkage(pivot_df, method='ward'),
+        col_cluster=False,
+        row_cluster=True,
+        cmap=cmap,
+        norm=norm,
+        col_colors=col_colors,
+        linewidths=1,
+        alpha=.8,
+        linecolor=None,
+        figsize=figsize,
+    )
+
+    g.cax.set_visible(False)
+    g.ax_heatmap.set_yticks([])
+    g.ax_heatmap.set_ylabel('', fontsize=10, labelpad=5)
+    new_labels = [label.get_text().replace('_', ' ') for label in g.ax_heatmap.get_xticklabels()]
+    g.ax_heatmap.set_xticklabels(new_labels, rotation=90)  # or any angle you prefer
+
+    g.ax_heatmap.set_xlabel('', fontsize=12, labelpad=15)
+
+
+    # - format the is_sig if needed
+    if 'is_significant' in stats_all.columns:
+        sig_df = stats_all.pivot(index="tf", columns='cell_type', values="is_significant").fillna(0)
+        sig_df = sig_df.reindex(columns=cell_types)
+    else:
+        sig_df = None
+    if sig_df is not None:
+            row_order = g.dendrogram_row.reordered_ind
+            col_order = list(cell_types)  # Column order stays the same since col_cluster=False
+
+            cell_height = g.ax_heatmap.get_position().height / len(row_order)
+            cell_width = g.ax_heatmap.get_position().width / len(col_order)
+            # Loop through and add asterisks for significant values
+            for i, row_idx in enumerate(row_order):
+                for j, col in enumerate(col_order):
+                    # Extract cell_type and gender from col (tuple format)
+                    is_significant = sig_df.loc[sig_df.index[row_idx], col]
+                    
+                    # Check if the value is significant
+                    if is_significant:
+                        y_coord = i - sig_dots_y_offset
+                        x_coord = (j + 0.5) 
+                        
+                        g.ax_heatmap.text(
+                            x_coord, y_coord,
+                            '.',
+                            color='black', ha='center', va='center', fontsize=8, fontweight='bold'
+                        )
+    if True:
+        celltype_legend = [Patch(color=palette[label], label=map_names.get(label, label)) for label in major_cell_types]
+        trend_legend = [Patch(color=color, label=label, alpha=.8) for label, color in palette_trend_2.items()]
+
+        legend_celltypes = g.ax_heatmap.legend(
+            handles=celltype_legend,
+            title=map_names.get(main_col, main_col),
+            bbox_to_anchor=(1.1, 0.6),
+            loc='upper left',
+            fontsize=9,
+            title_fontsize=9,
+            frameon=False
+        )
+        legend_celltypes.get_title().set_fontweight('bold') 
+
+        legend_trend = g.ax_heatmap.legend(
+            handles=trend_legend,
+            title="Trend",
+            bbox_to_anchor=(1.1, 1),
+            loc='upper left',
+            fontsize=9,
+            title_fontsize=9,
+            frameon=False
+        )
+        legend_trend.get_title().set_fontweight('bold')  
+
+
+        g.ax_heatmap.add_artist(legend_celltypes)
+
+
+
+def plot_tfs_trend_across_datasets(cell_type, tf, datasets=['data1'], ax=None, show_cbar=True, type='bulk', tf_acts_dir='output/tf_activation/tf_acts/'):
+    # from ciim.src.tf_activity.helper import determine_std
     mean_expr_store = []
     for dataset in datasets:
-        tf_acts = read_tf_acts(dataset,cell_type,  type='bulk', read_dir=tf_acts_dir)
+        tf_acts = read_tf_acts(dataset, cell_type, type=type, read_dir=tf_acts_dir)
+        if type == 'sc':
+            print('calculating std')
+            tf_acts = determine_std(tf_acts)
+
         tf_acts = tf_acts[:, tf_acts.var_names==tf]
+        
 
         expr = tf_acts.to_df()
         expr = expr.merge(tf_acts.obs[['age']], left_index=True, right_index=True, how='left').set_index('age')
@@ -654,6 +999,10 @@ def plot_tfs_trend_across_datasets(cell_type, tf, datasets=['data1'], ax=None, s
         expr['age_bin'] = (expr.index.astype(int) // 5) * 5
         expr = expr.groupby('age_bin').mean()
         expr = expr.T
+
+        if expr.shape[0] == 0:
+            print(f'TF {tf} not found in {dataset}: {cell_type}')
+            continue
 
         # Normalize expression
         min_vals = expr.min(axis=1)
@@ -664,6 +1013,8 @@ def plot_tfs_trend_across_datasets(cell_type, tf, datasets=['data1'], ax=None, s
         expr.index = [dataset]
         
         mean_expr_store.append(expr)
+    if len(mean_expr_store) == 0:
+        return
     mean_expr = pd.concat(mean_expr_store)
 
     mean_expr.index = mean_expr.index.map(surrogate_names)
@@ -674,6 +1025,36 @@ def plot_tfs_trend_across_datasets(cell_type, tf, datasets=['data1'], ax=None, s
 
     sorted_tfs = mean_expr.index
     return sorted_tfs
+def plot_net_degrees(net, top_n=10):
+    plt.rcParams.update({'font.size': 10})
+    out_degree = net.groupby("source").size().sort_values(ascending=False).head(top_n).reset_index(name="out_degree")
+    in_degree = net.groupby("target").size().sort_values(ascending=False).head(top_n).reset_index(name="in_degree")
+
+    # Set up the figure
+    fig, axes = plt.subplots(1, 2, figsize=(4, 2.5))
+
+    # Define color gradients
+    out_colors = sns.color_palette("Blues", len(out_degree))[::-1]
+    in_colors = sns.color_palette("Greens", len(in_degree))[::-1]
+
+    # Plot out-degree
+    sns.barplot(data=out_degree, x='out_degree', y='source', ax=axes[0], palette=out_colors)
+    axes[0].set_title('TFs', pad=10, fontweight='bold', fontsize=10)
+    axes[0].set_xlabel('Target genes')
+    axes[0].set_ylabel('')
+    axes[0].margins(y=0.05, x=.1)
+    axes[0].spines[['top', 'right']].set_visible(False)
+
+    # Plot in-degree
+    sns.barplot(data=in_degree, x='in_degree', y='target', ax=axes[1], palette=in_colors)
+    axes[1].set_title('Target genes', pad=10, fontweight='bold', fontsize=10)
+    axes[1].set_xlabel('TFs')
+    axes[1].set_ylabel('')
+    axes[1].margins(y=0.05, x=.1)
+    axes[1].spines[['top', 'right']].set_visible(False)
+
+
+    plt.tight_layout()
 class DotPlotTFtarget:
     trend_palette = {'Increase in aging': 'green', 'Decrease in aging': 'red', 'Non-Sig': 'gray', 'Inconsistent': 'yellow'}
   
@@ -872,88 +1253,8 @@ class DotPlotTFtarget:
 #     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
 #     # ax.spines[['right', 'top']].set_visible(False)
 #     # ax.legend(title="Trend", loc=(1.1, .8), frameon=False)
-def compare_nets_plot(datasets, cell_types, to_show='source'):
-    """Compare and plot GRNs for each cell type between two datasets.
 
-    Parameters:
-    - datasets: list containing two datasets.
-    - cell_types: list of cell types to analyze.
 
-    Returns:
-    - None (displays plots).
-    """
-    net_store = []
-    for cell_type in cell_types:
-        
-        for dataset in datasets:
-            net = net_lambda(dataset, cell_type)
-            net['link'] = net['source'] + '_' + net['target']
-            net['cell_type'] = cell_type
-            net['dataset'] = dataset
-            net_store.append(net)
-    net_all = pd.concat(net_store)
-
-    from task_grn_inference.src.exp_analysis.helper import plot_interactions, create_interaction_df
-
-    for cell_type in cell_types:
-        nets = net_all[net_all['cell_type']==cell_type]
-        # edges
-        df_dict = nets.groupby(['dataset'])[to_show].apply(list).to_dict()
-
-        interaction_df = create_interaction_df(df_dict)
-        aa = plot_interactions(interaction_df, min_subset_size=1)
-        plt.title(cell_type)
-
-def plot_tf_act_validation(stats_df):
-    tfs = stats_df['tf'].unique()
-    fig, axes = plt.subplots(1, len(tfs), figsize=(2 * len(tfs), 2.5))
-
-    if len(tfs) == 1:
-        axes = [axes]  # Ensure axes is iterable for a single TF
-    i = 0
-    for ax, tf in zip(axes, tfs):
-        plot_tf = stats_df[stats_df['tf'] == tf]
-
-        # Extract values
-        values_young = np.concatenate(plot_tf['values_young'].values)
-        spread = np.abs(values_young.max() - values_young.min())
-        values_old = np.concatenate(plot_tf['values_old'].values)
-
-        # Prepare DataFrame for plotting
-        plot_df = pd.DataFrame({
-            "Activity": np.concatenate([values_young, values_old]),
-            "Age Group": ["Below 50"] * len(values_young) + ["Above 50"] * len(values_old)
-        })
-
-        # Strip plot
-        sns.stripplot(x="Age Group", y="Activity", data=plot_df, palette=palette_twoagegroups, alpha=0.7, ax=ax)
-
-        # Annotate p-value with bracket
-        adj_p = plot_tf["adj_p_value"].values[0]
-        y_max = plot_df["Activity"].max()  # Highest point in the plot
-
-        # Coordinates for the bracket
-        x1, x2 = 0, 1  # X positions of Young and Old
-        y_bracket = y_max * 1.1
-        y_text = y_max * 1.15
-
-        # Draw the bracket
-        ax.plot([x1, x1, x2, x2], [y_bracket, y_bracket * 1.01, y_bracket * 1.01, y_bracket], lw=1, color="black")
-
-        # Add p-value text
-        ax.text((x1 + x2) / 2, y_text, f"p={adj_p:.3e}", ha="center", fontsize=10, color="black")
-
-        ax.set_title(tf)
-        
-        ax.set_ylabel("TF Activity" if ax == axes[0] else "")
-        ax.margins(y=0.2, x=0.2)
-        ax.set_yticks([])
-        if i == 0:
-            ax.set_xlabel("Age group")
-        i+=1
-        
-    plt.tight_layout()
-    plt.show()
 def plot_trends(top_tfs, datasets, data_dict, palette, cell_type, surrogate_names={}, stats_df=None, is_expression=False, y_label='TF Activity score'):
     """
     Plots transcription factor (TF) activity/expression trends across datasets.

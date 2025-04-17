@@ -13,15 +13,30 @@ def check_signs(group):
     signs = group['slope'].apply(lambda x: 1 if x > 0 else -1 if x < 0 else 0)
     return signs.nunique() == 1
 
-def wrapper_meta_analysis(stats_all, type='max', min_degree=2, temp_dir='../output/tf_activation/'):
-    # stats_all = stats_all.groupby(['gene', 'cell_type']).filter(check_signs)
-    if min_degree is not None:
-        stats_all = stats_all.groupby(['gene', 'cell_type']).filter(lambda group: group['dataset'].nunique() >= min_degree)
+def run_meta_analysis(stats_all, meta_analysis_type='max', min_degree=2, temp_dir='../output/tf_activation/'):
+    # ---------- prepare
     
-    cell_types = stats_all['cell_type'].unique()
+    assert stats_all.shape[0]> 0, 'No stats for meta analysis'
+    
+    print('Meta analysis...')
+    stats_all_c = stats_all.copy()
+    stats_all_c.rename(columns={'p_value': 'pvalue'}, inplace=True)
+    
+    original_name = 'gene'
+    if 'tf' in stats_all_c.columns:
+        stats_all_c.rename(columns={'tf': 'gene'}, inplace=True)
+        original_name = 'tf'
+    if 'target' in stats_all_c.columns:
+        stats_all_c.rename(columns={'target': 'gene'}, inplace=True)
+        original_name = 'target'
+    # -------- actual run
+    if min_degree is not None:
+        stats_all_c = stats_all_c.groupby(['gene', 'cell_type']).filter(lambda group: group['dataset'].nunique() >= min_degree)
+    
+    cell_types = stats_all_c['cell_type'].unique()
     df_meta_store = []
     for cell_type in cell_types:
-        df = stats_all[stats_all['cell_type'] == cell_type]
+        df = stats_all_c[stats_all_c['cell_type'] == cell_type]
         df['pvalue'] = df['pvalue']+1E-20 # to avoid 0 p value
         
         file_path = f'{temp_dir}/stats_{cell_type}.csv'
@@ -33,7 +48,7 @@ def wrapper_meta_analysis(stats_all, type='max', min_degree=2, temp_dir='../outp
         # Run the R script with the provided file paths
         try:
             result = subprocess.run(
-                ["Rscript", Rscript_file, file_path, out_path, type],
+                ["Rscript", Rscript_file, file_path, out_path, meta_analysis_type],
                 check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
@@ -52,4 +67,12 @@ def wrapper_meta_analysis(stats_all, type='max', min_degree=2, temp_dir='../outp
         df_meta_all = pd.concat(df_meta_store)
     else:
         df_meta_all = pd.DataFrame() 
-    return df_meta_all.reset_index(drop=True)
+    
+    df_meta_all.reset_index(drop=True)
+
+    df_meta_all.rename(columns={'gene': original_name}, inplace=True)
+    if df_meta_all.shape[0]==0:
+        print(f"No meta analysis results for {stats_all['cell_type'].unique()}")
+        return None
+    stats_all = stats_all.merge(df_meta_all, on=[original_name, 'cell_type'], how='left')
+    return stats_all

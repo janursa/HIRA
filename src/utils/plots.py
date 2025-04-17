@@ -12,12 +12,57 @@ from matplotlib import colors
 from matplotlib import cm
 from matplotlib import rcParams
 import matplotlib.patches as mpatches
+
 import scipy
 import networkx as nx
 from scipy.stats import spearmanr, linregress
 from ciim.src.common import surrogate_names, palette_datasets, palette_regulation
 from ciim.src.tf_activity.helper import adata_lambda, net_lambda, calculate_tf_activity
 
+
+def plot_umap(adata, color='', palette=None, ax=None, X_label='X_umap', on_data=False, sort_colors=True,
+              bbox_to_anchor=None, legend=True, legend_title='', margins=dict(x=.1, y=.1), **kwrds):
+    latent = adata.obsm[X_label]
+    if sort_colors:
+        var_unique_sorted = sorted(adata.obs[color].unique())
+    else:
+        var_unique_sorted = adata.obs[color].cat.categories[adata.obs[color].cat.categories.isin(adata.obs[color].unique())].values
+        print(var_unique_sorted)
+    legend_handles = []
+    
+    for i_group, group in enumerate(var_unique_sorted):
+        mask = adata.obs[color] == group
+        sub_data = latent[mask]
+        if palette is None:
+            c = None 
+        else:
+            c = palette[group]
+        # Plot scatter points
+        scatter = ax.scatter(sub_data[:, 0], sub_data[:, 1], label=group, c=c, **kwrds)
+        if palette is None:
+            solid_color = scatter.get_facecolor()[0]
+        else:
+            solid_color = c
+        # plot legend
+        legend_handles.append(plt.Line2D([0], [0], linestyle='none', marker='o', markersize=8, color=solid_color))
+        if on_data:
+            mean_x = np.mean(sub_data[:, 0])
+            mean_y = np.mean(sub_data[:, 1])
+            ax.text(mean_x, mean_y, group, fontsize=9, ha='center', va='top', color='black', weight='bold')
+    ax.spines[['right', 'top', 'left', 'bottom']].set_visible(False)
+    ax.set_xlabel('')
+    ax.set_ylabel('')
+    ax.set_xticks([])
+    ax.set_yticks([])
+    
+    ax.margins(**margins)
+
+    if legend and not on_data:
+        legend = ax.legend(handles=list(legend_handles), labels=list(var_unique_sorted), loc=(1.1,.3), 
+                           bbox_to_anchor=bbox_to_anchor, frameon=False, title=legend_title, 
+                           title_fontproperties={'weight': 'bold', 'size': 9})
+        legend.get_title().set_ha('left')
+        legend._legend_box.align = "left" 
 
 def heatplot_centrality(df, cmap="viridis", cbar_title="Gene expression", y_label="Genes", figsize=(2.5, 3), quantile=.9):
     # Handle color normalization
@@ -52,42 +97,102 @@ def dotplot(df, ax, color_col='trend', size_col='neg_log10_adj_pval',
             color_legend_title='Trend',
             size_legend_loc=(1.1, 0.1),
             color_legend_loc=(1.1, 0.7),
-            alpha=0.5):
-    
-    
-    scatter = sns.scatterplot(
-        data=df, 
-        x=x, 
-        y=y, 
-        size=size_col, 
-        hue=color_col, 
-        sizes=sizes,
-        palette=palette, 
-        edgecolor="black",
-        legend=False,  
-        alpha=alpha,
-        ax=ax
-    )
-    # Labels and formatting
-    ax.set_ylabel(y_label)
-    # ax.set_xlabel("Cell type")
-    # ax.set_title(title)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
-    # ax.xaxis.set_label_position('top')  # Move the x-axis label to the top
-    # ax.xaxis.tick_top() 
+            bbox_to_anchor_cbar=(0.8, -.2, 1, 1),
+            alpha=0.5,
+            linewidth=0.5,
+            cbar_height='4%',
+            size_legend_scale=10,):
+    import matplotlib.cm as cm
+    import matplotlib.colors as mcolors
+    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+    from matplotlib.colors import TwoSlopeNorm
+
+
+    vmin = df[color_col].min()
+    vmax = df[color_col].max()
+    abs_max = max(abs(vmin), abs(vmax))
+    norm = TwoSlopeNorm(vmin=-abs_max, vcenter=0, vmax=abs_max)
+
+    # Get numeric positions for x/y if categorical
+    x_vals = df[x].astype('category').cat.codes
+    y_vals = df[y].astype('category').cat.codes
+
+    # Store tick labels
+    x_labels = df[x].astype('category').cat.categories
+    y_labels = df[y].astype('category').cat.categories
+
+    # Map slope to color using manual colormap
+    cmap = plt.get_cmap(palette if palette else 'RdBu_r')
+    df['mapped_color'] = df[color_col].apply(lambda val: cmap(norm(val)))
+
+    # Map p-values to size
+    df['mapped_size'] = df[size_col] * size_legend_scale
+
+    # Plot
+    ax.scatter(x_vals, y_vals, 
+               c=df['mapped_color'], 
+               s=df['mapped_size'], 
+               edgecolor='black', 
+               linewidth=linewidth, 
+               alpha=alpha)
+
+    # Set axis ticks and labels
+    ax.set_xticks(np.unique(x_vals))
+    ax.set_xticklabels(x_labels, rotation=45, ha='right')
+    ax.set_yticks(np.unique(y_vals))
+    ax.set_yticklabels(y_labels)
 
     ax.set_xlabel('')
-    # ax.spines[['right']].set_visible(False)
+    ax.set_ylabel(y_label)
     ax.margins(x=.1, y=.1)
     # Create Legends
     if show_size_legend:
-        size_legend_values = np.linspace(df[size_col].min() , df[size_col].max(), num=6)
-        size_legend_handles = [plt.scatter([], [], s=s * 10, color="black", label=f"{s:.1f}") for s in size_legend_values]
+        size_legend_values = np.linspace(df[size_col].min() , df[size_col].max(), num=4)
+        size_legend_handles = [plt.scatter([], [], s=s * size_legend_scale, color="black", label=f"{s:.1f}") for s in size_legend_values]
         size_legend_handle = plt.legend(handles=size_legend_handles, title=size_legend_title, loc=size_legend_loc, frameon=False)
     
-    if show_color_legend:
-        color_legend = [mpatches.Patch(color=color, label=name,alpha=alpha) for name, color in palette.items()]
-        color_legend_handle = plt.legend(handles=color_legend, title=color_legend_title, loc=color_legend_loc, frameon=False)
-    
-    if show_color_legend:
-        plt.gca().add_artist(size_legend_handle)
+    if show_color_legend and isinstance(df[color_col].dtype, pd.CategoricalDtype):
+        color_legend = [
+            Line2D([0], [0], marker='o', color='none', markerfacecolor=color,
+                markersize=10, label=name, alpha=alpha) 
+            for name, color in palette.items()
+        ]
+        color_legend_handle = plt.legend(
+            handles=color_legend, 
+            title=color_legend_title, 
+            loc=color_legend_loc, 
+            frameon=False
+        )
+    if show_color_legend and not isinstance(df[color_col].dtype, pd.CategoricalDtype):
+        # vmin = df[color_col].min()
+        # vmax = df[color_col].max()
+        # abs_max = max(vmin, vmax)
+        if vmin < 0 and vmax > 0:
+            norm = TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
+        else:
+            norm = plt.Normalize(vmin=vmin, vmax=vmax) 
+        sm = plt.cm.ScalarMappable(cmap=palette, norm=norm)
+        sm.set_array([])
+
+        # Create the colorbar
+        axins = inset_axes(
+            ax,
+            width="60%",
+            height=cbar_height,
+            loc='upper right',
+            bbox_to_anchor=bbox_to_anchor_cbar,
+            bbox_transform=ax.transAxes,
+            borderpad=0
+        )
+
+        cbar = plt.colorbar(sm, cax=axins, orientation='horizontal')
+
+        # Force ticks to show symmetric values or desired range
+        tick_values = [vmin, 0, vmax ]  # or manually: [-1, -0.5, 0, 0.5, 1]
+        cbar.set_ticks(tick_values)
+        cbar.ax.set_xticklabels([f"{x:.2f}" for x in tick_values])
+
+        cbar.ax.tick_params(labelsize=8, direction='out')
+        cbar.ax.set_title(color_legend_title, fontsize=9, pad=5)
+    # if show_color_legend:
+    # plt.gca().add_artist(size_legend_handle)

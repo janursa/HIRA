@@ -194,4 +194,4 @@ for(i in levels(pbmc)) {
   Idents(pbmc, cells = cells_to_reid) <- newid
 }
 
-saveRDS(pbmc,"pbmc_multiome.rds")
+saveRDS(pbmc, "pbmc_multiome.rds")

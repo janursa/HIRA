@@ -12,46 +12,66 @@ import matplotlib.pyplot as plt
 from task_grn_inference.src.utils.util import sum_by, read_gmt
 
 
-def plot_umap(adata, color='', palette=None, ax=None, X_label='X_umap', on_data=False,
-              bbox_to_anchor=None, legend=True, legend_title='', margins=dict(x=.1, y=.1), **kwrds):
-    latent = adata.obsm[X_label]
-    var_unique_sorted = sorted(adata.obs[color].unique())
-    legend_handles = []
-    
-    for i_group, group in enumerate(var_unique_sorted):
-        mask = adata.obs[color] == group
-        sub_data = latent[mask]
-        if palette is None:
-            c = None 
-        else:
-            c = palette[group]
-        # Plot scatter points
-        scatter = ax.scatter(sub_data[:, 0], sub_data[:, 1], label=group, c=c, **kwrds)
-        if palette is None:
-            solid_color = scatter.get_facecolor()[0]
-        else:
-            solid_color = c
-        # plot legend
-        legend_handles.append(plt.Line2D([0], [0], linestyle='none', marker='o', markersize=8, color=solid_color))
-        if on_data:
-            mean_x = np.mean(sub_data[:, 0])
-            mean_y = np.mean(sub_data[:, 1])
-            ax.text(mean_x, mean_y, group, fontsize=9, ha='center', va='top', color='black', weight='bold')
-    ax.spines[['right', 'top', 'left', 'bottom']].set_visible(False)
-    ax.set_xlabel('')
-    ax.set_ylabel('')
-    ax.set_xticks([])
-    ax.set_yticks([])
-    
-    ax.margins(**margins)
 
-    if legend and not on_data:
-        legend = ax.legend(handles=legend_handles, labels=var_unique_sorted, loc=(1.1,.3), 
-                           bbox_to_anchor=bbox_to_anchor, frameon=False, title=legend_title, 
-                           title_fontproperties={'weight': 'bold', 'size': 9})
-        legend.get_title().set_ha('left')
-        legend._legend_box.align = "left" 
-    
+def add_root_sample(adata):
+    '''
+    Add the root sample (the one with the minimum age) to the adata object for pseudotime analysis.
+    '''
+    if 'age' not in adata.obs.columns:
+        raise ValueError("Column 'age' not found in adata.obs.")
+
+    # Find the cell with the minimum age
+    min_age = adata.obs['age'].min()
+    root_cells = adata.obs.index[adata.obs['age'] == min_age]
+
+    if len(root_cells) == 0:
+        raise ValueError("No samples found to use as root.")
+
+    # Choose the first one (or could sort and choose consistently)
+    root_cell = root_cells[0]
+    root_cell_idx = np.where(adata.obs.index == root_cell)[0][0]
+
+    adata.uns['iroot'] = root_cell_idx
+def run_dpt(adata, n_neighbors=10, n_comps=10):
+    sc.pp.pca(adata)
+    sc.pp.neighbors(adata, n_neighbors=n_neighbors, use_rep='X')
+    sc.tl.diffmap(adata, n_comps=n_comps)
+    sc.tl.dpt(adata)
+def binarize_expression(cell_type, genes, type='bulk', dataset='data1', age_limit=None):
+    adata = adata_lambda(dataset, type=type)
+    adata = adata[adata.obs['cell_type'] == cell_type]
+    adata = adata[:, adata.var_names.isin(genes)]
+    if type == 'sc':
+        print('Determining std...')
+        adata = determine_std(adata)
+
+    if age_limit is not None:
+        adata = adata[(adata.obs['age'] < age_limit[1]) & (adata.obs['age'] > age_limit[0])]
+    # - binarize 
+    if True: 
+        expr = adata.to_df()
+        expr = expr.merge(adata.obs[['age']], left_index=True, right_index=True, how='left').set_index('age')
+        # expr = expr[expr.index>10]
+        expr.sort_index(inplace=True)
+        expr['age_bin'] = (expr.index.astype(int) // 5) * 5
+        expr_mean = expr.groupby('age_bin').mean().T
+    # Normalize expression
+    min_vals = expr_mean.min(axis=1)
+    max_vals = expr_mean.max(axis=1)
+    expr_mean = (expr_mean.sub(min_vals, axis=0)).div(max_vals - min_vals, axis=0)
+    return expr_mean
+# - pseudotime analysis
+def run_pseudotime_analysis(adata, seed=32):
+    # - add root age: #TODO: run this multiple times to choose different root cells 
+    add_root_sample(adata)
+    # - dpt 
+    run_dpt(adata)
+    if True:
+        # - visualization
+        sc.tl.umap(adata)
+        # sc.pl.umap(adata, color=['dpt_pseudotime', 'age'], cmap='viridis', show=True, size=3*(adata.obs['cell_count'] / adata.obs['cell_count'].max() * 100))
+        # sc.pl.pca(adata, color=['dpt_pseudotime', 'age'], cmap='viridis', show=True, size=3*(adata.obs['cell_count'] / adata.obs['cell_count'].max() * 100))
+    return adata
 def get_canonical_pathways():
     geneset_file = '/home/jnourisa/projs/ongoing/ciim/input/prior/h.all.v2024.1.Hs.symbols.gmt'
     genesets_all = read_gmt(geneset_file) 
@@ -73,24 +93,147 @@ def get_canonical_pathways():
 
     return df_pathway
 
-def efficient_melting(net, gene_names):
-    '''to replace pandas melting'''
-    upper_triangle_indices = np.triu_indices_from(net, k=1)
+def stability_selection_booststrap(X, y, n_bootstrap=100, top_k=10):
+    """
+    Perform stability selection by bootstrapping and selecting important features.
+    
+    Parameters:
+    - X: Feature matrix
+    - y: Target vector
+    - n_bootstrap: Number of bootstrap iterations.
+    - top_k: Number of top features to select.
+    
+    Returns:
+    - top_predictors: List of selected top-k most important features.
+    """
+    feature_coeffs = np.zeros((n_bootstrap, X.shape[1]))
+    
+    for i in range(n_bootstrap):
+        # Bootstrap sampling
+        X_resampled, y_resampled = resample(X, y, random_state=np.random.randint(0, 10000))
+        
+        # Scale data
+        scaler = StandardScaler()
+        X_resampled = scaler.fit_transform(X_resampled)
 
-    # Extract the source and target gene names based on the indices
-    sources = np.array(gene_names)[upper_triangle_indices[0]]
-    targets = np.array(gene_names)[upper_triangle_indices[1]]
+        # Fit Ridge regression
+        model = Ridge(alpha=1)
+        model.fit(X_resampled, y_resampled)
+        
+        # Store absolute coefficients
+        feature_coeffs[i, :] = np.abs(model.coef_)
 
-    # Extract the corresponding correlation values
-    weights = net[upper_triangle_indices]
+    # Compute median coefficient magnitude per feature
+    feature_importance = np.median(feature_coeffs, axis=0)
+    
+    # Get indices of the top-k most important features
+    top_features_idx = np.argsort(feature_importance)[-top_k:]
+    
+    return top_features_idx
 
-    # Create a structured array
-    data = np.column_stack((targets, sources, weights))
 
-    # Convert to DataFrame
-    # print('convert to df')
-    net = pd.DataFrame(data, columns=['source', 'target', 'weight'])
-    return net
+def fit_final_model(X, y, top_features_idx):
+    """
+    Train a final model using only the selected most important features.
+    
+    Parameters:
+    - X: Feature matrix
+    - y: Target vector
+    - top_features_idx: Indices of the top selected features.
+    
+    Returns:
+    - model_final: Fitted Ridge regression model.
+    - y_pred: Predictions of the final model.
+    - r2: R² score of the final model.
+    - spearman: Spearman correlation of the final model.
+    """
+    X_selected = X[:, top_features_idx]
+    
+    # Scale data
+    scaler = StandardScaler()
+    X_selected = scaler.fit_transform(X_selected)
+
+    # Fit final model
+    model_final = Ridge(alpha=1)
+    model_final.fit(X_selected, y)
+    
+    # Predict and evaluate
+    y_pred = model_final.predict(X_selected)
+    r2 = r2_score(y, y_pred)
+    spearman = spearmanr(y_pred, y)[0]
+    
+    return model_final, y_pred, r2, spearman
+
+def stability_selection_shap(X, y,  top_q=80):
+    """
+    Perform stability selection using SHAP values for feature importance.
+
+    Parameters:
+    - X: Feature matrix
+    - y: Target vector
+    - n_bootstrap: Number of bootstrap iterations.
+    - top_k: Number of top features to select.
+
+    Returns:
+    - top_predictors: List of selected top-q most important features.
+    """
+    
+    # Scale data
+    scaler = StandardScaler()
+    X = scaler.fit_transform(X)
+
+
+    # Fit a model (e.g., RandomForest for SHAP)
+    # model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model = Ridge(random_state=42)
+
+    model.fit(X, y)
+
+    # Compute SHAP values
+    explainer = shap.Explainer(model, X)
+    shap_values = explainer(X)
+
+    # Compute mean absolute SHAP values for feature importance
+    feature_importances = np.abs(shap_values.values).mean(axis=0)
+
+
+    # Compute the q percentile threshold
+    threshold = np.percentile(feature_importances, top_q)
+
+    # Select features above the threshold
+    top_features_idx = np.where(feature_importances >= threshold)[0]
+
+
+    return top_features_idx
+def find_robust_predictors(adata, target, top_q=.9):
+    """
+    Main function to perform stability selection, feature importance, and model evaluation.
+    
+    Parameters:
+    - adata:  adata  
+    - target: Column name for the target variable.
+    - top_q: q of top features to select.
+    """
+    # Prepare data
+    X = adata.X
+    X = X.toarray() if scipy.sparse.issparse(X) else X
+    y = adata.obs[target].values
+    feature_names = adata.var_names
+
+    # Stability selection
+    top_features_idx = stability_selection_shap(X, y, top_q=top_q)
+    top_predictors = feature_names[top_features_idx].values
+    # print(f"Selected {len(top_predictors)} most important features.")
+
+    # Fit final model with selected features
+    model_final, y_pred, r2, spearman = fit_final_model(X, y, top_features_idx)
+
+    # Print final model evaluation
+    print(f"Final Model R²: {r2:.2f}, Spearman: {spearman:.2f}")
+    # print("Most important predictors:", list(top_predictors))
+    
+    return list(top_predictors), r2
+
 def basic_qc(adata, min_genes_per_cell = 200, max_genes_per_cell = 5000, min_cells_per_gene = 10):
     mt = adata.var_names.str.startswith('MT-')
     print('shape before ', adata.shape)

@@ -4,7 +4,7 @@ library(Seurat)
 library(GenomicRanges)
 library(ggplot2)
 library(patchwork)
-library(SeuratWrappers) # remotes::install_github("satijalab/seurat-wrappers", dependencies = TRUE, ask = FALSE)
+# library(SeuratWrappers) # remotes::install_github("satijalab/seurat-wrappers", dependencies = TRUE, ask = FALSE)
 library(cicero)
 
 
@@ -42,7 +42,7 @@ pbmc <- SortIdents(pbmc)
 
 if (TRUE){ #TODO: for each cell type
   # convert to CellDataSet format and make the cicero object
-  pbmc.cds <- as.cell_data_set(x = pbmc)
+  pbmc.cds <- as.cell_data_set(x = pbmc) #TODO: replace this with cicero guidline data creation
 
   pbmc.cicero <- make_cicero_cds(pbmc.cds, reduced_coordinates = reducedDims(pbmc.cds)$UMAP)
   # get the chromosome sizes from the Seurat object
@@ -58,7 +58,7 @@ if (TRUE){ #TODO: for each cell type
   conns <- run_cicero(pbmc.cicero, genomic_coords = genome.df, sample_num = 100)
   print(head(conns))
 }
-aaa
+
 #  -------------- Plotting genomic regions
 
 

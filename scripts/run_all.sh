@@ -23,13 +23,26 @@ dependencies=(
 set -e
 # Define run flags
 RUN_ALIS_CODE=false
-RUN_PROCESS_DATASET=true
-RUN_PSEUDOBULK=true
-RUN_GRN=false
+RUN_PROCESS_DATASET=false
+RUN_PSEUDOBULK=false
+RUN_GRN=true
 
 
 # datasets to include
-datasets="SLE " #data12 data7_allTPs_jalil data1 data13
+datasets="SLE " #data12 data7_allTPs_jalil data1 data13  SLE data13_Korean  data13_Japanease 
+
+for dataset in $datasets; do
+        # Define the command
+        if [ "$RUN_ALIS_CODE" = true ]; then
+                args="--dataset_name $dataset --save_dir /vol/projects/jnourisa/datasets/"
+                cmd="python ${dependencies["alis_code"]} $args"
+                echo "Running (bash): $cmd"
+                $cmd
+        fi
+done
+
+datasets=" data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanease SLE_Asian  SLE_European  " #
+
 
 for dataset in $datasets; do
         DATASETS=($dataset) #('data1' 'data2' 'data3' 'data4' 'data5' 'data7' 'data8' 'data9' 'data10' 'data11') data7_allTPs_jalil
@@ -41,13 +54,7 @@ for dataset in $datasets; do
         BULK_F="/vol/projects/jnourisa/datasets/${dataset}_bulk_F.h5ad"
 
 
-        # Define the command
-        if [ "$RUN_ALIS_CODE" = true ]; then
-                args="--datasets $datasets --raw_dataset_file $RAW_DATASET_FILE"
-                cmd="python ${dependencies["alis_code"]} $args"
-                echo "Running (bash): $cmd"
-                $cmd
-        fi
+        
         if [ "$RUN_PROCESS_DATASET" = true ]; then
                 # set the flags
                 DOWNSAMPLE=false

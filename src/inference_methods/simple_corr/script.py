@@ -22,8 +22,24 @@ meta = {
     'resources_dir' : 'src/utils/'
 }
 sys.path.append(meta['resources_dir'])
-from util import efficient_melting, basic_qc
+from util import basic_qc
+def efficient_melting(net, gene_names):
+    '''to replace pandas melting'''
+    upper_triangle_indices = np.triu_indices_from(net, k=1)
 
+    # Extract the source and target gene names based on the indices
+    sources = np.array(gene_names)[upper_triangle_indices[0]]
+    targets = np.array(gene_names)[upper_triangle_indices[1]]
+
+    # Extract the corresponding correlation values
+    weights = net[upper_triangle_indices]
+
+    # Create a structured array
+    data = np.column_stack((targets, sources, weights))
+
+    # Convert to DataFrame
+    net = pd.DataFrame(data, columns=['source', 'target', 'weight'])
+    return net
 
 def infer_grn(X, gene_names):
     from scipy.stats import spearmanr
@@ -31,13 +47,12 @@ def infer_grn(X, gene_names):
     mask_zero_std = std_devs == 0
     gene_names = gene_names[~mask_zero_std]
     X_filtered = X[:, ~mask_zero_std]
-    if False:
-        corr, _ = spearmanr(X_filtered, nan_policy='raise')
+    if True:
+        corr, p_value = spearmanr(X_filtered, nan_policy='raise')
     else:
         print('start corr calculation')
         corr = sparse_corrcoef(X_filtered.T)
         print(corr.shape)
-    
     try:
         net = efficient_melting(corr.A, gene_names)
     except:
