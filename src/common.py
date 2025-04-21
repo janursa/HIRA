@@ -21,7 +21,8 @@ surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All 
                     'normal': 'Healthy',
                     'systemic lupus erythematosus': 'SLE',
                     'european': 'European',
-                    'asian': 'Asian',}
+                    'asian': 'Asian',
+                    'collectri': 'CollectRI',}
 
 
 cell_types = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
@@ -41,9 +42,8 @@ colors_blind = [
           '#0072B2',  # Blue
           '#D55E00',  # Vermillion
           '#CC79A7']  # Reddish Purple
-set2_colors = sns.color_palette("Set2", n_colors=len(datasets_all))
-palette_datasets = {d: color for d, color in zip(datasets_all, set2_colors)}
-palette_datasets_pretty = {surrogate_names[d]: color for d, color in zip(datasets_all, set2_colors)}
+set2_colors = sns.color_palette("Set2", n_colors=len(datasets_all)+1)
+palette_datasets = {d: color for d, color in zip(datasets_all+['collectri'], set2_colors)}
 palette_datasets_pretty = {surrogate_names[d]:color for d, color in palette_datasets.items()}
 palette_regulation = {'Positive': '#009E73', 'Negative': 'lightcoral'}
 palette_cell_types = {name: color for name, color in zip(cell_types, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}

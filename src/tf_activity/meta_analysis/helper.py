@@ -26,9 +26,11 @@ def run_meta_analysis(stats_all, meta_analysis_type='max', min_degree=2, temp_di
     if 'tf' in stats_all_c.columns:
         stats_all_c.rename(columns={'tf': 'gene'}, inplace=True)
         original_name = 'tf'
-    if 'target' in stats_all_c.columns:
+    elif 'target' in stats_all_c.columns:
         stats_all_c.rename(columns={'target': 'gene'}, inplace=True)
         original_name = 'target'
+    else:
+        raise ValueError('No gene, tf or target column in stats_all')
     # -------- actual run
     if min_degree is not None:
         stats_all_c = stats_all_c.groupby(['gene', 'cell_type']).filter(lambda group: group['dataset'].nunique() >= min_degree)

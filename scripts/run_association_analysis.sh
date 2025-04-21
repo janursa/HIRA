@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=all_steps
+#SBATCH --job-name=association_analysis
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
 #SBATCH --ntasks=1

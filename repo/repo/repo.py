@@ -1,4 +1,100 @@
 
+def plot_net_nx_simple(net, figsize=(6, 6), source_s=1200, target_s=1200, edge_s=2, font_size = 16):
+    import networkx as nx
+
+    G = nx.DiGraph()
+
+    sources = net['source'].unique()
+    targets = net['target'].unique()
+    targets = np.setdiff1d(targets, sources)
+
+    # Add nodes and edges
+    for source, target, weight in zip(net['source'], net['target'], net['weight']):
+        G.add_edge(source, target, weight=weight)
+
+    # Define node sizes
+    node_size = {node: source_s if node in sources else target_s for node in G.nodes()}
+
+    # Define edge colors based on regulation
+    edge_colors = [
+        palette_regulation["Positive"] if G[u][v]["weight"] > 0 else palette_regulation["Negative"]
+        for u, v in G.edges()
+    ]
+
+    # Define edge widths based on absolute weight
+    # edge_weights = [abs(G[u][v]["weight"]) * 20 for u, v in G.edges()]  # Scale factor 2 for visibility
+
+    # Define layout
+    # pos = nx.spring_layout(G, k=20, iterations=100, seed=42)
+    pos = nx.circular_layout(G)
+    fig, ax = plt.subplots(figsize=figsize)
+    # Draw source nodes (circular)
+    nx.draw_networkx_nodes(
+        G, pos, 
+        nodelist=sources, 
+        node_color=['white' for n in sources], 
+        node_size=[node_size[n] for n in sources],
+        edgecolors="black", 
+        linewidths=.5,
+        alpha=0.8,
+        ax=ax
+    )
+
+    # Draw target nodes (squares)
+    nx.draw_networkx_nodes(
+        G, pos, 
+        nodelist=targets, 
+        node_color=['white' for n in targets], 
+        node_size=[node_size[n] for n in targets],
+        node_shape="d",  # Square shape for target nodes
+        edgecolors="black", 
+        linewidths=0.05,
+        alpha=.01,
+        ax=ax
+    )
+
+    # Draw edges with variable thickness
+    
+    for u, v in G.edges():
+        weight = G[u][v]["weight"]
+        edge_color = palette_regulation["Positive"] if weight > 0 else palette_regulation["Negative"]
+        
+        connectionstyle="arc3,rad=-0.3" if weight < 0 else "arc3,rad=0.0",  # curve negative edges
+        nx.draw_networkx_edges(
+            G, pos,
+            edgelist=[(u, v)],
+            edge_color=edge_color,
+            arrowstyle="-|>",
+            arrowsize=20,
+            width=2,
+            min_target_margin=25,
+            min_source_margin=25,
+            alpha=1,
+            connectionstyle="arc3,rad=-0.3" if weight < 0 else "arc3,rad=0.0",  # curve negative edges
+            ax=ax
+        )
+
+    # --- Draw labels
+    
+    nx.draw_networkx_labels(
+        G, pos,
+        labels={n: n for n in sources},
+        font_size=font_size,
+        font_weight='bold',
+        ax=ax
+    )
+
+    # - Draw normal labels for target nodes
+    nx.draw_networkx_labels(
+        G, pos,
+        labels={n: n for n in targets},
+        font_size=font_size,
+        font_weight='normal',
+        ax=ax
+    )
+
+    plt.axis("off")
+
 def diff_corr_all():
     ## - par
     par = {

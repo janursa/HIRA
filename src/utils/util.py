@@ -37,29 +37,7 @@ def run_dpt(adata, n_neighbors=10, n_comps=10):
     sc.pp.neighbors(adata, n_neighbors=n_neighbors, use_rep='X')
     sc.tl.diffmap(adata, n_comps=n_comps)
     sc.tl.dpt(adata)
-def binarize_expression(cell_type, genes, type='bulk', dataset='data1', age_limit=None):
-    adata = adata_lambda(dataset, type=type)
-    adata = adata[adata.obs['cell_type'] == cell_type]
-    adata = adata[:, adata.var_names.isin(genes)]
-    if type == 'sc':
-        print('Determining std...')
-        adata = determine_std(adata)
 
-    if age_limit is not None:
-        adata = adata[(adata.obs['age'] < age_limit[1]) & (adata.obs['age'] > age_limit[0])]
-    # - binarize 
-    if True: 
-        expr = adata.to_df()
-        expr = expr.merge(adata.obs[['age']], left_index=True, right_index=True, how='left').set_index('age')
-        # expr = expr[expr.index>10]
-        expr.sort_index(inplace=True)
-        expr['age_bin'] = (expr.index.astype(int) // 5) * 5
-        expr_mean = expr.groupby('age_bin').mean().T
-    # Normalize expression
-    min_vals = expr_mean.min(axis=1)
-    max_vals = expr_mean.max(axis=1)
-    expr_mean = (expr_mean.sub(min_vals, axis=0)).div(max_vals - min_vals, axis=0)
-    return expr_mean
 # - pseudotime analysis
 def run_pseudotime_analysis(adata, seed=32):
     # - add root age: #TODO: run this multiple times to choose different root cells 

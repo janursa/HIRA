@@ -17,7 +17,7 @@ import scipy
 import networkx as nx
 from scipy.stats import spearmanr, linregress
 from ciim.src.common import surrogate_names, palette_datasets, palette_regulation
-from ciim.src.tf_activity.helper import adata_lambda, net_lambda, calculate_tf_activity
+from ciim.src.tf_activity.helper import adata_lambda, retrieve_net, calculate_tf_activity
 
 
 def plot_umap(adata, color='', palette=None, ax=None, X_label='X_umap', on_data=False, sort_colors=True,
@@ -106,6 +106,7 @@ def dotplot(df, ax, color_col='trend', size_col='neg_log10_adj_pval',
     import matplotlib.colors as mcolors
     from mpl_toolkits.axes_grid1.inset_locator import inset_axes
     from matplotlib.colors import TwoSlopeNorm
+    from sklearn.preprocessing import MinMaxScaler
 
 
     vmin = df[color_col].min()
@@ -125,13 +126,14 @@ def dotplot(df, ax, color_col='trend', size_col='neg_log10_adj_pval',
     cmap = plt.get_cmap(palette if palette else 'RdBu_r')
     df['mapped_color'] = df[color_col].apply(lambda val: cmap(norm(val)))
 
-    # Map p-values to size
-    df['mapped_size'] = df[size_col] * size_legend_scale
+    # Scale sizes to desired range
+    scaler = MinMaxScaler(feature_range=sizes)
+    scaled_sizes = scaler.fit_transform(df[[size_col]]).flatten()
 
     # Plot
     ax.scatter(x_vals, y_vals, 
                c=df['mapped_color'], 
-               s=df['mapped_size'], 
+               s=scaled_sizes, 
                edgecolor='black', 
                linewidth=linewidth, 
                alpha=alpha)
@@ -147,52 +149,40 @@ def dotplot(df, ax, color_col='trend', size_col='neg_log10_adj_pval',
     ax.margins(x=.1, y=.1)
     # Create Legends
     if show_size_legend:
+        print(show_size_legend)
         size_legend_values = np.linspace(df[size_col].min() , df[size_col].max(), num=4)
         size_legend_handles = [plt.scatter([], [], s=s * size_legend_scale, color="black", label=f"{s:.1f}") for s in size_legend_values]
         size_legend_handle = plt.legend(handles=size_legend_handles, title=size_legend_title, loc=size_legend_loc, frameon=False)
     
-    if show_color_legend and isinstance(df[color_col].dtype, pd.CategoricalDtype):
-        color_legend = [
-            Line2D([0], [0], marker='o', color='none', markerfacecolor=color,
-                markersize=10, label=name, alpha=alpha) 
-            for name, color in palette.items()
-        ]
-        color_legend_handle = plt.legend(
-            handles=color_legend, 
-            title=color_legend_title, 
-            loc=color_legend_loc, 
-            frameon=False
-        )
-    if show_color_legend and not isinstance(df[color_col].dtype, pd.CategoricalDtype):
-        # vmin = df[color_col].min()
-        # vmax = df[color_col].max()
-        # abs_max = max(vmin, vmax)
-        if vmin < 0 and vmax > 0:
-            norm = TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
-        else:
-            norm = plt.Normalize(vmin=vmin, vmax=vmax) 
-        sm = plt.cm.ScalarMappable(cmap=palette, norm=norm)
-        sm.set_array([])
+    # vmin = df[color_col].min()
+    # vmax = df[color_col].max()
+    # abs_max = max(vmin, vmax)
+    if vmin < 0 and vmax > 0:
+        norm = TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
+    else:
+        norm = plt.Normalize(vmin=vmin, vmax=vmax) 
+    sm = plt.cm.ScalarMappable(cmap=palette, norm=norm)
+    sm.set_array([])
 
-        # Create the colorbar
-        axins = inset_axes(
-            ax,
-            width="60%",
-            height=cbar_height,
-            loc='upper right',
-            bbox_to_anchor=bbox_to_anchor_cbar,
-            bbox_transform=ax.transAxes,
-            borderpad=0
-        )
+    # Create the colorbar
+    axins = inset_axes(
+        ax,
+        width="60%",
+        height=cbar_height,
+        loc='upper right',
+        bbox_to_anchor=bbox_to_anchor_cbar,
+        bbox_transform=ax.transAxes,
+        borderpad=0
+    )
 
-        cbar = plt.colorbar(sm, cax=axins, orientation='horizontal')
+    cbar = plt.colorbar(sm, cax=axins, orientation='horizontal')
 
-        # Force ticks to show symmetric values or desired range
-        tick_values = [vmin, 0, vmax ]  # or manually: [-1, -0.5, 0, 0.5, 1]
-        cbar.set_ticks(tick_values)
-        cbar.ax.set_xticklabels([f"{x:.2f}" for x in tick_values])
+    # Force ticks to show symmetric values or desired range
+    tick_values = [vmin, 0, vmax ]  # or manually: [-1, -0.5, 0, 0.5, 1]
+    cbar.set_ticks(tick_values)
+    cbar.ax.set_xticklabels([f"{x:.2f}" for x in tick_values])
 
-        cbar.ax.tick_params(labelsize=8, direction='out')
-        cbar.ax.set_title(color_legend_title, fontsize=9, pad=5)
+    cbar.ax.tick_params(labelsize=8, direction='out')
+    cbar.ax.set_title(color_legend_title, fontsize=9, pad=5)
     # if show_color_legend:
     # plt.gca().add_artist(size_legend_handle)

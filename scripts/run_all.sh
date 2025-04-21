@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
 #SBATCH --time=10:00:00
-#SBATCH --mem=500GB
+#SBATCH --mem=1000GB
 #SBATCH --partition=cpu
 #SBATCH --mail-type=END,FAIL      
 #SBATCH --mail-user=jalil.nourisa@gmail.com   
@@ -29,7 +29,7 @@ RUN_GRN=true
 
 
 # datasets to include
-datasets="SLE " #data12 data7_allTPs_jalil data1 data13  SLE data13_Korean  data13_Japanease 
+datasets="SLE " #data12 data7_allTPs_jalil data1 data13  SLE data13_Korean  data13_Japanese 
 
 for dataset in $datasets; do
         # Define the command
@@ -41,7 +41,7 @@ for dataset in $datasets; do
         fi
 done
 
-datasets=" data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanease SLE_Asian  SLE_European  " #
+datasets="data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European  " # data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European
 
 
 for dataset in $datasets; do

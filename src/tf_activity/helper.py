@@ -12,7 +12,6 @@ import shap
 import scanpy as sc
 import anndata as ad
 import scipy.sparse as sp
-from ciim.src.helper import determine_centrality
 from statsmodels.stats.multitest import multipletests
 from pandas.api.types import CategoricalDtype
 from ciim.src.common import datasets_e, datasets_a, surrogate_names, datasets_all
@@ -20,29 +19,60 @@ from scipy.stats import mannwhitneyu
 from tqdm import tqdm
 from ciim.src.common import cell_types
 from ciim.src.common import mapping_major_2_minor
+from scipy.sparse import issparse
 
+def retrieve_stats_features(type, feature_type, cell_type=None, datasets=None, condition=None):
+    if feature_type == 'tf_activity':
+        save_dir = f'/home/jnourisa/projs/ongoing/ciim/output/tf_activation/'
+    elif feature_type == 'gene_expression':
+        save_dir = f'/home/jnourisa/projs/ongoing/ciim/output/gene_expression/'
+    else:
+        raise ValueError('Unknown feature type')
+    stats = pd.read_csv(f'{save_dir}/stats_features_{type}.csv')
+    
+    if cell_type is not None:
+        stats = stats[stats['cell_type'] == cell_type]
+    
+    if datasets is not None:
+        stats = stats[stats['dataset'].isin(datasets)]
+    
+    if condition is not None:
+        assert condition in stats['condition'].unique(), f'Given condition "{condition}" not in {stats["condition"].unique()}'
+        stats = stats[stats['condition'] == condition]
+    return stats
 
 def read_feature_data(dataset, cell_type, type, feature_type='tf_activity'):
     if feature_type == 'tf_activity':
-        save_dir = f'output/tf_activation/tf_acts'
-    elif feature_type == 'expression':
-        save_dir = f'output/gene_expression/gene_expression'
+        save_dir = f'/home/jnourisa/projs/ongoing/ciim/output/tf_activation/tf_acts'
+    elif feature_type == 'gene_expression':
+        save_dir = f'/home/jnourisa/projs/ongoing/ciim/output/gene_expression/gene_expression'
     else:
         raise ValueError('Unknown feature type')
     return ad.read_h5ad(f'{save_dir}/{dataset}_{cell_type}_{type}.h5ad')
 
 def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activity'):
     if feature_type == 'tf_activity':
-        save_dir = f'output/tf_activation/tf_acts'
-    elif feature_type == 'expression':
-        save_dir = f'output/gene_expression/gene_expression'
+        save_dir = f'/home/jnourisa/projs/ongoing/ciim/output/tf_activation/tf_acts'
+    elif feature_type == 'gene_expression':
+        save_dir = f'/home/jnourisa/projs/ongoing/ciim/output/gene_expression/gene_expression'
     else:
         raise ValueError('Unknown feature type')
     adata.write_h5ad(f'{save_dir}/{dataset}_{cell_type}_{type}.h5ad')
-
+def bin_feature_values(adata):
+    # - bin 
+    expr = adata.to_df()
+    expr = expr.merge(adata.obs[['age']], left_index=True, right_index=True, how='left').set_index('age')
+    expr.sort_index(inplace=True)
+    expr['age_bin'] = (expr.index.astype(int) // 5) * 5
+    expr_mean = expr.groupby('age_bin').mean().T
+    # Normalize expression
+    min_vals = expr_mean.min(axis=1)
+    max_vals = expr_mean.max(axis=1)
+    expr_mean = (expr_mean.sub(min_vals, axis=0)).div(max_vals - min_vals, axis=0)
+    return expr_mean
 def retrieve_valid_stats(type):
-    stats_e = retrieve_sig_stats(type, analysis='european')
-    stats_a = retrieve_sig_stats(type, analysis='asian')
+    stats_e = retrieve_sig_stats(type, race='european')
+    stats_a = retrieve_sig_stats(type, race='asian')
     stats_valid = pd.concat([stats_e, stats_a]).drop_duplicates(subset=['cell_type', 'tf', 'analysis'])
 
     degree = stats_valid.groupby(['cell_type', 'tf']).size()
@@ -52,26 +82,36 @@ def retrieve_valid_stats(type):
     stats_valid = stats_valid.drop_duplicates(subset=['cell_type', 'tf'])[['tf', 'cell_type', 'trend']]
     return stats_valid
 
-def retrieve_sig_stats(type, analysis='european'):
+def retrieve_sig_stats(type, race='european', filter_inconsistent=True):
     stats_all = pd.read_csv(f'../output/tf_activation/stats_all_{type}.csv')
     
+    mask = (stats_all['condition']=='healthy') & (stats_all['meta_p_adj'] < 0.05) 
+    if race == 'both':
+        pass
+    else:
+        mask &= (stats_all['analysis'] == race)
     # Filter valid rows
     stats_all = stats_all[
-        (stats_all['condition']=='healthy') &
-        (stats_all['analysis'] == analysis) &
-        (stats_all['meta_p_adj'] < 0.05) &
-        (stats_all['trend'] != 'Inconsistent')
+        mask
     ]
+    if filter_inconsistent:
+        stats_all = stats_all[stats_all['trend'] != 'Inconsistent']
+    # stats_all = stats_all[~stats_all['trend'].isna()]
     return stats_all
 
-def net_lambda(dataset, cell_type):  
+
+def retrieve_net(dataset, cell_type):  
     net = pd.read_csv(f"/home/jnourisa/projs/ongoing/ciim/output/grns/{dataset}/net_{cell_type}_all_agegroups_all_batches.csv")
-    tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
-    net.loc[net['source'].isin(tf_all)]
+    gene_names = np.loadtxt(f'/vol/projects/jnourisa/prior/gene_names.txt', dtype=str)
+    net = net[net['target'].isin(gene_names)]
+    # tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
+    # net = net.loc[net['source'].isin(tf_all)]
     return net
 
 def adata_lambda(dataset, type='bulk'): 
     base_path = "/vol/projects/jnourisa/datasets/"
+    gene_names = np.loadtxt(f'/vol/projects/jnourisa/prior/gene_names.txt', dtype=str)
+
     # assert type in ['bulk', 'sc', 'bulk_minor', 'bulk_M', 'bulk_F']
     if (type == 'bulk_M') & (type == 'bulk_F'):
         gender = type.split('_')[1]
@@ -83,6 +123,8 @@ def adata_lambda(dataset, type='bulk'):
         if 'std' in type:
             type = type.split('_')[0]
         adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
+    adata.obs['dataset'] = dataset
+    adata = adata[:, adata.var_names.isin(gene_names)]
     return adata
 
 def determine_consensus_nets(datasets, cell_types, min_degree=5):
@@ -90,7 +132,7 @@ def determine_consensus_nets(datasets, cell_types, min_degree=5):
     for cell_type in cell_types:
         net_store = []
         for dataset in datasets:
-            net = net_lambda(dataset, cell_type)
+            net = retrieve_net(dataset, cell_type)
             net['dataset'] = dataset
             net_store.append(net)
         nets = pd.concat(net_store)
@@ -103,92 +145,114 @@ def determine_consensus_nets(datasets, cell_types, min_degree=5):
         net_mean = nets.groupby(['source', 'target', 'cell_type'])['weight'].mean().reset_index()
         consensus_nets[cell_type] = net_mean
     return consensus_nets
+def determine_consensus_net(datasets, cell_type, min_degree=5):
+    consensus_nets = {}
 
-# def wrapper_extract_sig_network(par):
-#     type = par['type']
-#     min_degree = par['min_degree_network']
-#     # - extract sig tfs for cell types
-#     stats_tfs_valid = retrieve_valid_stats(type) 
-#     sig_tfs_dict = stats_tfs_valid.groupby(['cell_type'])['tf'].unique().to_dict()
+    net_store = []
+    for dataset in datasets:
+        net = retrieve_net(dataset, cell_type)
+        net['dataset'] = dataset
+        net_store.append(net)
+    nets = pd.concat(net_store)
 
-#     # - identify consensus networks across datasets with at least n datasets shared
-#     consensus_nets = determine_consensus_nets(datasets_all, cell_types=sig_tfs_dict.keys(), min_degree=min_degree)
+    nets['link'] = nets['source'] + '_' + nets['target']
+    degrees = nets.groupby(['link'])['dataset'].size()
+    shared_links = degrees[degrees>=min_degree].index
+    nets = nets[nets['link'].isin(shared_links)]
 
-#     # - subset stats_target to only those targets that are connected to sig tfs
-#     stats_target_all = pd.read_csv(f'../output/tf_activation/stats_targets_{type}.csv')
-#     stats_target_store = []
-#     for cell_type, sig_tfs in sig_tfs_dict.items():
-#         stats_target = stats_target_all[(stats_target_all['cell_type'] == cell_type)]
-#         net = consensus_nets[cell_type]
-#         targets = net[net['source'].isin(sig_tfs)]['target'].unique()
-#         stats_target = stats_target[stats_target['target'].isin(targets)]
-#         stats_target_store.append(stats_target)
-#     stats_target_all = pd.concat(stats_target_store)
-#     print('Number of targets across datasets:')
-#     # print(stats_target_all.groupby(['cell_type', 'dataset']).size().reset_index(name='counts'))
+    net_mean = nets.groupby(['source', 'target', 'cell_type'])['weight'].mean().reset_index()
+    return net_mean
 
-#     # - meta analysis to identify consistent targets across datasets
-#     from ciim.src.tf_activity.meta_analysis.helper import run_meta_analysis
-#     stats_all_c = stats_target_all.copy()
-#     stats_all_c.rename(columns={'p_value': 'pvalue', 'target':'gene'}, inplace=True)
-#     meta_analysis_type = 'fisher'
-#     df_meta_all = run_meta_analysis(stats_all_c, type=meta_analysis_type, min_degree=min_degree, temp_dir='../output/tmp')
-#     df_meta_all.rename(columns={'gene': 'target'}, inplace=True)
-#     stats_target_all = stats_target_all.merge(df_meta_all, on=['target', 'cell_type'], how='left')
-#     stats_target_all = compute_trend(stats_target_all, pval_col= 'meta_p_adj', slope_col='slope', col='target')
-#     stats_target_consistent = stats_target_all[stats_target_all['meta_p_adj'] < 0.05]
-#     stats_target_consistent = stats_target_consistent[stats_target_consistent['trend'] != 'Inconsistent'][['cell_type', 'target', 'meta_p_adj', 'trend']].drop_duplicates()
+def wrapper_extract_sig_network(par):
+    type = par['type']
+    min_degree = par['min_degree_network']
+    # - extract sig tfs for cell types
+    stats_features_valid = retrieve_sig_stats(type).drop_duplicates(subset=['cell_type', 'tf']) 
+    sig_tfs_dict = stats_features_valid.groupby(['cell_type'])['tf'].unique().to_dict()
 
-#     print(stats_target_consistent.groupby(['cell_type', 'trend']).size().reset_index(name='counts'))
-#     sig_targets_dict = stats_target_consistent.groupby(['cell_type'])['target'].unique().to_dict()
-#     # - subset consensus networks to only those targets that are connected to sig tfs
-#     sig_nets = []
-#     for cell_type, sig_tfs in sig_tfs_dict.items():
-#         net = consensus_nets[cell_type]
-#         if cell_type not in sig_targets_dict:
-#             continue
-#         sig_targets = sig_targets_dict[cell_type]
-#         net = net[(net['source'].isin(sig_tfs)) & (net['target'].isin(sig_targets))].reset_index(drop=True)
+    # - identify consensus networks across datasets with at least n datasets shared
+    consensus_nets = determine_consensus_nets(datasets_all, cell_types=sig_tfs_dict.keys(), min_degree=min_degree)
 
-#         net = net.merge(stats_tfs_valid, left_on=['cell_type', 'source'], right_on=['cell_type', 'tf'], how='left')
-#         net = net.merge(stats_target_consistent, left_on=['cell_type', 'target'], right_on=['cell_type', 'target'], how='left', suffixes=('_tf', '_target'))
-#         sig_nets.append(net)
-#     sig_nets = pd.concat(sig_nets)
+    # - subset stats_target to only those targets that are connected to sig tfs
+    stats_target_all = pd.read_csv(f'../output/tf_activation/stats_targets_{type}.csv')
+    stats_target_store = []
+    for cell_type, sig_tfs in sig_tfs_dict.items():
+        stats_target = stats_target_all[(stats_target_all['cell_type'] == cell_type)]
+        net = consensus_nets[cell_type]
+        targets = net[net['source'].isin(sig_tfs)]['target'].unique()
+        stats_target = stats_target[stats_target['target'].isin(targets)]
+        stats_target_store.append(stats_target)
+    stats_target_all = pd.concat(stats_target_store)
+    print('Number of targets across datasets:')
+    # print(stats_target_all.groupby(['cell_type', 'dataset']).size().reset_index(name='counts'))
 
-#     sig_nets.to_csv(par['sig_nets'], index=False)
+    # - meta analysis to identify consistent targets across datasets
+    from ciim.src.tf_activity.meta_analysis.helper import run_meta_analysis
+    stats_all_c = stats_target_all.copy()
+    stats_all_c.rename(columns={'p_value': 'pvalue', 'target':'gene'}, inplace=True)
+    meta_analysis_type = 'fisher'
+    df_meta_all = run_meta_analysis(stats_all_c, type=meta_analysis_type, min_degree=min_degree, temp_dir='../output/tmp')
+    df_meta_all.rename(columns={'gene': 'target'}, inplace=True)
+    stats_target_all = stats_target_all.merge(df_meta_all, on=['target', 'cell_type'], how='left')
+    stats_target_all = compute_trend(stats_target_all, pval_col= 'meta_p_adj', slope_col='slope', col='target')
+    stats_target_consistent = stats_target_all[stats_target_all['meta_p_adj'] < 0.05]
+    stats_target_consistent = stats_target_consistent[stats_target_consistent['trend'] != 'Inconsistent'][['cell_type', 'target', 'meta_p_adj', 'trend']].drop_duplicates()
 
-def determine_stats_disease(tf_acts, age_cutoff=50, ctr_group='normal', disease_col='disease'):
-    conditions = tf_acts.obs['disease'].unique()
-    dataset = tf_acts.obs['dataset'].unique()[0]
+    print(stats_target_consistent.groupby(['cell_type', 'trend']).size().reset_index(name='counts'))
+    sig_targets_dict = stats_target_consistent.groupby(['cell_type'])['target'].unique().to_dict()
+    # - subset consensus networks to only those targets that are connected to sig tfs
+    sig_nets = []
+    for cell_type, sig_tfs in sig_tfs_dict.items():
+        net = consensus_nets[cell_type]
+        if cell_type not in sig_targets_dict:
+            continue
+        sig_targets = sig_targets_dict[cell_type]
+        net = net[(net['source'].isin(sig_tfs)) & (net['target'].isin(sig_targets))].reset_index(drop=True)
+
+        net = net.merge(stats_features_valid, left_on=['cell_type', 'source'], right_on=['cell_type', 'tf'], how='left')
+        net = net.merge(stats_target_consistent, left_on=['cell_type', 'target'], right_on=['cell_type', 'target'], how='left', suffixes=('_tf', '_target'))
+        sig_nets.append(net)
+    sig_nets = pd.concat(sig_nets)
+
+    sig_nets.to_csv(par['sig_nets'], index=False)
+
+def determine_stats_disease(adata, age_cutoff=50, ctr_group='normal', disease_col='disease'):
+    conditions = adata.obs['disease'].unique()
+    dataset = adata.obs['dataset'].unique()[0]
     stats_all = []
     name_mapping = {'normal': 'healthy', 'systemic lupus erythematosus': 'SLE'}
     # case 1: association with age in healhty and disease samples
     for group in conditions:
-        tf_acts_sub = tf_acts[tf_acts.obs[disease_col] == group]
-        stats_df = association_with_age(tf_acts_sub, genes=tf_acts.var_names)
+        adata_sub = adata[adata.obs[disease_col] == group]
+        stats_df = association_with_age(adata_sub, genes=adata_sub.var_names)
         stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
         stats_df['condition'] = name_mapping[group]
         # stats_df['dataset'] = f"{dataset}_{group}"
         stats_all.append(stats_df)
 
     # case 2: disease vs healthy 
-    def stats_disease_vs_healthy(tf_acts, condition):  
-        mask_ctr = tf_acts.obs[disease_col] == ctr_group
-        mask_condition = tf_acts.obs[disease_col] == condition
+    def stats_disease_vs_healthy(adata, condition):  
+        mask_ctr = adata.obs[disease_col] == ctr_group
+        mask_condition = adata.obs[disease_col] == condition
         
-        control_group = tf_acts.X[mask_ctr, :]
-        case_group = tf_acts.X[mask_condition, :]
+        control_group = adata.X[mask_ctr, :]
+        case_group = adata.X[mask_condition, :]
 
         if (np.sum(mask_condition) < 10) or (np.sum(mask_ctr) < 10):
             print('Not enough samples for', condition, ' vs ', ctr_group)
             return None
         results = []
-        for i, gene in enumerate(tf_acts.var_names):
+        for i, gene in enumerate(adata.var_names):
             values_case = case_group[:, i]
             values_control = control_group[:, i]
 
             if np.sum(values_case) == 0 and np.sum(values_control) == 0:
                 continue  
+
+            if issparse(values_case):
+                values_case = values_case.todense().A.flatten()
+            if issparse(values_control):
+                values_control = values_control.todense().A.flatten()
 
             stat, pval = mannwhitneyu(values_case, values_control, alternative="two-sided")
             # direction = "Increase in disease" if np.median(values_case) > np.median(values_control) else "Decrease in disease"
@@ -196,7 +260,7 @@ def determine_stats_disease(tf_acts, age_cutoff=50, ctr_group='normal', disease_
             results.append({
                 "tf": gene,
                 "p_value": pval,
-                "slope_disease":  np.median(values_case) > np.median(values_control) ,
+                "slope_disease":  np.median(values_case) - np.median(values_control) ,
                 "values_case": values_case,
                 "values_control": values_control,
                 'condition': name_mapping[condition]
@@ -206,21 +270,12 @@ def determine_stats_disease(tf_acts, age_cutoff=50, ctr_group='normal', disease_
     for condition in conditions:
         if condition == ctr_group:
             continue
-        stats_df = stats_disease_vs_healthy(tf_acts, condition)
+        stats_df = stats_disease_vs_healthy(adata, condition)
         if stats_df is None:
             continue
         stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
         # stats_df['dataset'] = f"{dataset}_{condition}"
         stats_all.append(stats_df)
-            
-
-    # results = []
-    # mask = tf_acts.obs['age'] > age_cutoff 
-
-    # for age_group, mask_age in zip(["young", "old"], [~mask, mask]):  
-    #     tf_acts_age = tf_acts[mask_age]
-
-
     # Combine all stats
     stats_df = pd.concat(stats_all, ignore_index=True)
     stats_df['dataset'] = dataset
@@ -229,23 +284,31 @@ def determine_stats_disease(tf_acts, age_cutoff=50, ctr_group='normal', disease_
 
 def wrapper_run_meta_analysis(par):
     from ciim.src.tf_activity.meta_analysis.helper import run_meta_analysis
-    stats_tfs = pd.read_csv(par['stats_tfs'])
-    cell_types = stats_tfs['cell_type'].unique()
+    stats_features = pd.read_csv(par['stats_features'])
+    
+    if 'tf' in stats_features.columns:
+        feature_col = 'tf'
+    elif 'target' in stats_features.columns:
+        feature_col = 'target'
+    else:
+        print(stats_features)
+        raise ValueError('Unknown feature column')
+    cell_types = stats_features['cell_type'].unique()
     # - european 
     print('european ...')
     stats_store = []
-    for cell_type in stats_tfs['cell_type'].unique():
-        stats = stats_tfs[(stats_tfs['cell_type'] == cell_type) & (stats_tfs['dataset'].isin(datasets_e) & (stats_tfs['condition']=='healthy'))]
-        
+    for cell_type in stats_features['cell_type'].unique():
+        stats = stats_features[(stats_features['cell_type'] == cell_type) & (stats_features['dataset'].isin(datasets_e) & (stats_features['condition']=='healthy'))]
         if len(stats) == 0:
             print('No stats for', cell_type, ' skipping it')
             continue
-        if stats.groupby('tf').size().max()<len(datasets_e):
+        if stats.groupby(feature_col).size().max()<len(datasets_e):
             print('Not enough mutual TFs for ', cell_type, ' skipping it')
             continue
         min_degree = len(datasets_e) - 1
         meta_stats = run_meta_analysis(stats, temp_dir=par['temp_dir'], min_degree=min_degree, meta_analysis_type='fisher')
-        
+        pval_col = 'meta_p_adj'
+        meta_stats = compute_trend(meta_stats, pval_col=pval_col, slope_col='slope', col=feature_col)
         stats_store.append(meta_stats)
     stats_discovery = pd.concat(stats_store)
     stats_discovery['condition'] = 'healthy'
@@ -253,19 +316,19 @@ def wrapper_run_meta_analysis(par):
     # - validation
     print('Asian ...')
     stats_store = []
-    for cell_type in stats_tfs['cell_type'].unique():
-        stats = stats_tfs[(stats_tfs['cell_type'] == cell_type) & (stats_tfs['dataset'].isin(datasets_a) & (stats_tfs['condition']=='healthy'))]
+    for cell_type in stats_features['cell_type'].unique():
+        stats = stats_features[(stats_features['cell_type'] == cell_type) & (stats_features['dataset'].isin(datasets_a) & (stats_features['condition']=='healthy'))]
 
         if len(stats) == 0:
             print('No stats for', cell_type, ' skipping it')
             continue
-        if stats.groupby('tf').size().max()<len(datasets_a):
+        if stats.groupby(feature_col).size().max()<len(datasets_a):
             print('Not enough mutual TFs for ', cell_type, ' skipping it')
             continue
         min_degree = len(datasets_a)
         meta_stats = run_meta_analysis(stats, temp_dir=par['temp_dir'], min_degree=min_degree, meta_analysis_type='fisher')
         pval_col = 'meta_p_adj'
-        meta_stats = compute_trend(meta_stats, pval_col=pval_col, slope_col='slope')
+        meta_stats = compute_trend(meta_stats, pval_col=pval_col, slope_col='slope', col=feature_col)
         
         stats_store.append(meta_stats)
     stats_validation = pd.concat(stats_store)
@@ -287,7 +350,6 @@ def wrapper_association_with_age(par, cell_types, datasets, feature_type='tf_act
         # ----------- calculate tf activity for all datasets
         for dataset in datasets:
             adata = read_feature_data(dataset, cell_type, par['type'], feature_type=feature_type)
-            
             if 'disease' in adata.obs.columns:
                 disease_flag = True
             else:
@@ -302,16 +364,18 @@ def wrapper_association_with_age(par, cell_types, datasets, feature_type='tf_act
                     print('Not enough samples for', cell_type, dataset, cell_type_resolution)
                     continue
                 
-                # - subset based on prior (only for target genes)
+                # - subset based on prior (only for target genes) -> add this to meta analysis
                 if feature_type == 'gene_expression':
-                    net = net_lambda(dataset, cell_type)
-                    features = net['target'].unique()
+                    net = retrieve_net(dataset, cell_type)
+                    targets = net['target'].unique()
+                    features = targets
                 else:
                     features = adata_sub.var_names
 
-
                 if disease_flag:
-                    stats = determine_stats_disease(adata)
+                    if issparse(adata_sub.X):
+                        adata_sub.X = adata_sub.X.toarray()
+                    stats = determine_stats_disease(adata_sub)
                 else:
                     stats = association_with_age(adata_sub, genes=features, association_type=par['association_type'])
 
@@ -334,7 +398,7 @@ def wrapper_association_with_age(par, cell_types, datasets, feature_type='tf_act
 #             adata = determine_std(adata)
 #             adata.write_h5ad(f"{par['std_dir']}/std_{dataset}.h5ad")
 #         for cell_type in tqdm(cell_types, desc='cell types'):
-#             net = net_lambda(dataset, cell_type)
+#             net = retrieve_net(dataset, cell_type)
 #             targets = net['target'].unique()
 #             adata_t = adata[adata.obs['cell_type']==cell_type].copy()
             
@@ -360,7 +424,7 @@ def wrapper_tf_activity(cell_types, datasets, type='bulk'):
         # ----------- calculate tf activity for all datasets
         for dataset in datasets:
             adata = adata_dict[dataset][adata_dict[dataset].obs['cell_type']==cell_type]
-            net = net_lambda(dataset, cell_type)
+            net = retrieve_net(dataset, cell_type)
             net = net[net['source'].isin(tf_all)]
 
             if adata.shape[0] < 10:
@@ -392,9 +456,15 @@ def wrapper_gene_expression(cell_types, datasets, type='bulk'):
         for dataset in datasets:
             adata = adata_dict[dataset][adata_dict[dataset].obs['cell_type']==cell_type]
             
+            if 'std' in type:
+                save_type = type.split('_')[0]
+            else:
+                save_type = type
+            write_feature_data(adata, dataset, cell_type, save_type, feature_type='gene_expression')
+
             if type == 'sc_std':
-                adata = determine_std(adata)
-                write_feature_data(adata, dataset, cell_type, type, feature_type='expression')
+                tf_acts = determine_std(tf_acts, feature_type='gene_expression')
+                write_feature_data(tf_acts, dataset, cell_type, type)
 def determine_std(adata):
     # Ensure .X is dense
     if isinstance(adata.X, np.ndarray):
