@@ -37,7 +37,38 @@ def run_dpt(adata, n_neighbors=10, n_comps=10):
     sc.pp.neighbors(adata, n_neighbors=n_neighbors, use_rep='X')
     sc.tl.diffmap(adata, n_comps=n_comps)
     sc.tl.dpt(adata)
+def flesh_out_collectri():
+    import omnipath as op
+    CollecTRI = op.interactions.CollecTRI.get(genesymbols=True, organism='human', loops=False)
+    def extract_sources(source_str):
+        # Split and clean each source tag
+        parts = source_str.split(';')
+        sources = []
+        for s in parts:
+            s = s.strip().replace('CollecTRI', '').replace('_', '').strip(';').strip()
+            if s:
+                sources.append(s)
+        return sources
 
+    # Expand the DataFrame
+    expanded_rows = []
+    for _, row in CollecTRI.iterrows():
+        cleaned_sources = extract_sources(row['sources'])
+        weight = 1 if row['is_stimulation'] else -1
+        for ref in cleaned_sources:
+            if ref in ['NTNU.Curated']:
+                # Skip this source
+                continue
+            expanded_rows.append({
+                'source': row['source_genesymbol'],
+                'target': row['target_genesymbol'],
+                'weight': weight,
+                'ref': ref  # this is now a single cleaned source per row
+            })
+
+    # Create the new curated DataFrame
+    curated_net = pd.DataFrame(expanded_rows)
+    curated_net.to_csv('/vol/projects/jnourisa/prior/collectri_with_source.csv', index=False)
 # - pseudotime analysis
 def run_pseudotime_analysis(adata, seed=32):
     # - add root age: #TODO: run this multiple times to choose different root cells 

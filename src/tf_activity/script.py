@@ -13,7 +13,7 @@ from tqdm import tqdm
 from scipy.stats import mannwhitneyu
 from statsmodels.stats.multitest import multipletests
 from pandas.api.types import CategoricalDtype
-from ciim.src.tf_activity.helper import  wrapper_association_with_age, wrapper_run_meta_analysis, \
+from ciim.src.tf_activity.helper import  wrapper_association_with_age_condition, wrapper_run_meta_analysis, \
         wrapper_tf_activity, wrapper_gene_expression, wrapper_run_meta_analysis
 
 from ciim.src.common import cell_types, datasets_e, datasets_a, datasets_all, mapping_minor_2_major
@@ -26,7 +26,7 @@ def run_workflow_tf_activity(par):
         wrapper_tf_activity(cell_types, datasets_all, type=par['type'])
     # - step 2: calculate TF association with age
     if True:
-        stats_features_all = wrapper_association_with_age(par, cell_types, datasets=datasets_all)
+        stats_features_all = wrapper_association_with_age_condition(par, cell_types, datasets=datasets_all)
         stats_features_all.to_csv(par['stats_features'], index=False)
     if True:
         print('TF discovery/validation...')
@@ -39,7 +39,7 @@ def run_workflow_gene_expression(par):
         wrapper_gene_expression(cell_types, datasets_all, type=par['type'])
     # - step 2: calculate association with age
     if True:
-        stats_features = wrapper_association_with_age(par, cell_types, datasets=datasets_all, feature_type='gene_expression')
+        stats_features = wrapper_association_with_age_condition(par, cell_types, datasets=datasets_all, feature_type='gene_expression')
         stats_features.rename(columns={'tf': 'gene'}, inplace=True)
         stats_features.to_csv(par['stats_features'], index=False)
     if True:
@@ -54,19 +54,17 @@ def run_workflow_gene_expression(par):
 
 if __name__ == '__main__':
     os.makedirs('output/tmp/', exist_ok=True)
-    os.makedirs('output/tf_activation/', exist_ok=True)
-    os.makedirs('output/tf_activation/tf_acts', exist_ok=True)
+    os.makedirs('output/tf_activity/', exist_ok=True)
+    os.makedirs('output/tf_activity/tf_acts', exist_ok=True)
     os.makedirs('output/gene_expression/', exist_ok=True)
     os.makedirs('output/gene_expression/gene_expression', exist_ok=True)
 
-    run_bulk = True
+    run_bulk = False
     run_bulk_minor = False
-    run_bulk_gender = False
+    run_bulk_gender = True
     
     run_bulk_targets = False
-
     run_bulk_minor_targets = False
-
 
     if run_bulk:
         # ----- bulk TF activity: non linear association
@@ -74,8 +72,8 @@ if __name__ == '__main__':
             'type': 'bulk',
             'association_type': 'spearman',
             'cell_type_resolution': 'Major_CT',
-            'stats_features': 'output/tf_activation/stats_features_bulk.csv',
-            'stats_all': 'output/tf_activation/stats_all_bulk.csv', 
+            'stats_features': 'output/tf_activity/stats_features_bulk.csv',
+            'stats_all': 'output/tf_activity/stats_all_bulk.csv', 
             'temp_dir': 'output/tmp/',
         }
         
@@ -87,8 +85,20 @@ if __name__ == '__main__':
             'association_type': 'spearman',
             'cell_type_resolution': 'Major_CT',
             'stats_features': 'output/gene_expression/stats_features_bulk.csv',
-            'stats_all': 'output/gene_expression/stats_targets_bulk.csv', #TODO: this for now only includes genes that are in the net. 
-            # 'stats_targets': 'output/tf_activation/stats_targets_bulk.csv',
+            'stats_all': 'output/gene_expression/stats_all_bulk.csv', #TODO: this for now only includes genes that are in the net. 
+            # 'stats_targets': 'output/tf_activity/stats_targets_bulk.csv',
+            'temp_dir': 'output/tmp/',
+        }
+        run_workflow_gene_expression(par)
+    if run_bulk_minor_targets:
+        print('bulk minor targets')
+        par = {
+            'type': 'bulk_minor',
+            'association_type': 'spearman',
+            'cell_type_resolution': 'Sub_CT',
+            'stats_features': 'output/gene_expression/stats_features_bulk_minor.csv',
+            'stats_all': 'output/gene_expression/stats_all_bulk_minor.csv', #TODO: this for now only includes genes that are in the net. 
+            # 'stats_targets': 'output/tf_activity/stats_targets_bulk.csv',
             'temp_dir': 'output/tmp/',
         }
         run_workflow_gene_expression(par)
@@ -98,21 +108,22 @@ if __name__ == '__main__':
             'type': 'bulk_minor',
             'association_type': 'spearman',
             'cell_type_resolution': 'Sub_CT',
-            'stats_features': 'output/tf_activation/stats_features_bulk_minor.csv',
-            'stats_all': 'output/tf_activation/stats_all_bulk_minor.csv', 
+            'stats_features': 'output/tf_activity/stats_features_bulk_minor.csv',
+            'stats_all': 'output/tf_activity/stats_all_bulk_minor.csv', 
             'temp_dir': 'output/tmp/',
         }
         run_workflow_tf_activity(par)
     if run_bulk_gender:
         # ----- bulk TF activity: gender
-        for gender in ['F', 'M']:
+        for gender in ['M','F']:
             par = {
                 'type': f'bulk_{gender}',
                 'cell_type_resolution': 'Major_CT',
                 'association_type': 'spearman',
-                'stats_features': f'output/tf_activation/stats_features_bulk_{gender}.csv',
-                'stats_all': f'output/tf_activation/stats_all_bulk_{gender}.csv', 
+                'stats_features': f'output/tf_activity/stats_features_bulk_{gender}.csv',
+                'stats_all': f'output/tf_activity/stats_all_bulk_{gender}.csv', 
                 'temp_dir': 'output/tmp/',
+                'min_degree_e': 2 # for gender specific meta analysis, we lower down the min degree to 2 because of gender imbalance in different cohorts
             }
             run_workflow_tf_activity(par)
     if False:
@@ -121,9 +132,9 @@ if __name__ == '__main__':
             'type': 'sc_std',
             'cell_type_resolution': 'Major_CT',
             'association_type': 'spearman',
-            'stats_features': 'output/tf_activation/stats_features_std.csv',
-            'stats_targets': 'output/tf_activation/stats_targets_std.csv',
-            'stats_all': 'output/tf_activation/stats_all_std.csv', 
+            'stats_features': 'output/tf_activity/stats_features_std.csv',
+            'stats_targets': 'output/tf_activity/stats_targets_std.csv',
+            'stats_all': 'output/tf_activity/stats_all_std.csv', 
             'temp_dir': 'output/tmp/',
             'std_dir': 'output/std/',
         }

@@ -62,7 +62,7 @@ def process_obs(obs, par):
         group['batch_group'] = group['donor_id'].map(map_donor_to_batch)
         
         return group
-    obs = obs.groupby('age_group', group_keys=False).apply(assign_batches)
+    # obs = obs.groupby('age_group', group_keys=False).apply(assign_batches)
     # - downsample -> first apply min donors by preserving donors with highest cell count, then down sample the cell count
     if par['downsample']:
         # - min donor size per age group
@@ -95,8 +95,6 @@ def process_obs(obs, par):
         barcodes = np.concatenate(barcodes)
         obs = obs[obs.index.isin(barcodes)]
     assert not obs.isna().any().any()
-
-    print(obs)
         
     # cols = ['batch_group', 'donor_id', 'age', 'cell_type', 'sex', 'age_donor', 'age_group', 'Major_CT', 'Sub_CT']
     # if 'dataset' in obs.columns:

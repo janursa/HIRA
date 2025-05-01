@@ -13,7 +13,7 @@ def check_signs(group):
     signs = group['slope'].apply(lambda x: 1 if x > 0 else -1 if x < 0 else 0)
     return signs.nunique() == 1
 
-def run_meta_analysis(stats_all, meta_analysis_type='max', min_degree=2, temp_dir='../output/tf_activation/'):
+def run_meta_analysis(stats_all, meta_analysis_type='max', min_degree=2, temp_dir='../output/tf_activity/'):
     # ---------- prepare
     
     assert stats_all.shape[0]> 0, 'No stats for meta analysis'

@@ -1,6 +1,4 @@
 import scanpy as sc
-from scipy import stats
-import pandas as pd
 
 from task_grn_inference.src.utils.util import sum_by
 

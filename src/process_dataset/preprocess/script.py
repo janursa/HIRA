@@ -6,6 +6,7 @@ import argparse
 import anndata as ad
 import numpy as np
 import pandas as pd
+import scanpy as sc
 
 ## VIASH START
 parser = argparse.ArgumentParser()
@@ -72,6 +73,7 @@ def main(par):
     print(f"Saving adata in progress. Loading adata...")
     adata = adata.to_memory()
     adata = basic_qc(adata, min_cells_per_gene=100, min_genes_per_cell=10)
+
     print(f"Saving adata to {par['processed_dataset_file']}")
     adata.write(par['processed_dataset_file'])
 

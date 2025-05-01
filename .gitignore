@@ -7,7 +7,7 @@ input/
 logs/
 params*
 resources*
-output/
+output*
 target/
 out/
 local/

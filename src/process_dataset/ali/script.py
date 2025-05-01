@@ -47,7 +47,11 @@ def all_steps(adata):
     return adata
 def main(par):
     dataset_name = par['dataset_name']
-    adata_main = ad.read_h5ad(f"{par['inp_CMtx']}{dataset_name}_CMtx.h5ad", backed='r')
+    if dataset_name == 'CXCL9':
+        file_name = f"{par['inp_CMtx']}{dataset_name}_TI.h5ad"
+    else:
+        file_name = f"{par['inp_CMtx']}{dataset_name}_CMtx.h5ad"
+    adata_main = ad.read_h5ad(file_name, backed='r')
         
     if 'race' in adata_main.obs.columns:
         races = adata_main.obs['race'].unique()

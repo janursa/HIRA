@@ -5,7 +5,7 @@ library(tidyr)
 library(tibble)
 
 script_dir <- dirname(sys.frame(1)$ofile)
-significant_data <- read.csv(file.path(script_dir, '../../output/tf_activation/stats_bulk_consistent.csv'), 
+significant_data <- read.csv(file.path(script_dir, '../../output/tf_activity/stats_bulk_consistent.csv'), 
                header = TRUE, stringsAsFactors = FALSE)
 
 

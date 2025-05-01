@@ -16,60 +16,80 @@ from scipy.stats import spearmanr, linregress
 from pandas.api.types import CategoricalDtype
 
 from ciim.src.common import colors_blind, datasets_all ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
-from ciim.src.tf_activity.helper import adata_lambda, retrieve_net, calculate_tf_activity, bin_feature_values, read_feature_data
+from ciim.src.tf_activity.helper import retrieve_adata, retrieve_net, calculate_tf_activity, bin_feature_values, retrieve_feature_data
 
 
-
-def plot_tf_act_validation(stats_df, col1='values_control', col2='values_case', col1_name='Control', col2_name='Condition', palette=None):
-    tfs = stats_df['tf'].unique()
-    print(len(tfs))
-    fig, axes = plt.subplots(1, len(tfs), figsize=(2 * len(tfs), 2.5))
-
-    if len(tfs) == 1:
-        axes = [axes]  # Ensure axes is iterable for a single TF
-    i = 0
-    for ax, tf in zip(axes, tfs):
-        plot_tf = stats_df[stats_df['tf'] == tf]
-
-        # Extract values
-        col1_values = np.fromstring(plot_tf[col1].values[0].strip('[]'), sep=' ')
-        col2_values = np.fromstring(plot_tf[col2].values[0].strip('[]'), sep=' ')
+def plot_ctr_condition_distribution(cell_types, genes, treatment, ctr, dataset, stats=None, 
+                                    type='bulk', feature_type='tf_activity', map_names={}):
+    
+    for cell_type in cell_types:        
+        # ------------- data
+        feature_data = retrieve_feature_data(dataset, cell_type, type, feature_type=feature_type)
+        if hasattr(feature_data.X, 'todense'):
+            feature_data.X = feature_data.X.todense()
+        feature_data_df = pd.DataFrame(feature_data.X, columns=feature_data.var_names)
+        feature_data_df['treatment'] = feature_data.obs['treatment'].values
+        feature_data_df['donor_id'] = feature_data.obs['donor_id'].values
+        feature_data_df['treatment'] = feature_data_df['treatment'].astype(CategoricalDtype(categories=[ctr, treatment], ordered=True))
+        feature_data_df = feature_data_df[feature_data_df['treatment'].isin([ctr, treatment])]
         
-        spread = np.abs(col1_values.max() - col1_values.min())
-        # Prepare DataFrame for plotting
-        plot_df = pd.DataFrame({
-            "Activity": np.concatenate([col1_values, col2_values]),
-            "Condition": [col1_name] * len(col1_values) + [col2_name] * len(col2_values)
-        })
+        if True:
+            palette = {map_names.get(name, name):color for name, color in zip([ctr, treatment], sns.color_palette("Set2", 2))}
+        else:
+            donors = feature_data_df['donor_id'].unique()
+            palette = {name:color for name, color in zip(donors, sns.color_palette("Set2", len(donors)))}
 
-        # Strip plot
-        sns.stripplot(x="Condition", y="Activity", data=plot_df, palette=palette, alpha=0.7, ax=ax)
 
-        # Annotate p-value with bracket
-        adj_p = plot_tf["p_value_adj"].values[0]
-        y_max = plot_df["Activity"].max()  # Highest point in the plot
+        # ------------- function
+        genes = [gene for gene in genes if gene in feature_data_df.columns]
+        fig, axes = plt.subplots(1, len(genes), figsize=(2 * len(genes), 2.5))
 
-        # Coordinates for the bracket
-        x1, x2 = 0, 1  # X positions of Young and Old
-        y_bracket = y_max * 1.1
-        y_text = y_max * 1.15
+        if len(genes) == 1:
+            axes = [axes]  # Ensure axes is iterable for a single TF
+        i = 0
+        for ax, gene in zip(axes, genes):
+            # Strip plot
+            feature_data_df['treatment'] = feature_data_df['treatment'].apply(lambda name: map_names.get(name, name))
+            
+            sns.stripplot(x="treatment", y=gene, data=feature_data_df, alpha=0.7, palette=palette, ax=ax,dodge=True, jitter=True)
+            # sns.boxplot(x="treatment", y=gene, data=feature_data_df, hue='donor_id',  ax=ax, palette=palette, showfliers=False)
+            
+            # Set title
+            ax.set_title(gene)
+            ax.set_ylabel("TF Activity" if ax == axes[0] else "")
+            ax.margins(y=0.2, x=0.2)
+            ax.set_yticks([])
+            # plt.xticks(rotation=45, ha='right')
+            try:
+                ax.get_legend().remove()  # Remove the legend for each subplot
+            except:
+                pass
+            # ---- Annotate p-value 
+            if stats is not None:
+                stats_g = stats[(stats['cell_type']==cell_type) & (stats['gene']==gene) & (stats['cell_type']==cell_type) & (stats['ctrl']==ctr) & (stats['condition']==treatment)]
+                if stats_g.shape[0] == 0:
+                    continue
+                assert stats_g["p_value_adj"].values.shape[0] == 1, f"Multiple p-values found for {gene} in {cell_type} {treatment} {ctr}"
+                adj_p = stats_g["p_value_adj"].values[0]
+                slope = stats_g["slope_condition"].values[0]
+                slope_str = '+' if slope > 0 else '-'
+                y_max = feature_data_df[gene].max()  # Highest point in the plot
 
-        # Draw the bracket
-        ax.plot([x1, x1, x2, x2], [y_bracket, y_bracket * 1.01, y_bracket * 1.01, y_bracket], lw=1, color="black")
+                # Coordinates for the bracket
+                ymin, ymax = ax.get_ylim()
+                y_range = ymax - ymin
 
-        # Add p-value text
-        ax.text((x1 + x2) / 2, y_text, f"p={adj_p:.3e}", ha="center", fontsize=10, color="black")
+                x1, x2 = 0, 1 
+                y_bracket = ymax + 0.03 * y_range
+                y_text = ymax + 0.06 * y_range
+                ax.plot([x1, x1, x2, x2], [y_bracket, y_bracket + 0.01 * y_range, y_bracket + 0.01 * y_range, y_bracket], lw=1, color="black")
+                ax.text((x1 + x2) / 2, y_text, f"({slope_str}) p={adj_p:.3e}", ha="center", fontsize=10, color="black")
 
-        ax.set_title(tf)
-        
-        ax.set_ylabel("TF Activity" if ax == axes[0] else "")
-        ax.margins(y=0.2, x=0.2)
-        ax.set_yticks([])
-        # if i == 0:
-        #     ax.set_xlabel("Age group")
-        # i+=1
-        
-    plt.tight_layout()
+        plt.legend(loc=(1.1, 0))
+            
+        plt.tight_layout()
+        plt.suptitle(f' {treatment} - {cell_type}', y=1.1)
+
 def plot_sig_tfs_stats(df, figsize=(3.5, 2)):
     df = df[['tf', 'cell_type', 'trend']]
     df['trend'] = df['trend'].astype(CategoricalDtype(categories=palette_trend_2.keys(), ordered=True))
@@ -143,7 +163,7 @@ def plot_feature_values_per_datasets(cell_type, features, type, datasets, featur
     n_features = len(features)
     fig, axes = plt.subplots(1, n_datasets, figsize=(n_datasets*3, .2*n_features+1), sharey=False)
     for i, (dataset) in enumerate(datasets):
-        adata = read_feature_data(dataset, cell_type, type, feature_type=feature_type)
+        adata = retrieve_feature_data(dataset, cell_type, type, feature_type=feature_type)
         adata = adata[:, adata.var_names.isin(features)]
         
         if age_limit is not None:
@@ -189,6 +209,7 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     from matplotlib.colors import TwoSlopeNorm
     from ciim.src.common import cmap_trend
     from ciim.src.tf_activity.helper import retrieve_stats_features, retrieve_sig_stats
+    import matplotlib.gridspec as gridspec
 
     feature_col = 'source' if feature_type == 'tf_activity' else 'target'
     # - format the data
@@ -200,7 +221,6 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
         stats_sig = stats_sig[stats_sig['cell_type'] == cell_type]
         sig_tfs = stats_sig['tf'].unique()
         stats_t = stats_t[stats_t[feature_col].isin(sig_tfs)]
-
     
     # - get centrality measure
     c_store = []
@@ -213,10 +233,12 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
         c_store.append(c)
     c = pd.concat(c_store)
     c_median = c.groupby([feature_col])['centrality'].median().reset_index()
+    c_std = c.groupby([feature_col])['centrality'].std().reset_index(name='centrality_std')
     stats_t = stats_t.merge(c_median, left_on=feature_col, right_on=feature_col, how='left')
+    stats_t = stats_t.merge(c_std, left_on=feature_col, right_on=feature_col, how='left')
     
 
-    # - prepare the data for the main plot    
+    # - either find the central features and sort them or sort them based on the given features    
     if features is None:
         # - select the top features: top shared across datasets and top central
         degrees = c.groupby(feature_col).size().sort_values(ascending=False)
@@ -227,9 +249,15 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
         features = c_median_c.sort_values('centrality', ascending=False).head(top_features)[feature_col].unique() # subset to top ones
         
         stats_t = stats_t[stats_t[feature_col].isin(features)]
-        stats_t = stats_t.sort_values('centrality', ascending=True)
+        stats_t = stats_t.sort_values('centrality', ascending=False)
     else:
+        if feature_type == 'tf_activity':
+            # - check if the features are in the tf_all list
+            tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
+            features = [tf for tf in features if tf in tf_all]
+        # - check if the features are in the stats (remove those that are not present in at least one dataset)
         stats_t = stats_t[stats_t[feature_col].isin(features)]
+        features = [tf for tf in features if tf in stats_t[feature_col].unique()]
         stats_t[feature_col] = pd.Categorical(stats_t[feature_col], categories=features, ordered=True)
         stats_t = stats_t.sort_values(feature_col)  
     
@@ -241,30 +269,44 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
         raise ValueError(f'No data for {cell_type} {feature_col}')
     # - main plot
     df = stats_t.copy()
-    fig, axes = plt.subplots(1, 2, figsize=(width, .15*len(features)+1.5), width_ratios=[1, .4] , sharey=True)
-    ax = axes[0]
+    fig = plt.figure(figsize=(width, .15*len(features)+1.5))
+    
+    gs = gridspec.GridSpec(1, 3, width_ratios=[1, 0.5, .4])  # middle space reserved for legend
+    
+    ax = fig.add_subplot(gs[0])
+    ax_legend = fig.add_subplot(gs[-1])
+    ax_legend.set_axis_off()
     show_size_legend = True
     if len(features) < 7:
         size_legend_loc = None
         show_size_legend = False
         cbar_height='10%'
+        cbar_width = "50%"
         bbox_to_anchor_cbar=(1.25, -.5, 1, 1)
     elif len(features) < 15:
-        size_legend_loc = (1.2, -.3)
+        size_legend_loc = None
+        show_size_legend = False
         cbar_height='10%'
+        cbar_width = "50%"
+        bbox_to_anchor_cbar=(1.25, -.5, 1, 1)
+
     else:
-        bbox_to_anchor_cbar=(1.25, -.2, 1, 1)
-        size_legend_loc=(1.2, 0.1)
+        bbox_to_anchor_cbar=(1.2, -.2, 1, 1)
+        size_legend_loc=(.95, -.4, 1, 1)
         cbar_height='5%'
+        cbar_width="50%"
     
     # Ensure feature_col is a categorical with the desired order
-    df[feature_col] = pd.Categorical(df[feature_col], categories=df[feature_col].unique(), ordered=True)
-    assert df['dataset'].nunique() == len(datasets), f"Expected {len(datasets)} datasets, but got {df['dataset'].nunique()}"
-
+    unique_features = df[feature_col].unique()
+    df[feature_col] = pd.Categorical(df[feature_col], categories=unique_features, ordered=True)
+    ordered_features = df[feature_col].cat.categories  
+    if df['dataset'].nunique() != len(datasets):
+        print( f"Only {df['dataset'].nunique()} datasets are available in the stats.")    
     dotplot(df, 
             x='dataset',
             y = feature_col,
             ax=ax, 
+            ax_legend=ax_legend,
             color_col='slope', 
             size_col='neg_log10_adj_pval', 
             palette=cmap_trend, 
@@ -276,35 +318,75 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
             size_legend_loc=size_legend_loc,
             bbox_to_anchor_cbar=bbox_to_anchor_cbar,
             cbar_height=cbar_height,
+            cbar_width=cbar_width,
             linewidth=0.1,  
             sizes=sizes,
             size_legend_scale = 200/max(df['neg_log10_adj_pval']),
             )
-    pval_threshold = 1.4
-    x_vals = df['dataset'].astype('category').cat.codes
-    y_vals = df[feature_col].astype('category').cat.codes
-    for i, row in df.iterrows():
-        if row['neg_log10_adj_pval'] >= pval_threshold:
-            ax.text(x_vals[i], y_vals[i]-.1, '*', ha='center', va='center', alpha=.9, 
-                    fontsize=6, weight='bold', color='black', zorder=10)
-
-    ax.margins(x=0.2, y=-0.005*len(features)+.2)
+    
+    ax.margins(**margins)
     ax.set_ylabel('TFs' if feature_col=='source' else 'Genes')
-    ax.set_title(cell_type)
-    # - centrality
+    title = 'TF activity' if feature_col=='source' else 'Gene expression'
+    ax.set_title(f'{title} - {cell_type}', pad=10, fontsize=10, fontweight='bold')
+    # ------------ centrality
     c = c[c[feature_col].isin(features)]
-    # Set the same categorical order as df[features]
-    ordered_features = df[feature_col].cat.categories  # Get the ordered list from df
-    c = c.set_index(feature_col).loc[ordered_features].reset_index().rename(columns={'index': feature_col})
-    # print(c['source'].nunique())
-    ax = axes[1]
-    ax.barh(c[feature_col], c['centrality'], color=colors_blind[1], alpha=0.4)
+    c[feature_col] = pd.Categorical(c[feature_col], categories=ordered_features, ordered=True)
+    ax = fig.add_subplot(gs[1])
+    if True:
+        sns.barplot(
+            data=df,
+            x='centrality',
+            y=feature_col,
+            ax=ax,
+            color='#56B4E9',
+            alpha=0.7,
+            ci=None,  # turn off seaborn's built-in error estimation
+            errorbar=('sd', df['centrality_std']),  # pass your own std values
+            errwidth=1.2,
+            capsize=0.2
+        )
+    else:  
+        df['centrality'] = df['centrality'].fillna(0)
+        df['centrality_std'] = df['centrality_std'].fillna(0)
+
+        # Set feature_col as ordered categorical
+        df[feature_col] = pd.Categorical(df[feature_col], categories=ordered_features, ordered=True)
+
+        # y-axis: category codes (reverse for top-to-bottom order)
+        y_vals = df[feature_col].cat.codes
+        y_vals = y_vals.max() - y_vals  # reverse if needed
+
+        # Labels
+        y_labels = df[feature_col].cat.categories[::-1]
+
+        # Create plot
+        ax = fig.add_subplot(gs[1])
+        ax.barh(
+            y=y_vals,
+            width=df['centrality'],
+            xerr=df['centrality_std'],
+            color='#56B4E9',
+            alpha=0.7,
+            capsize=2,
+        #     error_kw={
+        #     'elinewidth': 0.7,
+        #     'alpha': 0.7,         # error bar transparency
+        #     'capthick': 0.7       # thickness of cap lines (optional for style)
+        # }
+        )
+
+        # Set y-tick labels
+        ax.set_yticks(range(len(y_labels)))
+        ax.set_yticklabels(y_labels)
+
     ax.spines[['top', 'right']].set_visible(False)
     ax.margins(**margins)
-    ax.set_xlabel('Centrality')
-    plt.tight_layout()
+    ax.set_xlabel('Centrality\n(out-degree)' if feature_col=='source' else 'Centrality\n(in-degree)')
+    ax.set_ylabel('')
+    ax.set_yticks([])
+    plt.subplots_adjust(wspace=0.1)
 
-def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes=(20, 200)):
+def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes=(20, 200), annotate_sig=True, annotate_targets=False):
     from matplotlib.colors import TwoSlopeNorm
     from matplotlib.patches import Patch
     from matplotlib.lines import Line2D
@@ -313,14 +395,15 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
     cmap = plt.cm.RdYlGn  # Red = negative, Green = positive
     norm = TwoSlopeNorm(vmin=-.1, vcenter=0, vmax=.1)
 
-    net['dataset'] = net['dataset'].astype(CategoricalDtype(categories=datasets_all, ordered=True))
+    
     net['dataset'] = net['dataset'].apply(lambda name: surrogate_names.get(name, name))
+    # net['dataset'] = net['dataset'].astype(CategoricalDtype(categories=datasets_all, ordered=True))
     net['slope_direction'] = net['slope'].apply(lambda x: 'Increase in aging' if x > 0 else 'Decrease in aging')
 
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=(10, 3))
     # Sort by target alphabetically
-    net = net.sort_values(by='target')
+    # net = net.sort_values(by='target')
     sns.scatterplot(
         data=net,
         x='target',
@@ -331,10 +414,26 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
         style='slope_direction',
         markers={'Increase in aging': '^', 'Decrease in aging': 'v'},
         ax=ax,
-        size='neg_log10_adj_pval',
-        sizes=sizes,
+        # size='neg_log10_adj_pval',
+        s = 100,
+        # sizes=sizes,
+        alpha=0.7,
         legend=False  # Suppress default legend
         )
+    ax.set_ylabel('Cohort', fontsize=12, labelpad=10)
+    ax.set_xlabel('Targets', fontsize=12, labelpad=10)
+    ax.margins(x=0.05, y=0.2)
+    plt.xticks(rotation=90)
+    if annotate_targets:
+        tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
+        # Set tick labels with color
+        plt.draw()  # ensures tick labels are populated
+
+        # Loop through the tick labels and modify their color
+        for label in ax.get_xticklabels():
+            label_text = label.get_text()
+            if label_text in tf_all:
+                label.set_color('#56B4E9')
     # Custom legend handles
     if show_legend:
         style_legend = [
@@ -365,7 +464,8 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
         # Combine and place legends
         spacer = Line2D([0], [0], linestyle="none", label="")
 
-        all_handles = style_legend + [spacer] + color_legend + [spacer] + size_legend
+        # all_handles = style_legend + [spacer] + color_legend + [spacer] + size_legend
+        all_handles = style_legend + [spacer] + color_legend
 
         ax.legend(
             handles=all_handles,
@@ -375,23 +475,20 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
             title='',
             frameon=False
         )
-    ax.set_ylabel('Cohort', fontsize=10, weight='bold')
-    ax.set_xlabel('Targets', fontsize=10, weight='bold')
-    ax.margins(x=0.05, y=0.2)
-    plt.xticks(rotation=90)
     
     # - annotate significant targets
-    pval_threshold = 1.4
-    x_vals = net['target'].astype('category').cat.codes.values
-    y_vals = net['dataset'].astype('category').cat.codes.values
+    if annotate_sig:
+        pval_threshold = 1.4
+        x_vals = net['target'].astype('category').cat.codes.values
+        y_vals = net['dataset'].astype('category').cat.codes.values
 
-    for (x, y), (_, row) in zip(zip(x_vals, y_vals), net.iterrows()):
-        if row['neg_log10_adj_pval'] >= pval_threshold:
-            ax.text(x, y + 0.1, '*', ha='center', va='center', alpha=0.9, 
-                    fontsize=8, weight='bold', color='black', zorder=10)
+        for (x, y), (_, row) in zip(zip(x_vals, y_vals), net.iterrows()):
+            if row['neg_log10_adj_pval'] >= pval_threshold:
+                ax.text(x, y + 0.1, '*', ha='center', va='center', alpha=0.9, 
+                        fontsize=8, weight='bold', color='black', zorder=10)
 
 
-def wrapper_flesh_out_tf_interactions(datasets, cell_type, tf, type='bulk', n_top=10, keep_sig_only=False, sizes=(20, 100)):
+def wrapper_flesh_out_tf_interactions(datasets, cell_type, tf, type='bulk', n_top=10, keep_sig_only=False, sizes=(20, 100), ax=None, show_legend=True):
     from ciim.src.tf_activity.helper import retrieve_stats_features
     from ciim.src.tf_activity.plots import plot_tf_interactions_plus_target_stats
     # - get the net for different datasets
@@ -415,10 +512,10 @@ def wrapper_flesh_out_tf_interactions(datasets, cell_type, tf, type='bulk', n_to
     net_stats = net_stats[net_stats['target'].isin(top_targets)]
     if keep_sig_only:
         net_stats = net_stats[net_stats['neg_log10_adj_pval'] > 1.4]
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(len(top_targets)*.2 + 1, len(datasets)*.2 + 1))
 
-    fig, ax = plt.subplots(1, 1, figsize=(len(top_targets)*.2 + 1, len(datasets)*.2 + 1))
-
-    plot_tf_interactions_plus_target_stats(net_stats.copy(), ax=ax, show_legend=True, sizes=sizes)
+    plot_tf_interactions_plus_target_stats(net_stats.copy(), ax=ax, show_legend=show_legend, sizes=sizes)
 
 def heatmap_tf_validation(mean_expr, ax, cmap="magma"):
     sns.heatmap(mean_expr, cmap=cmap, linewidths=0.5, cbar=True, cbar_kws={"shrink": 0.7}, ax=ax)
@@ -436,7 +533,7 @@ def heatmap_tf_validation(mean_expr, ax, cmap="magma"):
 
 def process_trends_validation(cell_type, dataset, cut_off=50):
     # - calculate mean activation across age groups
-    adata_all = adata_lambda(dataset)
+    adata_all = retrieve_adata(dataset)
 
     adata = adata_all[adata_all.obs['cell_type'] == cell_type]
     nets = retrieve_net(dataset, cell_type)
@@ -490,7 +587,7 @@ def binarize_age(obs):
     obs['age_group'] = pd.cut(obs['age'], bins=bins, labels=age_groups, right=False)
     return obs
 def plot_trend_tfs(cell_type, tfs, type='bulk', dataset='data1', ax=None):
-    adata = adata_lambda(dataset, type=type)
+    adata = retrieve_adata(dataset, type=type)
     adata = adata[adata.obs['cell_type'] == cell_type]
     nets = retrieve_net(dataset, cell_type)
     tf_acts = calculate_tf_activity(adata, nets)
@@ -507,7 +604,7 @@ def plot_trend_tfs(cell_type, tfs, type='bulk', dataset='data1', ax=None):
     sorted_tfs = mean_expr.index
     return sorted_tfs
 def plot_trend_targets_binarized(cell_type, genes, dataset='data1', ax=None):
-    adata = adata_lambda(dataset)
+    adata = retrieve_adata(dataset)
     adata = adata[adata.obs['cell_type'] == cell_type]
     adata = adata[:, adata.var_names.isin(genes)]
     from ciim.src.process_dataset.preprocess.helper import binarize_age
@@ -528,7 +625,11 @@ def plot_overall_heatmap(stats_all,
                         figsize=(6, 8), 
                         sig_dots_y_offset=.8,
                         map_names={},
-                        bbox_to_anchor_col2=(1.1, .75)
+                        bbox_to_anchor=(1.1, 1),
+                        bbox_to_anchor_col2=(1.1, .75),
+                        bbox_to_anchor_col1=(1.1, 0.4),
+                        trend_colors = ['#B0BF1A', '#E52B50'],
+                        trend_names = ['Decrease in aging', 'Increase in aging'],
                         ):
     from ciim.src.common import palette_trend_2
     from matplotlib.colors import ListedColormap, BoundaryNorm
@@ -561,7 +662,7 @@ def plot_overall_heatmap(stats_all,
 
     row_linkage = linkage(df_plot, method='ward')
     # print(palette_trend)
-    cmap = ListedColormap([palette_trend['Decrease in aging'], 'white', palette_trend['Increase in aging']])
+    cmap = ListedColormap([trend_colors[0], 'white', trend_colors[1]])
     bounds = [-1.5, -0.5, 0.5, 1.5]
     norm = BoundaryNorm(bounds, cmap.N)
 
@@ -614,7 +715,7 @@ def plot_overall_heatmap(stats_all,
     if True:
         datasets_legend = [Patch(color=second_col_palette[label], label=map_names.get(label, label)) for label in second_col_unique_values]
         celltype_legend = [Patch(color=first_col_palette[label], label=map_names.get(label, label)) for label in first_col_unique_values]
-        trend_legend = [Patch(color=color, label=label, alpha=.8) for label, color in palette_trend_2.items()]
+        trend_legend = [Patch(color=color, label=label, alpha=.8) for label, color in zip(trend_names, trend_colors)]
         legend_datasets = g.ax_heatmap.legend(
             handles=datasets_legend,
             title=map_names.get(second_col, second_col),
@@ -629,7 +730,7 @@ def plot_overall_heatmap(stats_all,
         legend_celltypes = g.ax_heatmap.legend(
             handles=celltype_legend,
             title=map_names.get(first_col, first_col),
-            bbox_to_anchor=(1.1, 0.4),
+            bbox_to_anchor=bbox_to_anchor_col1,
             loc='upper left',
             fontsize=9,
             title_fontsize=9,
@@ -640,7 +741,7 @@ def plot_overall_heatmap(stats_all,
         legend_trend = g.ax_heatmap.legend(
             handles=trend_legend,
             title="Trend",
-            bbox_to_anchor=(1.1, 1),
+            bbox_to_anchor=bbox_to_anchor,
             loc='upper left',
             fontsize=9,
             title_fontsize=9,
@@ -745,8 +846,8 @@ def plot_joint_scatter(stats_all, col='cell_type', vars=['CD4T', 'CD8T'], annota
                                                 (stats_all_table[xy_vars[1]] > stats_all_table[xy_vars[1]].quantile(.2))
                                             ]
         
-        x_offset = 10*np.asarray([-1, -1, 0, -1,-.4, .5, 1, 0, 0, 0, 0, 0])
-        y_offset = 10*np.asarray([ 2,  2, 2, -2, -2, -1, 1, 0, 0, 0, 0, 0])
+        x_offset = 10*np.asarray([-2, -2, 0, -1,-.4, .5, 1, 0, 0, 0, 0, 0])
+        y_offset = 10*np.asarray([ -1,  2, 2, -2, -2, -1, 1, 0, 0, 0, 0, 0])
 
         ii = 0
         for idx, row in high_tf_points.iterrows():
@@ -789,21 +890,21 @@ def cluster_trends(adata):
         mean_expr = mean_expr.sort_values('cluster').drop(columns=['cluster'])
     mean_expr = mean_expr[age_group_order]  # Keep original order
     return mean_expr
-def plot_net_nx(net, figsize=(6, 6), draw_evidence=True):
+def plot_net_nx(net, figsize=(6, 6), draw_evidence=True, rad_negative=-.3, rad_positive=0, palette_evidence=None, 
+                offset_evidence = 0.1, arc_offset = 0.05):
     import networkx as nx
 
     G = nx.DiGraph()
     
     has_dataset = ('dataset' in net.columns) & draw_evidence
 
-    # Aggregate weights
-    weight = net.groupby(['source', 'target'])['weight'].mean().reset_index()
-
+    # Aggregate datasets
+    net['sign'] = np.sign(net['weight'])
+    
     if has_dataset:
-        edges = net.groupby(['source', 'target'], sort=False)['dataset'].unique().reset_index()
-        edges = edges.merge(weight, on=['source', 'target'], how='left')
+        edges = net.groupby(['source', 'target', 'sign'], as_index=False).agg({'dataset':list})
     else:
-        edges = weight.copy()
+        edges = net.copy()
         edges['dataset'] = None
 
     # Add nodes and edges
@@ -811,15 +912,10 @@ def plot_net_nx(net, figsize=(6, 6), draw_evidence=True):
         source = row['source']
         target = row['target']
         datasets = row['dataset'] if has_dataset else None
-        weight = row['weight']
-        G.add_edge(source, target, weight=weight, datasets=datasets)
+        sign = row['sign']
+        G.add_edge(source, target, weight=sign, datasets=datasets)
 
     node_size = 1000
-
-    edge_colors = [
-        palette_regulation["Positive"] if G[u][v]["weight"] > 0 else palette_regulation["Negative"]
-        for u, v in G.edges()
-    ]
 
     pos = nx.circular_layout(G)
     scale_factor = 0.3  # adjust this between 0 (tight) and 1 (default)
@@ -838,7 +934,12 @@ def plot_net_nx(net, figsize=(6, 6), draw_evidence=True):
     )
 
     from matplotlib.patches import ArrowStyle
-    for u, v in G.edges():
+    rad_store = []
+    for _, row in edges.iterrows():
+        u = row['source']
+        v = row['target']
+        datasets = row['dataset'] if has_dataset else None
+        sign = row['sign']
         def draw_edge(u, v, arrowstyle, rad):
             G_temp = nx.DiGraph()
             G_temp.add_edge(u, v)
@@ -854,17 +955,30 @@ def plot_net_nx(net, figsize=(6, 6), draw_evidence=True):
                 ax=ax,
                 width=1.5,
                 arrowstyle=arrowstyle,
-                # **arrow_prop
             )
         
-        # - reg sign
-        weight = G[u][v]["weight"]
-        if weight > 0:
-            arrowstyle = ArrowStyle(stylename="-|>", head_length=0.4, head_width=0.2, widthA=1.0, widthB=1.0, lengthA=0.2, lengthB=0.2, angleA=0, angleB=0, scaleA=None, scaleB=None)
-        else:
-            arrowstyle = ArrowStyle(stylename="-[", widthB=.3, lengthB=0, angleB=0)
-        
-        rad = 0.0
+        # - check if there are multiple signs for the same edge (positive and negative)
+        unique_edge = True
+        df = edges[(edges['source'] == u) & (edges['target'] == v)]
+        if df.groupby(['source', 'target'])['sign'].nunique().max() > 1:
+            unique_edge = True
+
+        stimulation = ArrowStyle(stylename="-|>", head_length=0.4, head_width=0.2, widthA=1.0, widthB=1.0, lengthA=0.2, lengthB=0.2, angleA=0, angleB=0, scaleA=None, scaleB=None)
+        inhibition = ArrowStyle(stylename="-[", widthB=.3, lengthB=0, angleB=0)
+        if unique_edge & (sign > 0):
+            rad = 0
+            arrowstyle = stimulation
+        elif unique_edge & (sign < 0):
+            rad = 0
+            arrowstyle = inhibition
+        elif not unique_edge:
+            if sign > 0:
+                rad = rad_positive
+                arrowstyle = stimulation
+            else:
+                rad = rad_negative
+                arrowstyle = inhibition
+        rad_store.append(rad)
         draw_edge(u, v, arrowstyle, rad=rad)  
             
     font_size = 12
@@ -884,29 +998,49 @@ def plot_net_nx(net, figsize=(6, 6), draw_evidence=True):
     from matplotlib import transforms
 
     if has_dataset:
-        for (source, target, data) in G.edges(data=True):
+        for i, (_, row) in enumerate(edges.iterrows()):
+            source = row['source']
+            target = row['target']
+            sign = row['sign']
+            datasets = row['dataset'] if has_dataset else None
+            if datasets is None:
+                continue
+
             x0, y0 = pos[source]
             x1, y1 = pos[target]
 
             # Direction vector
             dx, dy = x1 - x0, y1 - y0
             angle = np.degrees(np.arctan2(dy, dx))
-
+            
             # Normalize direction vector
             length = np.hypot(dx, dy)
             dx /= length
             dy /= length
 
             # New starting point: near the target
-            base_x = x1 - 0.11 * dx  # 0.1 can be tuned (how close to the target)
-            base_y = y1 - 0.11 * dy
+            base_x = x1 - offset_evidence * dx  # 0.1 can be tuned (how close to the target)
+            base_y = y1 - offset_evidence * dy
+
+
+            # Apply perpendicular offset for negative sign (curved edge)
+            rad = rad_store[i]
+            if rad != 0:
+                # Shift along the edge *slightly more* to correct toward target node
+                edge_offset_correction = -0.03  # adjust as needed
+                base_x = base_x - edge_offset_correction * dx
+                base_y = base_y - edge_offset_correction * dy
+
+                # Add perpendicular offset to simulate the arc
+                base_x += arc_offset * (-dy)  # perp_dx
+                base_y += arc_offset * dx    # perp_dy
+
+                angle += np.degrees(np.arctan(rad))
 
             # Box properties
             spacing_along_edge = 0.01
             box_width = 0.02
             box_height = 0.01
-
-            datasets = data['datasets']
 
             for i, dataset in enumerate(datasets):
                 offset = i * spacing_along_edge
@@ -920,13 +1054,13 @@ def plot_net_nx(net, figsize=(6, 6), draw_evidence=True):
                     box_width,
                     box_height,
                     transform=t,
-                    color=palette_datasets[dataset],
+                    color=palette_evidence[dataset],
                     alpha=0.9
                 )
                 ax.add_patch(rect)
 
 
-        handles = [plt.Line2D([0], [0], color=palette_datasets[d], lw=6) for d in net['dataset'].unique()]
+        handles = [plt.Line2D([0], [0], color=palette_evidence[d], lw=6) for d in net['dataset'].unique()]
         pretty_names = [surrogate_names.get(d, d) for d in net['dataset'].unique()]
         plt.legend(
                 handles, 
@@ -938,28 +1072,52 @@ def plot_net_nx(net, figsize=(6, 6), draw_evidence=True):
                 frameon=False, 
                 fontsize=10
             )
-def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net=True, draw_evidence=True, figsize=(3, 3)):
-    collectri = pd.read_csv(f'/vol/projects/jnourisa/prior/collectri.csv')
-    collectri['dataset'] = 'collectri'
-
+def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net=True, draw_evidence=True, figsize=(4, 4), figsize_collectri=(3,3), 
+                     offset_evidence=.11, arc_offset=.05, offset_evidence_collectri=.1):
     net_store = []
     for dataset in datasets:
-        net = retrieve_net(dataset=dataset, cell_type=cell_type)
+        cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
+        net = retrieve_net(dataset=dataset, cell_type=cell_type_major)
         net['dataset'] = dataset
         net_store.append(net)
-    net_store.append(collectri)
     net = pd.concat(net_store, ignore_index=True)
     net = net[(net['source'].isin(features) & net['target'].isin(features))]
+    
     # - keep edges with min degree
     net = net.groupby(['source', 'target']).filter(lambda x: len(x) >= min_degree)
-    plot_net_nx(net, figsize=figsize, draw_evidence=draw_evidence)
-    plt.title(f"{cell_type}", fontsize=14, pad=20, weight='bold')
+
+    plot_net_nx(net, figsize=figsize, draw_evidence=draw_evidence, palette_evidence=palette_datasets, offset_evidence=offset_evidence, arc_offset=arc_offset)
+    plt.title(f"{cell_type_major}", fontsize=14, pad=20, weight='bold')
 
     if indivitual_net:
-        for dataset in datasets:
+        for dataset in datasets+['collectri']:
             net_i = net[net['dataset'] == dataset]
-            plot_net_nx(net_i, figsize=figsize, draw_evidence=False)
+            plot_net_nx(net_i, figsize=figsize, draw_evidence=False, offset_evidence=offset_evidence, arc_offset=arc_offset)
             plt.title(f"{surrogate_names.get(dataset, dataset)}", fontsize=16, pad=20)
+    if True:
+        # - add collectri
+        collectri = pd.read_csv(f'/vol/projects/jnourisa/prior/collectri_with_source.csv')
+        collectri['dataset'] = collectri['ref']
+        evidence = collectri.copy()
+        if False:
+            # - add skeleton
+            # skeleton = pd.read_csv(f'/home/jnourisa/projs/ongoing/task_grn_inference/resources/grn_benchmark/prior//skeleton.csv')
+            skeleton = pd.read_csv(f'/vol/projects/jnourisa/prior/skeleton_promotor.csv')
+            skeleton['weight'] = 1
+            skeleton['dataset'] = 'skeleton'
+            evidence = pd.concat([evidence, skeleton], ignore_index=True)
+
+        # - evidence
+        
+        evidence = evidence[evidence['source'].isin(features) & evidence['target'].isin(features)]
+        evidence = evidence[evidence['source'] != evidence['target']]
+
+        
+        refs = evidence['dataset'].unique()
+        set2_colors = sns.color_palette("Set2", n_colors=len(refs))
+        palette_evidence ={d: color for d, color in zip(refs, set2_colors)}
+        plot_net_nx(evidence, figsize=figsize_collectri, draw_evidence=True, palette_evidence=palette_evidence, offset_evidence=offset_evidence_collectri, arc_offset=arc_offset)
+        plt.title(f"{cell_type_major} - CollecTRI", fontsize=14, pad=20, weight='bold')
 
 def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", y_label="Genes", figsize=(2.5, 3), ax=None, show_cbar=True, shrink=.7):
 
@@ -1096,7 +1254,7 @@ def heamap_plot_minor_cell_types(stats_all, palette, map_names, main_col='major_
 def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets, ax=None, show_cbar=True, type='bulk'):
     mean_expr_store = []
     for dataset in datasets:
-        adata = read_feature_data(dataset, cell_type, type=type, feature_type=feature_type)
+        adata = retrieve_feature_data(dataset, cell_type, type=type, feature_type=feature_type)
         adata = adata[:, adata.var_names==feature]
 
         expr = bin_feature_values(adata)
@@ -1394,7 +1552,7 @@ def plot_trends(top_tfs, datasets, data_dict, palette, cell_type, surrogate_name
                 color=palette[dataset], 
                 alpha=0.4,  
                 linewidth=1,
-                s=cell_count_n * 100
+                s=cell_count_n * 50
             )
 
             # Fit linear regression
@@ -1413,11 +1571,11 @@ def plot_trends(top_tfs, datasets, data_dict, palette, cell_type, surrogate_name
                     p_value_adj = p_value * n_tests
                 # Plot fitted line
                 fitted_line = slope * age_range + intercept
-                ax.plot(age_range, fitted_line, color=palette[dataset], linestyle='-', linewidth=2)
+                # ax.plot(age_range, fitted_line, color=palette[dataset], linestyle='-', linewidth=2)
 
                 # Create legend handle with both R² and Spearman ρ
                 dataset_name = surrogate_names.get(dataset, dataset)
-                legend_label = '    ' + dataset_name + f' ({slope.round(2)})'+'\n' + r' ($p_{adj}$=' + "{:.2e}".format(p_value_adj) + ")"
+                legend_label = '    ' + dataset_name + f' ({slope.round(2)})'+'\n' + r' ($p-value$=' + "{:.2e}".format(p_value) + ")"
 
                 handle = mpatches.Patch(color=palette[dataset], label=legend_label)
                 legend_handles.append(handle)

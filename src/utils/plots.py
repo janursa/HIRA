@@ -17,7 +17,7 @@ import scipy
 import networkx as nx
 from scipy.stats import spearmanr, linregress
 from ciim.src.common import surrogate_names, palette_datasets, palette_regulation
-from ciim.src.tf_activity.helper import adata_lambda, retrieve_net, calculate_tf_activity
+from ciim.src.tf_activity.helper import retrieve_adata, retrieve_net, calculate_tf_activity
 
 
 def plot_umap(adata, color='', palette=None, ax=None, X_label='X_umap', on_data=False, sort_colors=True,
@@ -86,7 +86,10 @@ def heatplot_centrality(df, cmap="viridis", cbar_title="Gene expression", y_labe
     plt.xticks(rotation=45)
 
 
-def dotplot(df, ax, color_col='trend', size_col='neg_log10_adj_pval', 
+def dotplot(df, ax, 
+            ax_legend,
+            color_col='trend', 
+            size_col='neg_log10_adj_pval', 
             x='cell_type', 
             y='tf', 
             palette=None, sizes=(20, 200),
@@ -101,62 +104,76 @@ def dotplot(df, ax, color_col='trend', size_col='neg_log10_adj_pval',
             alpha=0.5,
             linewidth=0.5,
             cbar_height='4%',
+            cbar_width="60%",
             size_legend_scale=10,):
     import matplotlib.cm as cm
     import matplotlib.colors as mcolors
     from mpl_toolkits.axes_grid1.inset_locator import inset_axes
     from matplotlib.colors import TwoSlopeNorm
     from sklearn.preprocessing import MinMaxScaler
+    import matplotlib.gridspec as gridspec
 
-
+    df[size_col] = df[size_col].replace([np.inf, -np.inf], 1E-20) # replace inf with a small value
     vmin = df[color_col].min()
     vmax = df[color_col].max()
     abs_max = max(abs(vmin), abs(vmax))
     norm = TwoSlopeNorm(vmin=-abs_max, vcenter=0, vmax=abs_max)
 
-    # Get numeric positions for x/y if categorical
-    x_vals = df[x].astype('category').cat.codes
-    y_vals = df[y].astype('category').cat.codes
+    if True:
+        # Get numeric positions for x/y if categorical
+        x_vals = df[x].astype('category').cat.codes
+        y_vals = df[y].astype('category').cat.codes
 
-    # Store tick labels
-    x_labels = df[x].astype('category').cat.categories
-    y_labels = df[y].astype('category').cat.categories
+        # Store tick labels
+        x_labels = df[x].astype('category').cat.categories
+        y_labels = df[y].astype('category').cat.categories
 
-    # Map slope to color using manual colormap
-    cmap = plt.get_cmap(palette if palette else 'RdBu_r')
-    df['mapped_color'] = df[color_col].apply(lambda val: cmap(norm(val)))
+        # Map slope to color using manual colormap
+        cmap = plt.get_cmap(palette if palette else 'RdBu_r')
+        df['mapped_color'] = df[color_col].apply(lambda val: cmap(norm(val)))
+        scaler = MinMaxScaler(feature_range=sizes)
+        scaled_sizes = scaler.fit_transform(df[[size_col]]).flatten()
+        y_vals = y_vals.max() - y_vals  # Reverse y-values for plotting
+        y_labels = y_labels[::-1]
+        # Then continue plotting as before
+        ax.scatter(x_vals, y_vals, 
+                c=df['mapped_color'], 
+                s=scaled_sizes, 
+                edgecolor='black', 
+                linewidth=linewidth, 
+                alpha=alpha)
 
-    # Scale sizes to desired range
-    scaler = MinMaxScaler(feature_range=sizes)
-    scaled_sizes = scaler.fit_transform(df[[size_col]]).flatten()
+        # Set y-ticks in the reversed order
+        ax.set_yticks(range(len(y_labels)))
+        ax.set_yticklabels(y_labels)
 
-    # Plot
-    ax.scatter(x_vals, y_vals, 
-               c=df['mapped_color'], 
-               s=scaled_sizes, 
-               edgecolor='black', 
-               linewidth=linewidth, 
-               alpha=alpha)
+        # Set axis ticks and labels
+        ax.set_xticks(range(len(x_labels)))
+        ax.set_xticklabels(x_labels, rotation=45, ha='right')
 
-    # Set axis ticks and labels
-    ax.set_xticks(np.unique(x_vals))
-    ax.set_xticklabels(x_labels, rotation=45, ha='right')
-    ax.set_yticks(np.unique(y_vals))
-    ax.set_yticklabels(y_labels)
+    # sns.scatterplot(data=df, x=x, y=y, ax=ax)
 
     ax.set_xlabel('')
     ax.set_ylabel(y_label)
     ax.margins(x=.1, y=.1)
-    # Create Legends
+
+    # -------  plot sigs
+    pval_threshold = 1.4
+    for i, row in df.iterrows():
+        if row['neg_log10_adj_pval'] >= pval_threshold:
+            ax.text(x_vals[i], y_vals[i]-.1, '*', ha='center', va='center', alpha=.9, 
+                    fontsize=6, weight='bold', color='black', zorder=10)
+
+    # ---------- Legends
     if show_size_legend:
         print(show_size_legend)
         size_legend_values = np.linspace(df[size_col].min() , df[size_col].max(), num=4)
         size_legend_handles = [plt.scatter([], [], s=s * size_legend_scale, color="black", label=f"{s:.1f}") for s in size_legend_values]
-        size_legend_handle = plt.legend(handles=size_legend_handles, title=size_legend_title, loc=size_legend_loc, frameon=False)
+        size_legend_handle = plt.legend(handles=size_legend_handles, title=size_legend_title, loc='upper right', 
+                                        bbox_to_anchor=size_legend_loc, frameon=False, title_fontsize=9)
     
-    # vmin = df[color_col].min()
-    # vmax = df[color_col].max()
-    # abs_max = max(vmin, vmax)
+    vmin = df[color_col].min()
+    vmax = df[color_col].max()
     if vmin < 0 and vmax > 0:
         norm = TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
     else:
@@ -164,10 +181,10 @@ def dotplot(df, ax, color_col='trend', size_col='neg_log10_adj_pval',
     sm = plt.cm.ScalarMappable(cmap=palette, norm=norm)
     sm.set_array([])
 
-    # Create the colorbar
+    # - Create the colorbar
     axins = inset_axes(
-        ax,
-        width="60%",
+        ax_legend,
+        width=cbar_width,
         height=cbar_height,
         loc='upper right',
         bbox_to_anchor=bbox_to_anchor_cbar,
@@ -184,5 +201,8 @@ def dotplot(df, ax, color_col='trend', size_col='neg_log10_adj_pval',
 
     cbar.ax.tick_params(labelsize=8, direction='out')
     cbar.ax.set_title(color_legend_title, fontsize=9, pad=5)
-    # if show_color_legend:
+
+
     # plt.gca().add_artist(size_legend_handle)
+
+    

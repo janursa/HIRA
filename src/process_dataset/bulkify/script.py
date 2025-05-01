@@ -42,10 +42,13 @@ if __name__ == '__main__':
     adata = ad.read_h5ad(args.sc_dataset_file)
     # - main bulk data (per major celltype)
     print('Bulkifying main cell types')
-    adata_bulk_major_celltypes = bulkify_main(adata, covariates=['cell_type', 'donor_id', 'age'])
+    covariates=['cell_type', 'donor_id', 'age'] # this should have one-to-one mapping with resulting bulked data (for example, if a donor has multiple treatment or disease, they will be summed together)
+    if 'treatment' in adata.obs.columns:
+        covariates.append('treatment')
+    adata_bulk_major_celltypes = bulkify_main(adata, covariates=covariates)
     adata_bulk_major_celltypes.write(args.bulk_all)
     print('Bulkifying minor cell types')
-    adata_bulk_minor_celltypes = bulkify_main(adata, covariates=['Sub_CT', 'donor_id', 'age'])
+    adata_bulk_minor_celltypes = bulkify_main(adata, covariates=covariates)
     adata_bulk_minor_celltypes.write(args.bulk_minor_celltype)
 
     if 'M' in adata.obs['sex'].unique():
@@ -61,10 +64,10 @@ if __name__ == '__main__':
     assert adata_f.shape[0] > 0, 'zero adata for female'
 
     print('Bulking male')
-    adata_bulk_major_celltypes_m = bulkify_main(adata_m, covariates=['cell_type', 'donor_id', 'age'])
+    adata_bulk_major_celltypes_m = bulkify_main(adata_m, covariates=covariates)
     adata_bulk_major_celltypes_m.write(args.bulk_M)
     print('Bulking female')
-    adata_bulk_major_celltypes_f = bulkify_main(adata_f, covariates=['cell_type', 'donor_id', 'age'])
+    adata_bulk_major_celltypes_f = bulkify_main(adata_f, covariates=covariates)
     adata_bulk_major_celltypes_f.write(args.bulk_F)
     print('DONE')
 

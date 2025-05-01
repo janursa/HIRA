@@ -88,6 +88,16 @@ def efficient_melting(net, gene_names):
     # Convert to DataFrame
     net = pd.DataFrame(data, columns=['source', 'target', 'weight'])
     return net
+def efficient_melting_full(net, gene_names):
+    '''includes both directions A->B and B->A'''
+    n = len(gene_names)
+    source, target = np.meshgrid(gene_names, gene_names, indexing='ij')
+    weights = net.flatten()
+    data = np.column_stack((source.flatten(), target.flatten(), weights))
+
+    df = pd.DataFrame(data, columns=['source', 'target', 'weight'])
+    df = df[df['source'] != df['target']]  # remove self-pairs if needed
+    return df
 
 def infer_grn(X, gene_names):
     from scipy.stats import spearmanr
@@ -102,9 +112,9 @@ def infer_grn(X, gene_names):
         corr = sparse_corrcoef(X_filtered.T)
         print(corr.shape)
     try:
-        net = efficient_melting(corr.A, gene_names)
+        net = efficient_melting_full(corr.A, gene_names)
     except:
-        net = efficient_melting(corr, gene_names)
+        net = efficient_melting_full(corr, gene_names)
     assert (net['weight']<=1).all()
     return net 
 def sparse_std(X):
@@ -152,6 +162,13 @@ def main(par):
 
     tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
     net = net[net['source'].isin(tf_all)]
+    
+    if True:
+        skeleton = pd.read_csv(f'/vol/projects/jnourisa/prior/skeleton_promotor.csv')
+        net['edge'] = net['source'] + '_' + net['target']
+        net['promotor_based'] = net['edge'].isin(skeleton['edge'])
+        net = net.drop('edge', axis=1)
+
     net.to_csv(par['prediction'], index=False)
 
 if __name__ == '__main__':
