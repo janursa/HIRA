@@ -33,6 +33,19 @@ parser.add_argument(
     help="Force to rewrite existing files (only grns)."
 )
 
+parser.add_argument(
+    '--max_workers',
+    type=int,
+    default=1,
+)
+
+parser.add_argument(
+    '--data_type',
+    type=str,
+    default='sc',
+    help="Type of data: bulk or single-cell"
+)
+
 args = parser.parse_args()
 
 
@@ -42,11 +55,13 @@ par = {
         'weight_t': 0.05,
         'batches': ['all_batches'],
         'cell_types': ['B', 'CD4T', 'CD8T', 'MONO', 'NK', 'T'],
+        # 'cell_types': ['CD8T'],
         'age_groups': ['all_agegroups'], # ['all_agegroups', '65_75', '55_64', '75+', '34-', '35_44', '45_54']
         'min_genes_per_cell': 10, 
         'max_genes_per_cell': 5000, 
         'min_cells_per_gene': 2500,
-        'max_workers': 20, #TODO: reset this
+        'data_type': args.data_type,
+        'max_workers': args.max_workers, #TODO: reset this
         'force': args.force,
         'save_grns_dir': args.save_grns_dir,
         'temp_dir': 'output/grns/temp/'
@@ -101,6 +116,7 @@ def wrapper_grn(task, par):
     args = f"--rna {adata_file} --prediction {save_file_name} \
             --min_cells_per_gene {par['min_cells_per_gene']} \
             --min_genes_per_cell {par['min_genes_per_cell']} \
+            --data_type {par['data_type']} \
             --weight_t {par['weight_t']} "
     command_grn = f"python {dependencies['grn_method']} {args}"
     try:

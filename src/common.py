@@ -30,7 +30,7 @@ cell_types = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
 
 # - datasets
 datasets_e = ['data1', 'data7_allTPs_jalil', 'data12', 'SLE_European']
-datasets_a = ['data13_Korean' , 'data13_Japanese', 'SLE_Asian']
+datasets_a = ['data13_Korean' , 'data13_Japanese']
 datasets_all = datasets_e + datasets_a
 
 # - palettes  
@@ -55,7 +55,7 @@ cmap_trend = LinearSegmentedColormap.from_list(
 palette_trend_2 = {key: palette_trend[key] for key in ['Increase in aging', 'Decrease in aging']}
 
 palette_disease_effect = {'Increase in disease': 'Orange', 'Decrease in disease': '#0072B2'}
-
+palette_treatment = {'Increase after treatment': 'Orange', 'Decrease after treatment': '#0072B2'}
 
 palette_sub_types = {
     'Tem_Trm_CD8': '#E69F00',    

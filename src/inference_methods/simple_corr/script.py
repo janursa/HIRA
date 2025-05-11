@@ -15,62 +15,21 @@ parser.add_argument('--prediction', type=str, required=True, help='Output file')
 parser.add_argument('--min_cells_per_gene',type=int, default=100, help='Minimum number of cells per gene')
 parser.add_argument('--min_genes_per_cell', type=int, default=10, help='Minimum number of genes per cell')
 parser.add_argument('--weight_t', type=float, default=.05, help='Minimum correlation coefficient to retain an edge.') 
+parser.add_argument('--data_type', type=str, default='sc', help='Type of data: bulk or single-cell')
 args = parser.parse_args()
 par = vars(args)
 
-meta = {
-    'resources_dir' : 'src/utils/'
-}
-sys.path.append(meta['resources_dir'])
-from util import basic_qc
+# meta = {
+#     'resources_dir' : 'src/utils/'
+# }
+# sys.path.append(meta['resources_dir'])
+from ciim.src.utils.util import basic_qc
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 from statsmodels.stats.multitest import multipletests
 
-# def efficient_melting(net, pvals, gene_names, alpha=0.05):
-#     '''Efficiently extract upper triangle and apply FDR correction'''
-#     upper_triangle_indices = np.triu_indices_from(net, k=1)
 
-#     sources = np.array(gene_names)[upper_triangle_indices[0]]
-#     targets = np.array(gene_names)[upper_triangle_indices[1]]
-#     weights = net[upper_triangle_indices]
-#     pvals_flat = pvals[upper_triangle_indices]
-
-#     # FDR correction
-#     _, pvals_adj, _, _ = multipletests(pvals_flat, alpha=alpha, method='fdr_bh')
-
-#     # Filter by adjusted p-value
-#     mask = pvals_adj < alpha
-
-#     # Create filtered DataFrame
-#     data = np.column_stack((sources[mask], targets[mask], weights[mask], pvals_adj[mask]))
-#     net_df = pd.DataFrame(data, columns=['source', 'target', 'weight', 'p_adj'])
-#     net_df['weight'] = net_df['weight'].astype(float)
-#     net_df['p_adj'] = net_df['p_adj'].astype(float)
-#     return net_df
-
-# def infer_grn(X, gene_names, alpha=0.05):
-#     std_devs = sparse_std(X)
-#     mask_zero_std = std_devs == 0
-#     gene_names_filtered = gene_names[~mask_zero_std]
-#     X_filtered = X[:, ~mask_zero_std]
-#     if X_filtered.shape[1] < 2:
-#         raise ValueError("Not enough genes with non-zero variance to compute correlation.")
-
-#     print(X_filtered.shape, type(X_filtered))
-#     if sp.issparse(X_filtered):
-#         X_filtered = X_filtered.todense()
-
-#     corr, p_value = spearmanr(X_filtered, nan_policy='raise')
-
-#     try:
-#         net = efficient_melting(corr.A, p_value, gene_names_filtered, alpha)
-#     except:
-#         net = efficient_melting(corr, p_value, gene_names_filtered, alpha)
-
-#     assert (net['weight'] <= 1).all()
-#     return net
 def efficient_melting(net, gene_names):
     '''to replace pandas melting'''
     upper_triangle_indices = np.triu_indices_from(net, k=1)
@@ -99,23 +58,48 @@ def efficient_melting_full(net, gene_names):
     df = df[df['source'] != df['target']]  # remove self-pairs if needed
     return df
 
-def infer_grn(X, gene_names):
+def infer_grn(X, gene_names, p_value_filter=False):
     from scipy.stats import spearmanr
+    from statsmodels.stats.multitest import multipletests
+    from scipy.sparse import issparse
+
+    # Remove genes with zero variance
     std_devs = sparse_std(X)
-    mask_zero_std = std_devs == 0
-    gene_names = gene_names[~mask_zero_std]
-    X_filtered = X[:, ~mask_zero_std]
-    if False:
-        corr, p_value = spearmanr(X_filtered, nan_policy='raise')
+    nonzero_mask = std_devs != 0
+    gene_names = gene_names[nonzero_mask]
+    X_filtered = X[:, nonzero_mask]
+
+    if p_value_filter:
+        # Compute Spearman correlation and p-values
+        
+        if issparse(X_filtered):
+            X_filtered = X_filtered.todense().A
+        corr, p_values = spearmanr(X_filtered, nan_policy='raise')
+
+        # print(corr.shape)
+        # print(p_values.shape)
+        
+        # Melt correlation and p-value matrices into edge list format
+        corr_df = efficient_melting_full(corr, gene_names)
+        pval_df = efficient_melting_full(p_values, gene_names).rename(columns={'weight': 'p_value'})
+
+        # FDR correction
+        _, fdr_corrected, _, _ = multipletests(pval_df['p_value'], method='fdr_bh')
+        corr_df = corr_df[fdr_corrected < 0.05]
+        net = corr_df
+
     else:
-        print('start corr calculation')
+        print("Start correlation calculation")
         corr = sparse_corrcoef(X_filtered.T)
-        print(corr.shape)
-    try:
-        net = efficient_melting_full(corr.A, gene_names)
-    except:
+        print(f"Correlation matrix shape: {corr.shape}")
+
+        # Convert sparse matrix to dense if needed
+        if hasattr(corr, 'A'):
+            corr = corr.A
+        
         net = efficient_melting_full(corr, gene_names)
-    assert (net['weight']<=1).all()
+
+    assert (net['weight'] <= 1).all(), "Correlation values should be in [-1, 1]"
     return net 
 def sparse_std(X):
     from sklearn.preprocessing import StandardScaler
@@ -143,21 +127,29 @@ def main(par):
     print(par['rna'])
     adata = ad.read_h5ad(par['rna'])
     # Subset and QC
-    adata = basic_qc(adata, min_cells_per_gene=par['min_cells_per_gene'], min_genes_per_cell=par['min_genes_per_cell'])
-    if adata.shape[0] == 0 or adata.shape[1] == 0:
-        print('No cells or genes left after filtering.')
-        return 
+    data_type = par['data_type']
+    if data_type == 'sc':
+        adata = basic_qc(adata, min_cells_per_gene=par['min_cells_per_gene'], min_genes_per_cell=par['min_genes_per_cell'])
+        if adata.shape[0] == 0 or adata.shape[1] == 0:
+            print('No cells or genes left after filtering.')
+            return 
 
-    assert sp.isspmatrix(adata.X)
-    
-    # Normalize
-    X_norm = sc.pp.normalize_total(adata, inplace=False)['X']
-    expression_sample = sc.pp.log1p(X_norm, copy=True)
+        assert sp.isspmatrix(adata.X)
+        
+        # Normalize
+        X_norm = sc.pp.normalize_total(adata, inplace=False)['X']
+        expression_sample = sc.pp.log1p(X_norm, copy=True)
+
+    else:
+        expression_sample = adata.X
     
     gene_names = adata.var_names
-
-    net = infer_grn(expression_sample, gene_names)
-    net['weight'] = pd.to_numeric(net['weight'], errors='coerce')
+    if False:
+        net = infer_grn(expression_sample, gene_names)
+        net['weight'] = pd.to_numeric(net['weight'], errors='coerce')
+        
+    else:
+        net = infer_grn(expression_sample, gene_names, p_value_filter=True)
     net = net[net['weight'].abs() > par['weight_t']]
 
     tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)

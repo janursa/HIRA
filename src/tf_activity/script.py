@@ -26,7 +26,8 @@ def run_workflow_tf_activity(par):
         wrapper_tf_activity(cell_types, datasets_all, type=par['type'])
     # - step 2: calculate TF association with age
     if True:
-        stats_features_all = wrapper_association_with_age_condition(par, cell_types, datasets=datasets_all)
+        datasets = datasets_all
+        stats_features_all = wrapper_association_with_age_condition(par, cell_types, datasets=datasets)
         stats_features_all.to_csv(par['stats_features'], index=False)
     if True:
         print('TF discovery/validation...')
@@ -59,12 +60,12 @@ if __name__ == '__main__':
     os.makedirs('output/gene_expression/', exist_ok=True)
     os.makedirs('output/gene_expression/gene_expression', exist_ok=True)
 
-    run_bulk = False
-    run_bulk_minor = False
+    run_bulk = True
+    run_bulk_minor = True
     run_bulk_gender = True
     
-    run_bulk_targets = False
-    run_bulk_minor_targets = False
+    run_bulk_targets = True
+    run_bulk_minor_targets = True
 
     if run_bulk:
         # ----- bulk TF activity: non linear association
@@ -123,7 +124,6 @@ if __name__ == '__main__':
                 'stats_features': f'output/tf_activity/stats_features_bulk_{gender}.csv',
                 'stats_all': f'output/tf_activity/stats_all_bulk_{gender}.csv', 
                 'temp_dir': 'output/tmp/',
-                'min_degree_e': 2 # for gender specific meta analysis, we lower down the min degree to 2 because of gender imbalance in different cohorts
             }
             run_workflow_tf_activity(par)
     if False:

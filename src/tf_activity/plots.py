@@ -16,9 +16,63 @@ from scipy.stats import spearmanr, linregress
 from pandas.api.types import CategoricalDtype
 
 from ciim.src.common import colors_blind, datasets_all ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
-from ciim.src.tf_activity.helper import retrieve_adata, retrieve_net, calculate_tf_activity, bin_feature_values, retrieve_feature_data
+from ciim.src.tf_activity.helper import retrieve_adata_bulk, retrieve_net, calculate_tf_activity, bin_feature_values, retrieve_feature_data
 
 
+def plot_term_genes(pathway_scores, cell_type, term):
+    pathway_scores_t = pathway_scores[
+        (pathway_scores['Term'] == term) &
+        (pathway_scores['cell_type'] == cell_type)
+    ]
+    
+    if pathway_scores_t.empty:
+        print(f"No data found for cell type '{cell_type}' and term '{term}'")
+        return
+
+    df = (
+        pathway_scores_t
+        .groupby('trend')['Genes']
+        .apply(lambda x: ', '.join(x))
+        .reset_index(name='Genes')
+        .set_index('trend')
+    )
+    
+
+    pp_dict = {}
+    every_n_words = 5
+
+    for trend in df.index:
+        genes = df.loc[trend, 'Genes'].split(';')
+        if trend == 'Increase in aging':
+            wrapped = ', \n'.join(
+                [', '.join(genes[i:i + every_n_words]) for i in range(0, len(genes), every_n_words)]
+            )
+        else:
+            wrapped = ', '.join(genes)
+        pp_dict[trend] = wrapped
+
+    # Actual plot
+    from matplotlib.lines import Line2D
+    alpha = 0.5
+    plt.figure(figsize=(0, 0))
+
+    # Create legend handles only for present trends
+    color_legend = [
+        Line2D([0], [0], marker='o', color='none', markerfacecolor=color,
+               markersize=10, label=pp_dict[trend], alpha=alpha)
+        for trend, color in palette_trend_2.items()
+        if trend in pp_dict
+    ]
+
+    legend = plt.legend(
+        title=f'{cell_type}: {term}',
+        title_fontsize=10,
+        fontsize=10,
+        handles=color_legend,
+        loc=(1, .1),
+        frameon=False
+    )
+    legend.get_title().set_fontweight('bold')
 def plot_ctr_condition_distribution(cell_types, genes, treatment, ctr, dataset, stats=None, 
                                     type='bulk', feature_type='tf_activity', map_names={}):
     
@@ -42,7 +96,7 @@ def plot_ctr_condition_distribution(cell_types, genes, treatment, ctr, dataset, 
 
         # ------------- function
         genes = [gene for gene in genes if gene in feature_data_df.columns]
-        fig, axes = plt.subplots(1, len(genes), figsize=(2 * len(genes), 2.5))
+        fig, axes = plt.subplots(1, len(genes), figsize=(1.7 * len(genes), 2.5))
 
         if len(genes) == 1:
             axes = [axes]  # Ensure axes is iterable for a single TF
@@ -58,8 +112,9 @@ def plot_ctr_condition_distribution(cell_types, genes, treatment, ctr, dataset, 
             ax.set_title(gene)
             ax.set_ylabel("TF Activity" if ax == axes[0] else "")
             ax.margins(y=0.2, x=0.2)
+            ax.set_xlabel("")
             ax.set_yticks([])
-            # plt.xticks(rotation=45, ha='right')
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
             try:
                 ax.get_legend().remove()  # Remove the legend for each subplot
             except:
@@ -90,23 +145,172 @@ def plot_ctr_condition_distribution(cell_types, genes, treatment, ctr, dataset, 
         plt.tight_layout()
         plt.suptitle(f' {treatment} - {cell_type}', y=1.1)
 
-def plot_sig_tfs_stats(df, figsize=(3.5, 2)):
+def plot_sig_tfs_stats(df, figsize=(3.5, 2), palette=palette_trend_2, ax=None):
     df = df[['tf', 'cell_type', 'trend']]
-    df['trend'] = df['trend'].astype(CategoricalDtype(categories=palette_trend_2.keys(), ordered=True))
+    df['trend'] = df['trend'].astype(CategoricalDtype(categories=palette.keys(), ordered=True))
     df = df[~df.duplicated()].reset_index(drop=True)
     df_counts = df.groupby(['cell_type', 'trend']).size().reset_index(name='Sig. TFs')
-
-    fig, ax = plt.subplots(1, 1, figsize=figsize)
-    sns.barplot(data=df_counts, x='cell_type', y='Sig. TFs', alpha=.8, hue='trend', palette=palette_trend_2, ax=ax)
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
+    sns.barplot(data=df_counts, x='cell_type', y='Sig. TFs', alpha=.8, hue='trend', palette=palette, ax=ax)
     ax.set_ylabel('TF count')
     ax.set_xlabel('')
     ax.margins(x=0.1, y=0.1)
     ax.legend(loc=(1, 0.5), title='Trend', frameon=False)
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
-    plt.xticks(rotation=45, ha='right')
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
     # plt.suptitle('TFs significantly associated with age', fontsize=12)
     plt.tight_layout()
+class ModularizedNetPlot:
+    @staticmethod
+    def prepare_net_only_tfs(cell_type, race, type, min_degree=3):
+        from ciim.src.tf_activity.helper import retrieve_nets, retrieve_sig_stats
+        from ciim.src.common import datasets_e, datasets_a, datasets_all
+
+        stats_sig = retrieve_sig_stats(race=race, type=type).drop_duplicates(subset=['cell_type', 'tf'])
+        stats_sig_t = stats_sig[stats_sig['cell_type'] == cell_type].set_index(['tf'])
+        sig_tfs = stats_sig_t.index.unique()
+        if race=='european':
+            datasets = datasets_e
+        elif race=='asian':
+            datasets = datasets_a
+        else:
+            datasets = datasets_all
+        cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
+        net = retrieve_nets(datasets, cell_type_major, only_promotor_based=True)
+
+        # - subset to only sig tfs
+        net = net[(net['source'].isin(sig_tfs) & net['target'].isin(sig_tfs))]
+        # - keep edges with min degree
+        net['sign'] = np.sign(net['weight'])
+        net = net.groupby(['source', 'target']).filter(lambda x: len(x) >= min_degree)
+        degress = net.groupby(['source', 'target', 'sign']).size()
+        tuple_index = degress[degress >= min_degree].index
+        net = net.set_index(['source', 'target', 'sign']).loc[tuple_index].reset_index().drop_duplicates(subset=['source', 'target', 'sign'])[['source', 'target', 'sign', 'weight']]
+        return net
+    @staticmethod
+    def collapse_nets(net):
+        """
+        Collapse the network by clustering the source and target nodes based on their connectivity patterns.
+        """
+
+        # Pivot to create source-target matrix
+        if 'sign' not in net.columns:
+            net['sign'] = np.sign(net['weight'])
+        adj_matrix = net.pivot_table(index='source', columns='target', values='sign', fill_value=0)
+
+        from scipy.cluster.hierarchy import linkage, fcluster
+        from scipy.spatial.distance import pdist
+
+        # Compute clustering on sources (rows)
+        source_dist = pdist(adj_matrix, metric='cosine')
+        source_linkage = linkage(source_dist, method='average')
+        source_clusters = fcluster(source_linkage, t=0.5, criterion='distance')  # tune `t` to get different granularity
+
+        # Same for targets (columns)
+        target_dist = pdist(adj_matrix.T, metric='cosine')
+        target_linkage = linkage(target_dist, method='average')
+        target_clusters = fcluster(target_linkage, t=0.5, criterion='distance')
+
+        source_module_map = dict(zip(adj_matrix.index, source_clusters))
+        target_module_map = dict(zip(adj_matrix.columns, target_clusters))
+
+        net['source_module'] = net['source'].map(source_module_map)
+        net['target_module'] = net['target'].map(target_module_map)
+
+        # Updated source module names
+        from collections import defaultdict
+
+        # Get source groups
+        source_groups = defaultdict(list)
+        for gene, mod in source_module_map.items():
+            source_groups[mod].append(gene)
+
+        # Same for targets
+        target_groups = defaultdict(list)
+        for gene, mod in target_module_map.items():
+            target_groups[mod].append(gene)
+
+
+        source_module_names = {
+            mod: '/'.join(sorted(genes))
+            for mod, genes in source_groups.items()
+        }
+
+        # Updated target module names
+        target_module_names = {
+            mod: '/'.join(sorted(genes))
+            for mod, genes in target_groups.items()
+        }
+        net['source_module_name'] = net['source_module'].map(source_module_names)
+        net['target_module_name'] = net['target_module'].map(target_module_names)
+
+        # Collapse
+        collapsed_net = net.groupby(['source_module_name', 'target_module_name'])['sign'].mean().reset_index()
+        collapsed_net.rename(columns={'source_module_name': 'source', 'target_module_name': 'target', 'sign': 'weight'}, inplace=True)
+        return collapsed_net
+    @staticmethod
+    def add_trend_to_collapsed_net_only_tfs(collapsed_net, type, race, cell_type):
+        from ciim.src.tf_activity.helper import retrieve_sig_stats
+        # - sumarize the trends for the collapsed net
+        stats_sig = retrieve_sig_stats(race=race, type=type).drop_duplicates(subset=['cell_type', 'tf'])
+        stats_sig_t = stats_sig[stats_sig['cell_type'] == cell_type].set_index(['tf'])
+        def summarize_trend(x):
+            'Assigns one trend for multiple tfs'
+            unique_trends = np.unique([stats_sig_t.loc[tf]['trend'] for tf in x.split('/')])
+            if len(unique_trends)==1:
+                return unique_trends[0]
+            else:
+                return 'Mixed'
+
+        source_trends = []
+        target_trends = []
+
+        for i, row in collapsed_net.iterrows():
+            source = row['source']
+            target = row['target']
+
+            source_trend = summarize_trend(source)
+            target_trend = summarize_trend(target)
+
+            source_trends.append(source_trend)
+            target_trends.append(target_trend)
+        collapsed_net['trend_source'] = source_trends
+        collapsed_net['trend_target'] = target_trends
+
+        return collapsed_net
+    @staticmethod
+    def add_trend_to_collapsed_net(collapsed_net, net):
+        # - sumarize the trends for the collapsed net
+        
+        def summarize_trend(x, col='source'):
+            'Assigns one trend for multiple tfs'
+            df = net.drop_duplicates(subset=[col, f'trend_{col}']).set_index(col).copy()
+            # print(df)
+    
+            unique_trends = np.unique([df.loc[gene][f'trend_{col}'] for gene in x.split('/')])
+            if len(unique_trends)==1:
+                return unique_trends[0]
+            else:
+                return 'Mixed'
+
+        source_trends = []
+        target_trends = []
+
+        for i, row in collapsed_net.iterrows():
+            source = row['source']
+            target = row['target']
+
+            source_trend = summarize_trend(source, col='source')
+            target_trend = summarize_trend(target, col='target')
+
+            source_trends.append(source_trend)
+            target_trends.append(target_trend)
+        collapsed_net['trend_source'] = source_trends
+        collapsed_net['trend_target'] = target_trends
+
+        return collapsed_net
 def dotplot_category_color(df, ax, 
             color_col='trend', 
             size_col='neg_log10_adj_pval', 
@@ -131,11 +335,13 @@ def dotplot_category_color(df, ax,
     from mpl_toolkits.axes_grid1.inset_locator import inset_axes
     from matplotlib.colors import TwoSlopeNorm
 
+    
     sns.scatterplot(data=df, x=x, y=y, size=size_col, hue=color_col, palette=palette, ax=ax, legend=False, sizes=sizes, alpha=alpha)
     # ax.grid(True, linestyle="--", alpha=0.5)
     # ax.spines[['right']].set_visible(False)
     ax.margins(x=.3, y=.05)
-    ax.set_xticklabels(df['cell_type'].astype('category').cat.categories, rotation=45, ha='right')
+    ax.set_xticks(range(len(df[x].cat.categories)))
+    ax.set_xticklabels(df[x].cat.categories, rotation=45, ha='right')
     ax.set_ylabel('')
     ax.set_xlabel('')
 
@@ -266,7 +472,8 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     stats_t['dataset'] = stats_t['dataset'].apply(lambda name: surrogate_names.get(name, name))
 
     if stats_t.shape[0]==0:
-        raise ValueError(f'No data for {cell_type} {feature_col}')
+        print(f'No data for {cell_type} {feature_col}')
+        return 
     # - main plot
     df = stats_t.copy()
     fig = plt.figure(figsize=(width, .15*len(features)+1.5))
@@ -533,7 +740,7 @@ def heatmap_tf_validation(mean_expr, ax, cmap="magma"):
 
 def process_trends_validation(cell_type, dataset, cut_off=50):
     # - calculate mean activation across age groups
-    adata_all = retrieve_adata(dataset)
+    adata_all = retrieve_adata_bulk(dataset)
 
     adata = adata_all[adata_all.obs['cell_type'] == cell_type]
     nets = retrieve_net(dataset, cell_type)
@@ -587,7 +794,7 @@ def binarize_age(obs):
     obs['age_group'] = pd.cut(obs['age'], bins=bins, labels=age_groups, right=False)
     return obs
 def plot_trend_tfs(cell_type, tfs, type='bulk', dataset='data1', ax=None):
-    adata = retrieve_adata(dataset, type=type)
+    adata = retrieve_adata_bulk(dataset, type=type)
     adata = adata[adata.obs['cell_type'] == cell_type]
     nets = retrieve_net(dataset, cell_type)
     tf_acts = calculate_tf_activity(adata, nets)
@@ -604,7 +811,7 @@ def plot_trend_tfs(cell_type, tfs, type='bulk', dataset='data1', ax=None):
     sorted_tfs = mean_expr.index
     return sorted_tfs
 def plot_trend_targets_binarized(cell_type, genes, dataset='data1', ax=None):
-    adata = retrieve_adata(dataset)
+    adata = retrieve_adata_bulk(dataset)
     adata = adata[adata.obs['cell_type'] == cell_type]
     adata = adata[:, adata.var_names.isin(genes)]
     from ciim.src.process_dataset.preprocess.helper import binarize_age
@@ -842,12 +1049,12 @@ def plot_joint_scatter(stats_all, col='cell_type', vars=['CD4T', 'CD8T'], annota
     ax.legend(loc=(1.1, 0.2), title='Trend', frameon=False)
     
     if annotate:
-        high_tf_points = stats_all_table[(stats_all_table[xy_vars[0]] > stats_all_table[xy_vars[0]].quantile(.2))&
-                                                (stats_all_table[xy_vars[1]] > stats_all_table[xy_vars[1]].quantile(.2))
+        high_tf_points = stats_all_table[(stats_all_table[xy_vars[0]] > stats_all_table[xy_vars[0]].quantile(.5))&
+                                                (stats_all_table[xy_vars[1]] > stats_all_table[xy_vars[1]].quantile(.5))
                                             ]
         
-        x_offset = 10*np.asarray([-2, -2, 0, -1,-.4, .5, 1, 0, 0, 0, 0, 0])
-        y_offset = 10*np.asarray([ -1,  2, 2, -2, -2, -1, 1, 0, 0, 0, 0, 0])
+        x_offset = 10*np.asarray([-1, -1, 0, -1, 1, .5, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0])
+        y_offset = 10*np.asarray([ -1,  1, 1, -1, -1, -1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0])
 
         ii = 0
         for idx, row in high_tf_points.iterrows():
@@ -1073,11 +1280,11 @@ def plot_net_nx(net, figsize=(6, 6), draw_evidence=True, rad_negative=-.3, rad_p
                 fontsize=10
             )
 def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net=True, draw_evidence=True, figsize=(4, 4), figsize_collectri=(3,3), 
-                     offset_evidence=.11, arc_offset=.05, offset_evidence_collectri=.1):
+                     offset_evidence=.11, arc_offset=.05, offset_evidence_collectri=.1, only_promotor_based=False):
     net_store = []
     for dataset in datasets:
         cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-        net = retrieve_net(dataset=dataset, cell_type=cell_type_major)
+        net = retrieve_net(dataset=dataset, cell_type=cell_type_major, only_promotor_based=only_promotor_based)
         net['dataset'] = dataset
         net_store.append(net)
     net = pd.concat(net_store, ignore_index=True)

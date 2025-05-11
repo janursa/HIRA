@@ -28,8 +28,11 @@ RUN_PSEUDOBULK=false
 RUN_GRN=true
 RUN_ASSOCIATION=false
 
+MAX_WORKERS=10
+data_type='sc'
 
-# datasets to include
+
+# datasets to include -> preprocessing 
 datasets="CXCL9 " #data12_CMtx data7_allTPs_jalil_CMtx data1_CMtx data13_CMtx  SLE data13_Korean_CMtx  data13_Japanese_CMtx 
 
 for dataset in $datasets; do
@@ -42,7 +45,7 @@ for dataset in $datasets; do
         fi
 done
 
-datasets="CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European " #CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European
+datasets="  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European " #CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European
 
 
 for dataset in $datasets; do
@@ -84,11 +87,14 @@ for dataset in $datasets; do
         if [ "$RUN_GRN" = true ]; then
                 FORCE=true # If true, overwrite the existing files in grns directory
                 SAVE_GRNS_DIR="output/grns/${dataset}/"
-                dataset_file="/vol/projects/jnourisa/datasets/${dataset}_sc_both.h5ad" # we use whole dataset for GRN inference
                 
+                DATASET_FILE="/vol/projects/jnourisa/datasets/${dataset}_${data_type}.h5ad" # tailors raw based on the given flags such as make, downsample, etc.
+
                 args="  
-                        --dataset_file $PROCESSED_DATASET_FILE \
-                        --save_grns_dir $SAVE_GRNS_DIR 
+                        --dataset_file $DATASET_FILE \
+                        --save_grns_dir $SAVE_GRNS_DIR \
+                        --max_workers $MAX_WORKERS \
+                        --data_type $data_type \
                         "
 
                 [ "$FORCE" = true ] && args="${args} --force"

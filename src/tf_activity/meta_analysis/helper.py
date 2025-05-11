@@ -70,6 +70,7 @@ def run_meta_analysis(stats_all, meta_analysis_type='max', min_degree=2, temp_di
     else:
         df_meta_all = pd.DataFrame() 
     
+    
     df_meta_all.reset_index(drop=True)
 
     df_meta_all.rename(columns={'gene': original_name}, inplace=True)

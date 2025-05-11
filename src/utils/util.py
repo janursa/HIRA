@@ -12,6 +12,52 @@ import matplotlib.pyplot as plt
 from task_grn_inference.src.utils.util import sum_by, read_gmt
 
 
+def get_genesets():
+
+    geneset_file = '../input/prior/h.all.v2024.1.Hs.symbols.gmt'
+    genesets_all = read_gmt(geneset_file) 
+    genesets_all = {key:gs['genes'] for key, gs in genesets_all.items()}
+    # extract relevant sets 
+    # gene_sets = {}
+    # # map_dict = {
+    # #     'HALLMARK_PI3K_AKT_MTOR_SIGNALING': 'PI3K/AKT/MTOR',
+    # #     'HALLMARK_MTORC1_SIGNALING': 'MTORC1',
+    # #     'HALLMARK_P53_PATHWAY': 'P53',
+    # #     'HALLMARK_TNFA_SIGNALING_VIA_NFKB': 'TNFA/NFKB',
+    # #     'HALLMARK_TGF_BETA_SIGNALING': 'TGF-Beta',
+    # #     'HALLMARK_WNT_BETA_CATENIN_SIGNALING': 'WNT-Beta Catenin',
+    # #     'HALLMARK_OXIDATIVE_PHOSPHORYLATION': 'Oxidative Phos.'
+    # # }
+    # for key, key_simple in genesets_all.items():
+    #     gene_sets[key_simple] = genesets_all[key]
+
+    # geneset_file = '../input/prior/c5.all.v2024.1.Hs.symbols.gmt'
+    # genesets_all = read_gmt(geneset_file) 
+    # genesets_all = {key:gs['genes'] for key, gs in genesets_all.items()}
+    # # extract relevant sets 
+    # gene_sets_andreas = {}
+    # map_dict = {'GOMF_ANTIGEN_BINDING': 'Antigen binding', 
+    #             'GOCC_NUCLEOSOME': 'Nucleosome', 
+    #             'GOMF_EXTRACELLULAR_MATRIX_BINDING': 'ECM-binding', 
+    #             'GOCC_RNA_POLYMERASE_II_CORE_COMPLEX': 'RNA polymerase 2'}
+    # for key, key_simple in map_dict.items():
+    #     gene_sets_andreas[key_simple] = genesets_all[key]
+
+    # gene_sets = {**gene_sets, **gene_sets_andreas}
+    return genesets_all
+def get_gene2pathway():
+    genesets_dict = get_genesets()
+    target_genes = np.unique(np.concatenate(list(genesets_dict.values())))
+
+    # Create a DataFrame for pathway annotations
+    pathway_assignments = []
+    for pathway, genes in genesets_dict.items():
+        for gene in genes:
+            pathway_assignments.append((gene, pathway))
+
+    pathway_df = pd.DataFrame(pathway_assignments, columns=['gene', 'pathway']).set_index('gene')
+    return pathway_df
+
 
 def add_root_sample(adata):
     '''

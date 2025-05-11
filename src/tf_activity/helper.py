@@ -22,7 +22,7 @@ from ciim.src.common import cell_types
 from ciim.src.common import mapping_major_2_minor, mapping_minor_2_major
 from scipy.sparse import issparse
 
-def retrieve_stats_features(type, feature_type, cell_type=None, datasets=None, condition=None):
+def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datasets=None, condition=None):
     if feature_type == 'tf_activity':
         save_dir = f'/home/jnourisa/projs/ongoing/ciim/output/tf_activity/'
     elif feature_type == 'gene_expression':
@@ -30,7 +30,7 @@ def retrieve_stats_features(type, feature_type, cell_type=None, datasets=None, c
     else:
         raise ValueError('Unknown feature type')
     stats = pd.read_csv(f'{save_dir}/stats_features_{type}.csv')
-    if cell_type is not None:
+    if cell_type is not None: 
         if cell_type not in stats['cell_type'].unique():
             raise ValueError(f'Given cell type "{cell_type}" not in {stats["cell_type"].unique()}')
         stats = stats[stats['cell_type'] == cell_type]
@@ -41,6 +41,12 @@ def retrieve_stats_features(type, feature_type, cell_type=None, datasets=None, c
     if condition is not None:
         assert condition in stats['condition'].unique(), f'Given condition "{condition}" not in {stats["condition"].unique()}'
         stats = stats[stats['condition'] == condition]
+    if race is not None:
+        if race == 'european':
+            datasets = datasets_e
+        else:
+            datasets = datasets_a
+        stats = stats[stats['dataset'].isin(datasets)]
     return stats
 
 def retrieve_feature_data(dataset, cell_type, type, feature_type='tf_activity'):
@@ -70,7 +76,7 @@ def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activit
 def retrieve_valid_stats(type):
     stats_e = retrieve_sig_stats(type, race='european')
     stats_a = retrieve_sig_stats(type, race='asian')
-    stats_valid = pd.concat([stats_e, stats_a]).drop_duplicates(subset=['cell_type', 'tf', 'analysis'])
+    stats_valid = pd.concat([stats_e, stats_a]).drop_duplicates(subset=['cell_type', 'tf', 'race'])
 
     degree = stats_valid.groupby(['cell_type', 'tf']).size()
     
@@ -79,14 +85,15 @@ def retrieve_valid_stats(type):
     stats_valid = stats_valid.drop_duplicates(subset=['cell_type', 'tf'])[['tf', 'cell_type', 'trend']]
     return stats_valid
 
-def retrieve_sig_stats(type, feature_type='tf_activity' ,race='european', filter_inconsistent=True):
+def retrieve_sig_stats(type, feature_type='tf_activity',race='european', filter_inconsistent=True):
     stats_all = pd.read_csv(f'../output/{feature_type}/stats_all_{type}.csv')
     
     mask = (stats_all['condition']=='healthy') & (stats_all['meta_p_adj'] < 0.05) 
+
     if race == 'both':
         pass
     else:
-        mask &= (stats_all['analysis'] == race)
+        mask &= (stats_all['race'] == race)
     # Filter valid rows
     stats_all = stats_all[
         mask
@@ -125,19 +132,31 @@ def retrieve_nets(datasets, cell_type, only_promotor_based=False):
     nets = pd.concat(net_store, ignore_index=True)
     return nets
 
+def retrieve_sig_net(type, race, cell_type=None):
+    df = pd.read_csv(f'/home/jnourisa/projs/ongoing/ciim/output/sig_nets/sig_nets_{type}_{race}.csv')
+    if cell_type is not None:
+        df = df[df['cell_type'] == cell_type]
+    return df
 
-def extract_sig_network(type, race):
+def determine_sig_network(type, race, min_degree=3):
     os.makedirs(f'/home/jnourisa/projs/ongoing/ciim/output/sig_nets', exist_ok=True)
     from ciim.src.tf_activity.helper import retrieve_nets
     stats_tfs = retrieve_sig_stats(type, feature_type='tf_activity')
     stats_targets = retrieve_sig_stats(type, feature_type='gene_expression')
 
+    if race == 'european':
+        datasets = datasets_e
+    elif race == 'asian':
+        datasets = datasets_a
+    elif race == 'both':
+        datasets = datasets_all
+    else:
+        raise ValueError('')
 
     nets_stats_store = []
     for cell_type in cell_types:
-        print(cell_type)
-        stats_tfs_t = stats_tfs[stats_tfs['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'tf'])[['tf', 'meta_p_adj']]
-        stats_targets_t = stats_targets[stats_targets['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'target'])[['target', 'meta_p_adj']]
+        stats_tfs_t = stats_tfs[stats_tfs['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'tf'])[['tf', 'meta_p_adj', 'slope', 'trend']]
+        stats_targets_t = stats_targets[stats_targets['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'target'])[['target', 'meta_p_adj', 'slope', 'trend']]
         
         if len(stats_tfs_t) == 0:
             print('No source for', cell_type, ' skipping it')
@@ -147,15 +166,15 @@ def extract_sig_network(type, race):
             continue
         
         # - get the nets
-        nets = retrieve_nets(datasets_e, cell_type)
+        net = get_consensus_nets(datasets, [cell_type], min_degree=min_degree)[cell_type]
         sig_tfs = stats_tfs_t['tf'].unique()
         sig_targets = stats_targets_t['target'].unique()
-        nets = nets[(nets['source'].isin(sig_tfs)) & (nets['target'].isin(sig_targets))]
-        nets = nets.groupby(['source', 'target'])['weight'].mean().reset_index()
+        net = net[(net['source'].isin(sig_tfs)) & (net['target'].isin(sig_targets))]
+        net = net.groupby(['source', 'target'])['weight'].mean().reset_index() # probably not necessary
         # - get the stats
-        nets_stats = pd.merge(nets, stats_tfs_t, left_on='source', right_on='tf', how='left')
-        nets_stats = pd.merge(nets_stats, stats_targets_t, left_on='target', right_on='target', how='left', suffixes=('', '_target'))
-        nets_stats = nets_stats[['source', 'target', 'weight', 'meta_p_adj', 'meta_p_adj_target']]
+        nets_stats = pd.merge(net, stats_tfs_t, left_on='source', right_on='tf', how='left')
+        nets_stats = pd.merge(nets_stats, stats_targets_t, left_on='target', right_on='target', how='left', suffixes=('_source', '_target'))
+        nets_stats = nets_stats[['source', 'target', 'weight', 'slope_source', 'slope_target', 'meta_p_adj_source', 'meta_p_adj_target', 'trend_source', 'trend_target']]
         nets_stats['cell_type'] = cell_type
         nets_stats['race'] = race
         nets_stats_store.append(nets_stats)
@@ -163,7 +182,7 @@ def extract_sig_network(type, race):
     nets_stats.to_csv(f'/home/jnourisa/projs/ongoing/ciim/output/sig_nets/sig_nets_{type}_{race}.csv')
 
 
-def retrieve_adata(dataset, type='bulk'): 
+def retrieve_adata_bulk(dataset, type='bulk', cell_type=None): 
     base_path = "/vol/projects/jnourisa/datasets/"
     gene_names = np.loadtxt(f'/vol/projects/jnourisa/prior/gene_names.txt', dtype=str)
 
@@ -180,6 +199,14 @@ def retrieve_adata(dataset, type='bulk'):
         adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
     adata.obs['dataset'] = dataset
     adata = adata[:, adata.var_names.isin(gene_names)]
+
+    if cell_type is not None:
+        if cell_type not in adata.obs['cell_type'].unique():
+            raise ValueError(f'Given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
+        adata = adata[adata.obs['cell_type'] == cell_type]
+    adata = adata[~adata.obs['age'].isna()].copy()
+    adata.obs['age'] = adata.obs['age'].astype(int)
+    adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
 
     return adata
 
@@ -251,6 +278,7 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='disease'
         for group in conditions:
             adata_sub = adata[adata.obs[condition_col] == group]
             stats_df = association_with_age(adata_sub)
+            
             stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
             stats_df['condition'] = name_mapping.get(group, group)
             # stats_df['dataset'] = f"{dataset}_{group}"
@@ -340,11 +368,6 @@ def wrapper_run_meta_analysis(par):
     from ciim.src.tf_activity.meta_analysis.helper import run_meta_analysis
     stats_features = pd.read_csv(par['stats_features'])
     
-    if 'min_degree_e' in par.keys():
-        min_degree_e = par['min_degree_e']
-    else:
-        min_degree_e = 3
-
     if 'tf' in stats_features.columns:
         feature_col = 'tf'
     elif 'target' in stats_features.columns:
@@ -353,45 +376,68 @@ def wrapper_run_meta_analysis(par):
         print(stats_features)
         raise ValueError('Unknown feature column')
     cell_types = stats_features['cell_type'].unique()
-    # - european 
-    def run_func(race):
-        if race == 'european':
-            datasets_sub = datasets_e
-            min_degree = min_degree_e
-        else:
-            datasets_sub = datasets_a
-            min_degree = len(datasets_a)
+    # - 
+    def run_func(datasets):
         stats_store = []
         for cell_type in stats_features['cell_type'].unique():
-            stats = stats_features[(stats_features['cell_type'] == cell_type) & (stats_features['dataset'].isin(datasets_sub) & (stats_features['condition']=='healthy'))]
+            stats = stats_features[(stats_features['cell_type'] == cell_type) & (stats_features['dataset'].isin(datasets) & (stats_features['condition']=='healthy'))]
             if len(stats) == 0:
                 print('No stats for', cell_type, ' skipping it')
                 continue
             if stats.groupby(feature_col).size().max()<min_degree:
                 print('Not enough mutual TFs for ', cell_type, ' skipping it')
                 continue
-            meta_stats = run_meta_analysis(stats, temp_dir=par['temp_dir'], min_degree=min_degree, meta_analysis_type='fisher')
+            # - keep only min_degree info that is consistent
+            # def filter_minority_inconsistent_slope
+            # stats.groupby(feature_col)['slope'].filter(lambda x: len(x.unique()) == 1)
+
+            meta_stats = run_meta_analysis(stats, temp_dir=par['temp_dir'], meta_analysis_type=meta_analysis_type, min_degree=min_degree)
             pval_col = 'meta_p_adj'
-            meta_stats = compute_trend(meta_stats, pval_col=pval_col, slope_col='slope', col=feature_col)
+            meta_stats = compute_trend(meta_stats, pval_col=pval_col, slope_col='slope', col=feature_col, min_degree=min_degree)
             stats_store.append(meta_stats)
         if len(stats_store) > 0:
             stats_discovery = pd.concat(stats_store)
             stats_discovery['condition'] = 'healthy'
-            stats_discovery['analysis'] = race
             return stats_discovery
         else:
             return pd.DataFrame()
-    stats_e = run_func('european')
-    
-    print('Asian ...')
-    stats_a = run_func('asian')
+    if ('_M' in par['type']) or ('_F' in par['type']): # one meta analysis for all datasets for gender specific analysis
+        min_degree = 2
+        meta_analysis_type='max'
+        if ('_M' in par['type']):
+            datasets = ['data1', 'data13_Japanese', 'data13_Korean']
+        elif ('_F' in par['type']):
+            datasets = ['data1', 'data13_Japanese', 'data13_Korean']
+        else:
+            raise ValueError('Unknown type')
+            
+        stats_all = run_func(datasets)
+        stats_all['race'] = 'both'
+    else: # seperate meta analysis for asian and european
+        print('Running meta analysis for european datasets')
+        min_degree = 3
+        meta_analysis_type='fisher'
+        stats_e = run_func(datasets_e)
 
-    # - combine
-    stats_combined = pd.concat([stats_e, stats_a])
+        stats_e['race'] = 'european'
+
+        print('Running meta analysis for asian datasets')
+        min_degree = 2
+        meta_analysis_type='max'
+        stats_a = run_func(datasets_a)
+        stats_a['race'] = 'asian'
+
+        print('Running meta analysis for all datasets')
+        min_degree = 4
+        stats_both = run_func(datasets_all)
+        stats_both['race'] = 'both'
+
+        # - combine
+        stats_all = pd.concat([stats_e, stats_a, stats_both])
 
     #- save
     print('Saving results to ', par['stats_all'])
-    stats_combined.to_csv(par['stats_all'], index=False)
+    stats_all.to_csv(par['stats_all'], index=False)
 
 def wrapper_association_with_age_condition(par, cell_types, datasets, feature_type='tf_activity', features=None, test_type='unpaired'):
     # - calculate tf activity for all datasets
@@ -438,8 +484,6 @@ def wrapper_association_with_age_condition(par, cell_types, datasets, feature_ty
                     stats = association_with_age(adata_sub, association_type=par['association_type'])
                     stats['condition'] = 'healthy'
                     stats['dataset'] = dataset
-                # print(stats[stats['tf']=='ZNF207'])
-                # aa
                 stats['cell_type'] = cell_type_resolution
                 
                 stats_store.append(stats)
@@ -452,7 +496,7 @@ def wrapper_association_with_age_condition(par, cell_types, datasets, feature_ty
 def wrapper_tf_activity(cell_types, datasets, type='bulk'):
     # --------- load data
     print('Loading data...')
-    adata_dict = {dataset: retrieve_adata(dataset, type) for dataset in datasets}
+    adata_dict = {dataset: retrieve_adata_bulk(dataset, type) for dataset in datasets}
     tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
 
     # - calculate tf activity for all datasets
@@ -484,7 +528,7 @@ def wrapper_tf_activity(cell_types, datasets, type='bulk'):
 def wrapper_gene_expression(cell_types, datasets, type='bulk'):
     # --------- load data
     print('Loading data...')
-    adata_dict = {dataset: retrieve_adata(dataset, type) for dataset in datasets}
+    adata_dict = {dataset: retrieve_adata_bulk(dataset, type) for dataset in datasets}
 
     print('Calculating gene expression...')
     stats_store = []
@@ -580,24 +624,38 @@ def association_with_age(adata, gene_col='tf', association_type='linear'):
 
     return stats_df
 
-def compute_trend(df, pval_col='meta_p_adj', slope_col='slope', col='tf'):
+def compute_trend(df, pval_col='meta_p_adj', slope_col='slope', col='tf', min_degree=None):
     # Compute -log10(p_value_adj) for dot size
     df["neg_log10_adj_pval"] = -np.log10(df[pval_col])
     if 'trend' in df.columns:
         df.drop('trend', inplace=True, axis=1)
-    # Determine color based on slope sign
+
+    # Function to assign trend based on slope sign and min_degree
     def determine_trend(x):
-        if (x > 0).all():
+        pos = (x > 0).sum()
+        neg = (x < 0).sum()
+        total = len(x)
+        
+        if pos == total:
             return 'Increase in aging'
-        elif (x < 0).all():
+        elif neg == total:
             return 'Decrease in aging'
         else:
+            # if min_degree is not None:
+            #     if pos >= min_degree:
+            #         return 'Increase in aging'
+            #     elif neg >= min_degree:
+            #         return 'Decrease in aging'
+            #     else:
+            #         return 'Inconsistent'
+            # else:
+            #     return 'Inconsistent'
             return 'Inconsistent'
 
     # Apply the function group-wise
     trend = df.groupby([col, 'cell_type'])[slope_col].apply(determine_trend).reset_index(name='trend')
-    trend = trend.dropna()
- 
+    # trend = trend.dropna()
+
     df = df.merge(trend, on=[col, 'cell_type'], how='left')
     df["trend"] = pd.Categorical(
         df["trend"], 
@@ -666,6 +724,12 @@ def calculate_tf_activity(adata, net, tf_all=None):
         tf_acts = tf_acts.merge(obs, on='index', how='left').drop('index', axis=1)
         assert tf_acts.shape[0]==tf_acts.shape[0]
     else: # run my implementation
+        n_targets_t = 1
+        if True:
+            tf_size = net.groupby('source').size()
+            tfs = tf_size[tf_size > n_targets_t].index
+            
+            net = net[net['source'].isin(tfs)]
         tf_acts = tf_activity_local(net, adata, tf_all)
     
     if 'index' in tf_acts.columns:
@@ -685,14 +749,74 @@ def calculate_tf_activity(adata, net, tf_all=None):
     var_df['source'] = var_df.index
     tf_acts_adata = ad.AnnData(X=X_df.values, obs=obs_df, var=var_df)
     return tf_acts_adata
+import pandas as pd
+from scipy.stats import hypergeom
+import numpy as np
 
-def pathway_analysis_wrapper(df):
+def run_ora_local(gene_list, background_genes, gene_sets, min_size=5, max_size=500):
+    """
+    Perform Over-Representation Analysis (ORA).
+
+    Parameters:
+    - gene_list: set or list of input genes
+    - background_genes: set or list of background genes (universe)
+    - gene_sets: dict of pathway_name -> set/list of genes
+    - min_size: minimum gene set size to consider
+    - max_size: maximum gene set size to consider
+
+    Returns:
+    - pd.DataFrame with columns: Term, Overlap, P-value, Adjusted P-value (FDR), Gene Ratio, Genes
+    """
+
+    gene_list = set(gene_list)
+    background_genes = set(background_genes)
+
+    results = []
+
+    M = len(background_genes)  # total genes in background
+    n = len(gene_list & background_genes)  # overlap between input genes and background
+
+    for term, term_genes in gene_sets.items():
+        term_genes = set(term_genes)
+        term_genes = term_genes & background_genes  # restrict to universe
+
+        N = len(term_genes)
+        if N < min_size or N > max_size:
+            continue
+
+        k = len(gene_list & term_genes)  # hits in gene list
+        if k == 0:
+            continue
+
+        # Hypergeometric test: P(X ≥ k)
+        pval = hypergeom.sf(k - 1, M, N, n)
+
+        # Collect data
+        results.append({
+            "Term": term,
+            "Gene Set Size": N,
+            "Hits": k,
+            "P-value": pval,
+            "Gene Ratio": k / n,
+            "Genes": list(gene_list & term_genes),
+        })
+
+    # Compile and adjust p-values
+    df = pd.DataFrame(results)
+    if not df.empty:
+        df['FDR'] = np.minimum(1.0, df['P-value'] * len(df))  # Benjamini-Hochberg correction (simplified)
+        df = df.sort_values("P-value")
+    return df
+def pathway_analysis_wrapper(df, pvalue_col='meta_p_adj'):
     import gseapy as gp
+    from ciim.src.utils.util import get_genesets
     from gseapy import barplot, dotplot
-
+    # all_genes = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str).tolist()
+    all_genes = np.loadtxt(f'/vol/projects/jnourisa/prior/gene_names.txt', dtype=str)
+    gene_sets =  get_genesets()
     res2d_store = []
     for cell_type in df['cell_type'].unique():
-    # for cell_type in ['MONO']:
+    # for cell_type in ['CD8T']:
         for trend in df['trend'].unique():
         # for trend in ['Decrease in aging']:
             mask = (df['cell_type'] == cell_type) & (df['trend'] == trend)
@@ -700,25 +824,33 @@ def pathway_analysis_wrapper(df):
                 continue
             stats_df = df[mask]
             # - prepare
-            stats_df = stats_df[['tf', 'meta_p_adj']]
-            stats_df = stats_df[~stats_df.duplicated()].reset_index(drop=True)
-            # ranked_genes = stats_df.set_index('tf')['meta_p_adj'].sort_values(ascending=True)
+            stats_df = stats_df[['tf', pvalue_col]]
+            all_tfs = stats_df['tf'].unique().tolist()
+            genes = stats_df[stats_df[pvalue_col]<0.05]['tf'].unique().tolist()
+            if True:
+                rr = gp.enrichr(gene_list=list(genes),
+                                gene_sets=['MSigDB_Hallmark_2020'], #, 'KEGG_2021_Human'
+                                organism='human', 
+                                outdir=None, 
+                                cutoff=1
+                                # background=list(tf_all),
+                                )
+                res2d = rr.res2d
+                res2d.rename(columns={'Adjusted P-value': 'FDR'}, inplace=True)
+            else:
+                res2d = run_ora_local(genes, background_genes=all_genes, gene_sets=gene_sets, min_size=1, max_size=500)
+                res2d['Term'] = (
+                res2d['Term']
+                    .str.replace('HALLMARK_', '', regex=False)
+                    .str.replace('_', ' ', regex=False)
+                    # .str.title()
+                )
 
-            # - EA
-            genes = stats_df['tf'].unique()
-            # print(genes)
-            # genes = np.random.choice(df['tf'].unique(), len(genes))
-
-            print(f"cell_type: {cell_type}, trend: {trend}, n tfs: {len(genes)}")
-            np.savetxt('../output/test.csv', genes, fmt='%s', delimiter=',')
-            rr = gp.enrichr(gene_list='../output/test.csv',
-                            gene_sets=['MSigDB_Hallmark_2020'], #, 'KEGG_2021_Human'
-                            organism='human', 
-                            outdir=None, 
-                            # background=tf_all,
-                            )
-            res2d = rr.res2d
-            res2d = res2d[res2d['Adjusted P-value']<0.05]
+            filter_col = 'FDR' #'FDR q-val'
+            res2d = res2d[res2d[filter_col]<0.05]
+            
+            if res2d.shape[0] == 0:
+                continue
             print(res2d.shape)
             res2d['cell_type'] = cell_type
             res2d['trend'] = trend
