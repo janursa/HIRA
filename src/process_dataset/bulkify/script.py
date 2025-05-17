@@ -45,7 +45,10 @@ if __name__ == '__main__':
     covariates=['cell_type', 'donor_id', 'age'] # this should have one-to-one mapping with resulting bulked data (for example, if a donor has multiple treatment or disease, they will be summed together)
     if 'treatment' in adata.obs.columns:
         covariates.append('treatment')
+    if 'Sub_CT' in adata.obs.columns:
+        covariates.append('Sub_CT')
     adata_bulk_major_celltypes = bulkify_main(adata, covariates=covariates)
+    # print(adata_bulk_major_celltypes.obs['Sub_CT'].unique())
     adata_bulk_major_celltypes.write(args.bulk_all)
     print('Bulkifying minor cell types')
     adata_bulk_minor_celltypes = bulkify_main(adata, covariates=covariates)

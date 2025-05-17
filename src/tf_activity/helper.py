@@ -85,15 +85,12 @@ def retrieve_valid_stats(type):
     stats_valid = stats_valid.drop_duplicates(subset=['cell_type', 'tf'])[['tf', 'cell_type', 'trend']]
     return stats_valid
 
-def retrieve_sig_stats(type, feature_type='tf_activity',race='european', filter_inconsistent=True):
+def retrieve_sig_stats(type, feature_type='tf_activity',race='european', filter_inconsistent=True, cell_type=None):
     stats_all = pd.read_csv(f'../output/{feature_type}/stats_all_{type}.csv')
     
     mask = (stats_all['condition']=='healthy') & (stats_all['meta_p_adj'] < 0.05) 
 
-    if race == 'both':
-        pass
-    else:
-        mask &= (stats_all['race'] == race)
+    mask &= (stats_all['race'] == race)
     # Filter valid rows
     stats_all = stats_all[
         mask
@@ -101,9 +98,13 @@ def retrieve_sig_stats(type, feature_type='tf_activity',race='european', filter_
     if filter_inconsistent:
         stats_all = stats_all[stats_all['trend'] != 'Inconsistent']
     # stats_all = stats_all[~stats_all['trend'].isna()]
+    if cell_type is not None:
+        if cell_type not in stats_all['cell_type'].unique():
+            raise ValueError(f'Given cell type "{cell_type}" not in {stats_all["cell_type"].unique()}')
+        stats_all = stats_all[stats_all['cell_type'] == cell_type]
     return stats_all
 
-def retrieve_net(dataset, cell_type, only_promotor_based=False):  
+def retrieve_net(dataset, cell_type, only_promotor_based=False, c_t=5):  
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
     if dataset == '!CXCL9':
@@ -120,7 +121,10 @@ def retrieve_net(dataset, cell_type, only_promotor_based=False):
         net = net.drop('edge', axis=1)
     if only_promotor_based:
         net = net[net['promotor_based']]
-    # net = net.loc[net['source'].isin(tf_all)]
+    
+    centrality_df = net.groupby(['source']).size()
+    tfs = centrality_df[centrality_df>c_t].index
+    net = net[net['source'].isin(tfs)]
     return net[['source', 'target', 'weight', 'cell_type']]
 
 def retrieve_nets(datasets, cell_type, only_promotor_based=False):
@@ -209,7 +213,6 @@ def retrieve_adata_bulk(dataset, type='bulk', cell_type=None):
     adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
 
     return adata
-
 
 
     
@@ -364,7 +367,7 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='disease'
 
     return stats_df
 
-def wrapper_run_meta_analysis(par):
+def wrapper_meta_analysis(par):
     from ciim.src.tf_activity.meta_analysis.helper import run_meta_analysis
     stats_features = pd.read_csv(par['stats_features'])
     
@@ -377,7 +380,7 @@ def wrapper_run_meta_analysis(par):
         raise ValueError('Unknown feature column')
     cell_types = stats_features['cell_type'].unique()
     # - 
-    def run_func(datasets):
+    def run_func(datasets, min_degree, meta_analysis_type):
         stats_store = []
         for cell_type in stats_features['cell_type'].unique():
             stats = stats_features[(stats_features['cell_type'] == cell_type) & (stats_features['dataset'].isin(datasets) & (stats_features['condition']=='healthy'))]
@@ -388,9 +391,6 @@ def wrapper_run_meta_analysis(par):
                 print('Not enough mutual TFs for ', cell_type, ' skipping it')
                 continue
             # - keep only min_degree info that is consistent
-            # def filter_minority_inconsistent_slope
-            # stats.groupby(feature_col)['slope'].filter(lambda x: len(x.unique()) == 1)
-
             meta_stats = run_meta_analysis(stats, temp_dir=par['temp_dir'], meta_analysis_type=meta_analysis_type, min_degree=min_degree)
             pval_col = 'meta_p_adj'
             meta_stats = compute_trend(meta_stats, pval_col=pval_col, slope_col='slope', col=feature_col, min_degree=min_degree)
@@ -414,22 +414,25 @@ def wrapper_run_meta_analysis(par):
         stats_all = run_func(datasets)
         stats_all['race'] = 'both'
     else: # seperate meta analysis for asian and european
-        print('Running meta analysis for european datasets')
         min_degree = 3
         meta_analysis_type='fisher'
-        stats_e = run_func(datasets_e)
-
+        print(f'Running meta analysis for European datasets, min degree  {min_degree}, meta_analysis_type {meta_analysis_type}')
+        stats_e = run_func(datasets_e, min_degree, meta_analysis_type)
         stats_e['race'] = 'european'
 
-        print('Running meta analysis for asian datasets')
         min_degree = 2
         meta_analysis_type='max'
-        stats_a = run_func(datasets_a)
+        print(f'Running meta analysis for Asian datasets, min degree  {min_degree}, meta_analysis_type {meta_analysis_type}')
+        stats_a = run_func(datasets_a, min_degree, meta_analysis_type)
         stats_a['race'] = 'asian'
 
-        print('Running meta analysis for all datasets')
+        
+        meta_analysis_type='fisher'
         min_degree = 4
-        stats_both = run_func(datasets_all)
+        print(f'Running meta analysis for all datasets, min degree  {min_degree}, meta_analysis_type {meta_analysis_type}')
+        stats_both = run_func(datasets_all, min_degree, meta_analysis_type)
+        # print(stats_both[stats_both['cell_type'] == 'CD8T'].groupby('tf').size().sort_values(ascending=False).head(20))
+        # aaa
         stats_both['race'] = 'both'
 
         # - combine

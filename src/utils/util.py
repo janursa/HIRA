@@ -260,7 +260,7 @@ def stability_selection_shap(X, y,  top_q=80):
 
 
     return top_features_idx
-def find_robust_predictors(adata, target, top_q=.9):
+def find_robust_predictors(adata, target, top_q=90):
     """
     Main function to perform stability selection, feature importance, and model evaluation.
     

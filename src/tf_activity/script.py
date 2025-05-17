@@ -13,25 +13,24 @@ from tqdm import tqdm
 from scipy.stats import mannwhitneyu
 from statsmodels.stats.multitest import multipletests
 from pandas.api.types import CategoricalDtype
-from ciim.src.tf_activity.helper import  wrapper_association_with_age_condition, wrapper_run_meta_analysis, \
-        wrapper_tf_activity, wrapper_gene_expression, wrapper_run_meta_analysis
+from ciim.src.tf_activity.helper import  wrapper_association_with_age_condition, wrapper_meta_analysis, \
+        wrapper_tf_activity, wrapper_gene_expression, wrapper_meta_analysis
 
 from ciim.src.common import cell_types, datasets_e, datasets_a, datasets_all, mapping_minor_2_major
 
 def run_workflow_tf_activity(par):
     print(par)
     # - step 1: calculate TF activity
-    if True: 
+    if False: 
         print('Calculating TF activity...')
         wrapper_tf_activity(cell_types, datasets_all, type=par['type'])
     # - step 2: calculate TF association with age
-    if True:
-        datasets = datasets_all
-        stats_features_all = wrapper_association_with_age_condition(par, cell_types, datasets=datasets)
+    if False:
+        stats_features_all = wrapper_association_with_age_condition(par, cell_types, datasets=datasets_all)
         stats_features_all.to_csv(par['stats_features'], index=False)
     if True:
         print('TF discovery/validation...')
-        wrapper_run_meta_analysis(par)
+        wrapper_meta_analysis(par)
 
 def run_workflow_gene_expression(par):
     print(par)
@@ -45,7 +44,7 @@ def run_workflow_gene_expression(par):
         stats_features.to_csv(par['stats_features'], index=False)
     if True:
         print('Discovery/validation...')
-        wrapper_run_meta_analysis(par)
+        wrapper_meta_analysis(par)
 
     # if True:
     #     print('Target association with age...')
@@ -61,12 +60,13 @@ if __name__ == '__main__':
     os.makedirs('output/gene_expression/gene_expression', exist_ok=True)
 
     run_bulk = True
+    run_bulk_targets = True
+
+
     run_bulk_minor = True
     run_bulk_gender = True
     
-    run_bulk_targets = True
-    run_bulk_minor_targets = True
-
+    
     if run_bulk:
         # ----- bulk TF activity: non linear association
         par = {
@@ -91,18 +91,7 @@ if __name__ == '__main__':
             'temp_dir': 'output/tmp/',
         }
         run_workflow_gene_expression(par)
-    if run_bulk_minor_targets:
-        print('bulk minor targets')
-        par = {
-            'type': 'bulk_minor',
-            'association_type': 'spearman',
-            'cell_type_resolution': 'Sub_CT',
-            'stats_features': 'output/gene_expression/stats_features_bulk_minor.csv',
-            'stats_all': 'output/gene_expression/stats_all_bulk_minor.csv', #TODO: this for now only includes genes that are in the net. 
-            # 'stats_targets': 'output/tf_activity/stats_targets_bulk.csv',
-            'temp_dir': 'output/tmp/',
-        }
-        run_workflow_gene_expression(par)
+    
     if run_bulk_minor:
         # ----- bulk TF activity: minor
         par = {
@@ -114,6 +103,7 @@ if __name__ == '__main__':
             'temp_dir': 'output/tmp/',
         }
         run_workflow_tf_activity(par)
+
     if run_bulk_gender:
         # ----- bulk TF activity: gender
         for gender in ['M','F']:

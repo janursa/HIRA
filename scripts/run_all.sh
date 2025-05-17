@@ -24,8 +24,8 @@ set -e
 # Define run flags
 RUN_ALIS_CODE=false
 RUN_PROCESS_DATASET=false
-RUN_PSEUDOBULK=false
-RUN_GRN=true
+RUN_PSEUDOBULK=true
+RUN_GRN=false
 RUN_ASSOCIATION=false
 
 MAX_WORKERS=10
@@ -45,7 +45,7 @@ for dataset in $datasets; do
         fi
 done
 
-datasets="  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European " #CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European
+datasets="  CXCL9 " #CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European
 
 
 for dataset in $datasets; do

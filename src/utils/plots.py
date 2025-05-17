@@ -201,6 +201,7 @@ def dotplot(df, ax,
 
     cbar.ax.tick_params(labelsize=8, direction='out')
     cbar.ax.set_title(color_legend_title, fontsize=9, pad=5)
+    
 
 
     # plt.gca().add_artist(size_legend_handle)

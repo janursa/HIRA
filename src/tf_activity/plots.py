@@ -443,7 +443,6 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     stats_t = stats_t.merge(c_median, left_on=feature_col, right_on=feature_col, how='left')
     stats_t = stats_t.merge(c_std, left_on=feature_col, right_on=feature_col, how='left')
     
-
     # - either find the central features and sort them or sort them based on the given features    
     if features is None:
         # - select the top features: top shared across datasets and top central
@@ -461,12 +460,12 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
             # - check if the features are in the tf_all list
             tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
             features = [tf for tf in features if tf in tf_all]
+
         # - check if the features are in the stats (remove those that are not present in at least one dataset)
         stats_t = stats_t[stats_t[feature_col].isin(features)]
         features = [tf for tf in features if tf in stats_t[feature_col].unique()]
         stats_t[feature_col] = pd.Categorical(stats_t[feature_col], categories=features, ordered=True)
         stats_t = stats_t.sort_values(feature_col)  
-    
     stats_t['neg_log10_adj_pval'] = -np.log10(stats_t['p_value_adj'])
     stats_t['dataset'] = pd.Categorical(stats_t['dataset'], categories=datasets, ordered=True)
     stats_t['dataset'] = stats_t['dataset'].apply(lambda name: surrogate_names.get(name, name))
@@ -508,7 +507,8 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     df[feature_col] = pd.Categorical(df[feature_col], categories=unique_features, ordered=True)
     ordered_features = df[feature_col].cat.categories  
     if df['dataset'].nunique() != len(datasets):
-        print( f"Only {df['dataset'].nunique()} datasets are available in the stats.")    
+        print( f"Only {df['dataset'].nunique()} datasets are available in the stats.")   
+    
     dotplot(df, 
             x='dataset',
             y = feature_col,
@@ -1279,7 +1279,7 @@ def plot_net_nx(net, figsize=(6, 6), draw_evidence=True, rad_negative=-.3, rad_p
                 frameon=False, 
                 fontsize=10
             )
-def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net=True, draw_evidence=True, figsize=(4, 4), figsize_collectri=(3,3), 
+def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net=True, draw_evidence=True, draw_collectri=True,figsize=(4, 4), figsize_collectri=(3,3), 
                      offset_evidence=.11, arc_offset=.05, offset_evidence_collectri=.1, only_promotor_based=False):
     net_store = []
     for dataset in datasets:
@@ -1301,7 +1301,7 @@ def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net
             net_i = net[net['dataset'] == dataset]
             plot_net_nx(net_i, figsize=figsize, draw_evidence=False, offset_evidence=offset_evidence, arc_offset=arc_offset)
             plt.title(f"{surrogate_names.get(dataset, dataset)}", fontsize=16, pad=20)
-    if True:
+    if draw_collectri:
         # - add collectri
         collectri = pd.read_csv(f'/vol/projects/jnourisa/prior/collectri_with_source.csv')
         collectri['dataset'] = collectri['ref']
@@ -1463,6 +1463,8 @@ def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets,
     for dataset in datasets:
         adata = retrieve_feature_data(dataset, cell_type, type=type, feature_type=feature_type)
         adata = adata[:, adata.var_names==feature]
+        if adata.shape[1] == 0:
+            continue
 
         expr = bin_feature_values(adata)
 

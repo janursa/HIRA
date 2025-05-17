@@ -1,56 +1,27 @@
 
-from ciim.src.clock.helper import prepare_input
+from ciim.src.clock.helper import prepare_input, save_dir, wrapper_build_model_cell_type
 from ciim.src.common import cell_types
 
+import argparse
+
+arg = argparse.ArgumentParser(description='Train a model for a specific cell type')
+arg.add_argument('--cell_types', type=str,  nargs='+', default=['MONO'], help='Cell type to train the model for')
+arg.add_argument('--datasets_training', type=str, nargs='+', default=['data1', 'data7_allTPs_jalil'], help='Datasets for training')
+arg.add_argument('--feature_type', type=str, default='tf_activity', help='Feature type to use for training')
+arg.add_argument('--data_type', type=str, default='metacell', help='Data type to use for training')
+arg.add_argument('--reg_type', type=str, default='ridge', help='Regularization type to use for training')
+arg.add_argument('--tune_model', action='store_true', help='Whether to tune the model or not')
+arg.add_argument('--version', type=str, default='v1.0')
+
+par = vars(arg.parse_args())
 
 
-def wrapper_build_model_cell_type(cell_type):
-    import os
-    import joblib
-    from sklearn.linear_model import Ridge
-    from anndata import AnnData
-    import numpy as np
-    import pandas as pd
-    import anndata as ad
-
-
-    feature_type = 'tf_activity' #'gene_expression'
-
-    save_dir = "/vol/projects/jnourisa/prior/clock/"
-    # os.makedirs(save_dir, exist_ok=True)
-    # - step1: merge the datasets
-    from scipy.sparse import vstack
-    from ciim.src.clock.helper import prepare_input
-    datasets_clock = ['data1', 'data7_allTPs_jalil', 'data12', 'data13_Korean' , 'data13_Japanese']
-
-    adata_store = []
-    for dataset in datasets_clock:
-        adata = prepare_input(dataset, cell_type, feature_type=feature_type)
-        adata_store.append(adata)
-    adata_all = ad.concat(adata_store, join='inner', axis=0)
-
-    # - step2: train the models and save them
-    X = adata_all.X
-    age = adata_all.obs['age']
-
-    model = Ridge(alpha=1.0)
-    model.fit(X, age)
-
-    # - save the model
-    model_path = os.path.join(save_dir, f"{cell_type}_{feature_type}_ridge_model.pkl")
-    joblib.dump(model, model_path)
-
-    # save feature names
-    expected_genes = adata_all.var_names.values
-    np.savetxt(f'{save_dir}/feature_names_{cell_type}_{feature_type}.txt', expected_genes, fmt='%s')
-
-
-def wrapper_build_model_all():
-    for cell_type in cell_types:
+def wrapper_build_model_all(par):
+    for cell_type in par['cell_types']:
         print('building model for cell type:', cell_type)
-        wrapper_build_model_cell_type(cell_type)
+        wrapper_build_model_cell_type(cell_type, par)
     
 
-
 if __name__ == "__main__":
-    wrapper_build_model_all()
+    print(par)
+    wrapper_build_model_all(par)

@@ -22,7 +22,8 @@ surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All 
                     'systemic lupus erythematosus': 'SLE',
                     'european': 'European',
                     'asian': 'Asian',
-                    'collectri': 'CollecTRI',}
+                    'collectri': 'CollecTRI',
+                    'both': 'European & Asian',}
 
 
 cell_types = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
@@ -69,10 +70,13 @@ palette_sub_types = {
     'CD8a/a': 'grey',
     'Classic_MONO': 'lightcoral', 
     'NonClassic_MONO': '#ff7f00',     
+    'Naive_B': 'lightcoral',
+    'Memory_B': '#ff7f00',
+    
 }
 # - mapping
 mapping_major_2_minor = {
-    'B': ['Naive_B', 'Aged_B', 'Memory_B', 'Plasma_B', 'Plasmablasts_B'],
+    'B': ['Naive_B', 'Memory_B'],
     'CD4T': ['Tcm_Naive_CD4', 'Tem_Effector_CD4', 'Treg'],
     'CD8T': ['Tem_Trm_CD8', 'Tem_Temra_CD8', 'Tcm_Naive_CD8', 'MAIT'],
     'MONO': ['NonClassic_MONO', 'Classic_MONO'],
@@ -81,10 +85,7 @@ mapping_major_2_minor = {
 
 mapping_minor_2_major = {
     'Naive_B': 'B',
-    'Aged_B': 'B',
     'Memory_B': 'B',
-    'Plasma_B': 'B',
-    'Plasmablasts_B': 'B',
     'Tcm_Naive_CD4': 'CD4T',
     'Tem_Effector_CD4': 'CD4T',
     'Treg': 'CD4T',
