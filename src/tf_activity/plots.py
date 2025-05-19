@@ -1049,15 +1049,20 @@ def plot_joint_scatter(stats_all, col='cell_type', vars=['CD4T', 'CD8T'], annota
     ax.legend(loc=(1.1, 0.2), title='Trend', frameon=False)
     
     if annotate:
-        high_tf_points = stats_all_table[(stats_all_table[xy_vars[0]] > stats_all_table[xy_vars[0]].quantile(.5))&
-                                                (stats_all_table[xy_vars[1]] > stats_all_table[xy_vars[1]].quantile(.5))
+        quantile = .8
+        high_tf_points = stats_all_table[(stats_all_table[xy_vars[0]] > stats_all_table[xy_vars[0]].quantile(quantile))&
+                                                (stats_all_table[xy_vars[1]] > stats_all_table[xy_vars[1]].quantile(quantile))
                                             ]
+        
+        inconsistent_tfs = stats_all_table[stats_all_table['trend'] == 'Inconsistent']
+
+        df_to_annotate = pd.concat([inconsistent_tfs, high_tf_points], axis=0)
         
         x_offset = 10*np.asarray([-1, -1, 0, -1, 1, .5, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0])
         y_offset = 10*np.asarray([ -1,  1, 1, -1, -1, -1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0])
 
         ii = 0
-        for idx, row in high_tf_points.iterrows():
+        for idx, row in df_to_annotate.iterrows():
             
             # Adjust the annotation position slightly away from the point
             ax.annotate(
@@ -1344,15 +1349,18 @@ def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", 
     # Adjust colorbar
     if show_cbar:
         cbar = ax.collections[0].colorbar
-        # cbar.set_ticks([])
         cbar.ax.set_ylabel(cbar_title, rotation=90, labelpad=5)
 
     # Labels and formatting
     ax.set_xlabel("Age")
     # ax.set_ylabel(y_label)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
-def heamap_plot_minor_cell_types(stats_all, palette, map_names, main_col='major_cell_type', minor_col='cell_type' ,figsize=(6, 8), sig_dots_y_offset = 0.5):
-    from ciim.src.common import palette_trend_2
+def heamap_plot_minor_cell_types(stats_all, palette, 
+                                            map_names, 
+                                            slope_col = 'slope',
+                                            main_col='major_cell_type', 
+                                            minor_col='cell_type' ,figsize=(6, 8), sig_dots_y_offset = 0.5):
+    from ciim.src.common import palette_cell_types
     from matplotlib.colors import ListedColormap, BoundaryNorm
     from scipy.cluster.hierarchy import linkage
     from matplotlib.patches import Patch
@@ -1362,27 +1370,28 @@ def heamap_plot_minor_cell_types(stats_all, palette, map_names, main_col='major_
 
     stats_all=stats_all[stats_all[minor_col].isin(cell_types)]
     
-    stats_all['trend_int'] = stats_all['slope'].map(lambda value: 1 if value > 0 else (-1 if value < 0 else 0))
+    stats_all['trend_int'] = stats_all[slope_col].map(lambda value: 1 if value > 0 else (-1 if value < 0 else 0))
     pivot_df = stats_all.pivot(index='tf', columns=minor_col, values='trend_int').fillna(0)
     pivot_df = pivot_df.reindex(columns=cell_types)
-    # pivot_df = pivot_df[cell_types]
 
     # - color map
     cols_names = pivot_df.columns.map(lambda name: mapping_minor_2_major.get(name, name))
-    col_colors = [palette[name] for name in cols_names]
+    col_colors = [palette_cell_types[name] for name in cols_names]
 
     # print(palette_trend)
-    cmap = ListedColormap([palette_trend['Decrease in aging'], 'white', palette_trend['Increase in aging']])
+    palette_values = list(palette.values())
+    print(palette_values)
+    cmap = ListedColormap([palette_values[0], 'white', palette_values[1]])
     bounds = [-1.5, -0.5, 0.5, 1.5]
     norm = BoundaryNorm(bounds, cmap.N)
-
+    assert not pivot_df.isnull().values.any(), "NaNs found in pivot_df"
     g = sns.clustermap(
         pivot_df,
         row_linkage=linkage(pivot_df, method='ward'),
         col_cluster=False,
         row_cluster=True,
         cmap=cmap,
-        norm=norm,
+        # norm=norm,
         col_colors=col_colors,
         linewidths=1,
         alpha=.8,
@@ -1428,8 +1437,8 @@ def heamap_plot_minor_cell_types(stats_all, palette, map_names, main_col='major_
                             color='black', ha='center', va='center', fontsize=8, fontweight='bold'
                         )
     if True:
-        celltype_legend = [Patch(color=palette[label], label=map_names.get(label, label)) for label in major_cell_types]
-        trend_legend = [Patch(color=color, label=label, alpha=.8) for label, color in palette_trend_2.items()]
+        celltype_legend = [Patch(color=palette_cell_types[label], label=map_names.get(label, label)) for label in major_cell_types]
+        trend_legend = [Patch(color=color, label=label, alpha=.8) for label, color in palette.items()]
 
         legend_celltypes = g.ax_heatmap.legend(
             handles=celltype_legend,
@@ -1458,18 +1467,16 @@ def heamap_plot_minor_cell_types(stats_all, palette, map_names, main_col='major_
 
 
 
-def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets, ax=None, show_cbar=True, type='bulk'):
+def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets, ax=None, show_cbar=True, type='bulk', age_limit=[20, 80]):
     mean_expr_store = []
     for dataset in datasets:
         adata = retrieve_feature_data(dataset, cell_type, type=type, feature_type=feature_type)
+        adata = adata[(adata.obs['age'] > age_limit[0]) & (adata.obs['age'] < age_limit[1])]
         adata = adata[:, adata.var_names==feature]
         if adata.shape[1] == 0:
             continue
-
         expr = bin_feature_values(adata)
-
         expr.index = [dataset]
-        
         mean_expr_store.append(expr)
     
     if len(mean_expr_store) == 0:
@@ -1483,13 +1490,13 @@ def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets,
         fig, ax = plt.subplots(figsize=(3, 2))
 
     heatplot_age_trend(mean_expr[ages], cmap='magma' if feature_type=='tf_activity' else 'viridis', 
-                        cbar_title="Gene expression" if feature_type=='gene_expression' else "TF activity", 
+                        cbar_title="Gene \n expression" if feature_type=='gene_expression' else "TF \n activity", 
                         ax=ax, 
                         show_cbar=show_cbar, 
                         shrink=1)
     ax.set_ylabel('')
     ax.set_xlabel('Age')
-    plt.title(f'{cell_type}: {feature}', pad=20)
+    ax.set_title(f'{cell_type}: {feature}', pad=20)
 
 def plot_net_degrees(net, top_n=10):
     plt.rcParams.update({'font.size': 10})

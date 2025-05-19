@@ -405,9 +405,9 @@ def wrapper_meta_analysis(par):
         min_degree = 2
         meta_analysis_type='max'
         if ('_M' in par['type']):
-            datasets = ['data1', 'data13_Japanese', 'data13_Korean']
+            datasets = ['data1', 'data7_allTPs_jalil', 'data13_Korean']
         elif ('_F' in par['type']):
-            datasets = ['data1', 'data13_Japanese', 'data13_Korean']
+            datasets = ['data1', 'SLE_European', 'data13_Korean']
         else:
             raise ValueError('Unknown type')
             

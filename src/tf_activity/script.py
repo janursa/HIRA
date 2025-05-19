@@ -21,11 +21,11 @@ from ciim.src.common import cell_types, datasets_e, datasets_a, datasets_all, ma
 def run_workflow_tf_activity(par):
     print(par)
     # - step 1: calculate TF activity
-    if False: 
+    if True: 
         print('Calculating TF activity...')
         wrapper_tf_activity(cell_types, datasets_all, type=par['type'])
     # - step 2: calculate TF association with age
-    if False:
+    if True:
         stats_features_all = wrapper_association_with_age_condition(par, cell_types, datasets=datasets_all)
         stats_features_all.to_csv(par['stats_features'], index=False)
     if True:
@@ -59,12 +59,13 @@ if __name__ == '__main__':
     os.makedirs('output/gene_expression/', exist_ok=True)
     os.makedirs('output/gene_expression/gene_expression', exist_ok=True)
 
-    run_bulk = True
-    run_bulk_targets = True
+    run_bulk = False
+    run_bulk_targets = False
 
-
-    run_bulk_minor = True
+    run_bulk_minor = False
+    
     run_bulk_gender = True
+    run_bulk_gender_targets = True
     
     
     if run_bulk:
@@ -86,8 +87,7 @@ if __name__ == '__main__':
             'association_type': 'spearman',
             'cell_type_resolution': 'Major_CT',
             'stats_features': 'output/gene_expression/stats_features_bulk.csv',
-            'stats_all': 'output/gene_expression/stats_all_bulk.csv', #TODO: this for now only includes genes that are in the net. 
-            # 'stats_targets': 'output/tf_activity/stats_targets_bulk.csv',
+            'stats_all': 'output/gene_expression/stats_all_bulk.csv', 
             'temp_dir': 'output/tmp/',
         }
         run_workflow_gene_expression(par)
@@ -106,7 +106,7 @@ if __name__ == '__main__':
 
     if run_bulk_gender:
         # ----- bulk TF activity: gender
-        for gender in ['M','F']:
+        for gender in ['M', 'F']:
             par = {
                 'type': f'bulk_{gender}',
                 'cell_type_resolution': 'Major_CT',
@@ -116,21 +116,16 @@ if __name__ == '__main__':
                 'temp_dir': 'output/tmp/',
             }
             run_workflow_tf_activity(par)
-    if False:
-        # ----- sc TF activity
-        par = {
-            'type': 'sc_std',
-            'cell_type_resolution': 'Major_CT',
-            'association_type': 'spearman',
-            'stats_features': 'output/tf_activity/stats_features_std.csv',
-            'stats_targets': 'output/tf_activity/stats_targets_std.csv',
-            'stats_all': 'output/tf_activity/stats_all_std.csv', 
-            'temp_dir': 'output/tmp/',
-            'std_dir': 'output/std/',
-        }
-        os.makedirs(par['tf_acts_dir'], exist_ok=True)
-        os.makedirs(par['std_dir'], exist_ok=True)
-        run_workflow_tf_activity(par)
-    
-        
+    if run_bulk_gender_targets:
+        for gender in ['F', 'M']:
+            par = {
+                'type': f'bulk_{gender}',
+                'association_type': 'spearman',
+                'cell_type_resolution': 'Major_CT',
+                'stats_features': f'output/gene_expression/stats_features_bulk_{gender}.csv',
+                'stats_all': f'output/gene_expression/stats_all_bulk_{gender}.csv', 
+                'temp_dir': 'output/tmp/',
+            }
+            run_workflow_gene_expression(par)
+
     

@@ -3,7 +3,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-
+from collections import OrderedDict
 
 surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All batches', 
                     '34-':'35 below', '35_44':'35-45', '45_54':'45-55', '55_64':'55-65', '65_75':'65-75',
@@ -23,7 +23,9 @@ surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All 
                     'european': 'European',
                     'asian': 'Asian',
                     'collectri': 'CollecTRI',
-                    'both': 'European & Asian',}
+                    'both': 'European & Asian',
+                    'Tcm_Naive_CD8': 'TCM Naive CD8T',
+                    'Naive_B': 'Naive B',}
 
 
 cell_types = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
@@ -50,13 +52,26 @@ palette_regulation = {'Positive': '#56B4E9', 'Negative': 'lightcoral'}
 palette_cell_types = {name: color for name, color in zip(cell_types, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}
 palette_genders = {"Male": "#1f78b4", "Female": "#ff7f00", 'Both': '#999999'}
 palette_trend = {'Inconsistent': 'gray', 'Increase in aging': '#E52B50', 'Decrease in aging': '#B0BF1A'}
+
 cmap_trend = LinearSegmentedColormap.from_list(
             "aging_map", [palette_trend['Decrease in aging'], '#F0F0F0', palette_trend['Increase in aging']], N=10
         )
-palette_trend_2 = {key: palette_trend[key] for key in ['Increase in aging', 'Decrease in aging']}
 
-palette_disease_effect = {'Increase in disease': 'Orange', 'Decrease in disease': '#0072B2'}
-palette_treatment = {'Increase after treatment': 'Orange', 'Decrease after treatment': '#0072B2'}
+palette_trend_2 = OrderedDict([
+    ('Decrease in aging', '#B0BF1A'),
+    ('Increase in aging', '#E52B50'),
+])
+from collections import OrderedDict
+
+palette_disease_effect = OrderedDict([
+    ('Decrease in disease', '#0072B2'),
+    ('Increase in disease', 'Orange'),
+])
+
+palette_treatment = OrderedDict([
+    ('Decrease after treatment', '#0072B2'),
+    ('Increase after treatment', 'Orange'),
+])
 
 palette_sub_types = {
     'Tem_Trm_CD8': '#E69F00',    
