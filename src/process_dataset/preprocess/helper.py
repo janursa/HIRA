@@ -9,12 +9,11 @@ import pandas as pd
 def binarize_age(obs):
     obs = obs.copy()
     obs['age_donor'] = obs['age'].astype(str) + '_' + obs['donor_id'].astype(str)
-    # obs = obs[obs.age<=75]
     obs['age'] = pd.to_numeric(obs['age'], errors='coerce')
-    min_age = obs.age.min()
-    bins = [min_age, 35, 45, 55, 65, 75, 100]  
-    age_groups = ['34-', '35_44', '45_54', '55_64', '65_75', '75+']  
-    obs['age_group'] = pd.cut(obs['age'], bins=bins, labels=age_groups, right=False)
+    # min_age = obs.age.min()
+    # bins = [min_age, 35, 45, 55, 65, 75, 100]  
+    # age_groups = ['34-', '35_44', '45_54', '55_64', '65_75', '75+']  
+    # obs['age_group'] = pd.cut(obs['age'], bins=bins, labels=age_groups, right=False)
     return obs
 
 def process_obs(obs, par):

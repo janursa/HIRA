@@ -24,8 +24,10 @@ set -e
 # Define run flags
 RUN_ALIS_CODE=false
 RUN_PROCESS_DATASET=false
-RUN_PSEUDOBULK=true
-RUN_GRN=false
+RUN_PSEUDOBULK=false
+RUN_GRN=true
+CELL_TYPE_GRANULARITY='minor'
+SAVE_DIR='/vol/projects/jnourisa/output/'
 RUN_ASSOCIATION=false
 
 MAX_WORKERS=10
@@ -45,7 +47,7 @@ for dataset in $datasets; do
         fi
 done
 
-datasets="  CXCL9 " #CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European
+datasets="  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European " #CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European
 
 
 for dataset in $datasets; do
@@ -56,7 +58,6 @@ for dataset in $datasets; do
         BULK_MINOR_CELLTYPE="/vol/projects/jnourisa/datasets/${dataset}_bulk_minor.h5ad"
         BULK_M="/vol/projects/jnourisa/datasets/${dataset}_bulk_M.h5ad"
         BULK_F="/vol/projects/jnourisa/datasets/${dataset}_bulk_F.h5ad"
-
 
         
         if [ "$RUN_PROCESS_DATASET" = true ]; then
@@ -86,7 +87,7 @@ for dataset in $datasets; do
         fi
         if [ "$RUN_GRN" = true ]; then
                 FORCE=true # If true, overwrite the existing files in grns directory
-                SAVE_GRNS_DIR="output/grns/${dataset}/"
+                SAVE_GRNS_DIR="${SAVE_DIR}/grns/${dataset}/"
                 
                 DATASET_FILE="/vol/projects/jnourisa/datasets/${dataset}_${data_type}.h5ad" # tailors raw based on the given flags such as make, downsample, etc.
 
@@ -95,6 +96,7 @@ for dataset in $datasets; do
                         --save_grns_dir $SAVE_GRNS_DIR \
                         --max_workers $MAX_WORKERS \
                         --data_type $data_type \
+                        --cell_type_granularity $CELL_TYPE_GRANULARITY \
                         "
 
                 [ "$FORCE" = true ] && args="${args} --force"

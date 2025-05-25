@@ -145,7 +145,7 @@ def plot_ctr_condition_distribution(cell_types, genes, treatment, ctr, dataset, 
         plt.tight_layout()
         plt.suptitle(f' {treatment} - {cell_type}', y=1.1)
 
-def plot_sig_tfs_stats(df, figsize=(3.5, 2), palette=palette_trend_2, ax=None):
+def plot_sig_tfs_stats(df, figsize=(3.5, 2), palette=None, ax=None):
     df = df[['tf', 'cell_type', 'trend']]
     df['trend'] = df['trend'].astype(CategoricalDtype(categories=palette.keys(), ordered=True))
     df = df[~df.duplicated()].reset_index(drop=True)
@@ -365,6 +365,13 @@ def dotplot_category_color(df, ax,
         )
         ax.add_artist(size_legend_handle)
 def plot_feature_values_per_datasets(cell_type, features, type, datasets, feature_type='gene_expression', age_limit=[20, 75], cluster=False):
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    # from ciim.src.utils.plots import heatplot_age_trend
+    from ciim.src.common import surrogate_names
+    from ciim.src.tf_activity.helper import retrieve_feature_data, bin_feature_values
+    # from matplotlib.colors import TwoSlopeNorm
+
     n_datasets = len(datasets)
     n_features = len(features)
     fig, axes = plt.subplots(1, n_datasets, figsize=(n_datasets*3, .2*n_features+1), sharey=False)
@@ -413,9 +420,13 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
                               margins={'x': 0.1, 'y': 0.1}):
     from ciim.src.utils.plots import dotplot
     from matplotlib.colors import TwoSlopeNorm
-    from ciim.src.common import cmap_trend
-    from ciim.src.tf_activity.helper import retrieve_stats_features, retrieve_sig_stats
+    from ciim.src.common import cmap_trend, palette_trend_2, surrogate_names
+    from ciim.src.tf_activity.helper import retrieve_stats_features, retrieve_sig_stats, retrieve_net
     import matplotlib.gridspec as gridspec
+    import pandas as pd
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import seaborn as sns
 
     feature_col = 'source' if feature_type == 'tf_activity' else 'target'
     # - format the data
@@ -593,15 +604,85 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     ax.set_yticks([])
     plt.subplots_adjust(wspace=0.1)
 
+def plot_tf_interactions_plus_target_stats_binary(net, ax=None, show_legend=True, sizes=(20, 200), annotate_sig=True, annotate_targets=False):
+    from matplotlib.lines import Line2D
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import numpy as np
+
+    # Define binary color map
+    binary_colors = {'positive': '#2ca02c', 'negative': '#d62728'}  # Green and Red
+
+    # Classify weight into positive or negative
+    net = net.copy()
+    net['regulation'] = net['weight'].apply(lambda w: 'positive' if w > 0 else 'negative')
+
+    # Optional: Rename datasets using surrogate names if applicable
+    net['dataset'] = net['dataset'].apply(lambda name: surrogate_names.get(name, name))
+
+    # Slope direction affects marker shape
+    net['slope_direction'] = net['slope'].apply(lambda x: 'Increase in aging' if x > 0 else 'Decrease in aging')
+
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 3))
+
+    sns.scatterplot(
+        data=net,
+        x='target',
+        y='dataset',
+        hue='regulation',
+        palette=binary_colors,
+        style='slope_direction',
+        markers={'Increase in aging': '^', 'Decrease in aging': 'v'},
+        ax=ax,
+        s=100,
+        alpha=0.7,
+        legend=False  # We'll build a custom legend
+    )
+
+    ax.set_ylabel('Cohort', fontsize=12, labelpad=10)
+    ax.set_xlabel('Targets', fontsize=12, labelpad=10)
+    # ax.margins(x=0.05, y=0.4)
+    plt.xticks(rotation=90)
+
+    # Optionally annotate targets that are TFs
+    if annotate_targets:
+        tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
+        plt.draw()
+        for label in ax.get_xticklabels():
+            if label.get_text() in tf_all:
+                label.set_color('#56B4E9')  # blue for TFs
+
+    # Build custom legend
+    if show_legend:
+        style_legend = [
+            Line2D([0], [0], marker='^', color='w', label='Increase in aging', markerfacecolor='gray', markersize=8),
+            Line2D([0], [0], marker='v', color='w', label='Decrease in aging', markerfacecolor='gray', markersize=8)
+        ]
+
+        color_legend = [
+            Line2D([0], [0], marker='o', color='w', label='Positive regulation', markerfacecolor=binary_colors['positive'], markersize=10),
+            Line2D([0], [0], marker='o', color='w', label='Negative regulation', markerfacecolor=binary_colors['negative'], markersize=10)
+        ]
+
+        spacer = Line2D([0], [0], linestyle="none", label="")
+
+        all_handles = style_legend + [spacer] + color_legend
+
+        ax.legend(
+            handles=all_handles,
+            loc='center left',
+            bbox_to_anchor=(1.01, 0.5),
+            borderaxespad=0,
+            frameon=False
+        )
 def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes=(20, 200), annotate_sig=True, annotate_targets=False):
     from matplotlib.colors import TwoSlopeNorm
     from matplotlib.patches import Patch
     from matplotlib.lines import Line2D
     from pandas.api.types import CategoricalDtype
-    # Define a diverging palette: Set the normalization to center at 0
     cmap = plt.cm.RdYlGn  # Red = negative, Green = positive
     norm = TwoSlopeNorm(vmin=-.1, vcenter=0, vmax=.1)
-
     
     net['dataset'] = net['dataset'].apply(lambda name: surrogate_names.get(name, name))
     # net['dataset'] = net['dataset'].astype(CategoricalDtype(categories=datasets_all, ordered=True))
@@ -610,7 +691,6 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=(10, 3))
     # Sort by target alphabetically
-    # net = net.sort_values(by='target')
     sns.scatterplot(
         data=net,
         x='target',
@@ -621,9 +701,7 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
         style='slope_direction',
         markers={'Increase in aging': '^', 'Decrease in aging': 'v'},
         ax=ax,
-        # size='neg_log10_adj_pval',
         s = 100,
-        # sizes=sizes,
         alpha=0.7,
         legend=False  # Suppress default legend
         )
@@ -1320,11 +1398,9 @@ def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net
             evidence = pd.concat([evidence, skeleton], ignore_index=True)
 
         # - evidence
-        
         evidence = evidence[evidence['source'].isin(features) & evidence['target'].isin(features)]
         evidence = evidence[evidence['source'] != evidence['target']]
 
-        
         refs = evidence['dataset'].unique()
         set2_colors = sns.color_palette("Set2", n_colors=len(refs))
         palette_evidence ={d: color for d, color in zip(refs, set2_colors)}
@@ -1332,7 +1408,9 @@ def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net
         plt.title(f"{cell_type_major} - CollecTRI", fontsize=14, pad=20, weight='bold')
 
 def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", y_label="Genes", figsize=(2.5, 3), ax=None, show_cbar=True, shrink=.7):
-
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    import numpy as np
     # Plot heatmap
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -1355,15 +1433,17 @@ def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", 
     ax.set_xlabel("Age")
     # ax.set_ylabel(y_label)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
+
 def heamap_plot_minor_cell_types(stats_all, palette, 
                                             map_names, 
                                             slope_col = 'slope',
                                             main_col='major_cell_type', 
                                             minor_col='cell_type' ,figsize=(6, 8), sig_dots_y_offset = 0.5):
-    from ciim.src.common import palette_cell_types
+    from ciim.src.common import palette_cell_types, surrogate_names
     from matplotlib.colors import ListedColormap, BoundaryNorm
     from scipy.cluster.hierarchy import linkage
     from matplotlib.patches import Patch
+
 
     major_cell_types = stats_all[main_col].cat.categories
     cell_types = stats_all[minor_col].cat.categories
@@ -1378,9 +1458,7 @@ def heamap_plot_minor_cell_types(stats_all, palette,
     cols_names = pivot_df.columns.map(lambda name: mapping_minor_2_major.get(name, name))
     col_colors = [palette_cell_types[name] for name in cols_names]
 
-    # print(palette_trend)
     palette_values = list(palette.values())
-    print(palette_values)
     cmap = ListedColormap([palette_values[0], 'white', palette_values[1]])
     bounds = [-1.5, -0.5, 0.5, 1.5]
     norm = BoundaryNorm(bounds, cmap.N)
@@ -1402,7 +1480,7 @@ def heamap_plot_minor_cell_types(stats_all, palette,
     g.cax.set_visible(False)
     g.ax_heatmap.set_yticks([])
     g.ax_heatmap.set_ylabel('', fontsize=10, labelpad=5)
-    new_labels = [label.get_text().replace('_', ' ') for label in g.ax_heatmap.get_xticklabels()]
+    new_labels = [surrogate_names.get(label.get_text(), label.get_text()) for label in g.ax_heatmap.get_xticklabels()]
     g.ax_heatmap.set_xticklabels(new_labels, rotation=90)  # or any angle you prefer
 
     g.ax_heatmap.set_xlabel('', fontsize=12, labelpad=15)
@@ -1539,7 +1617,7 @@ class DotPlotTFtarget:
     def normalize(series):
         return (series - series.min()) / (series.max() - series.min())
     def plot_dotplot(self, 
-                    data: pd.DataFrame, 
+                    data, 
                     title='', 
                     figsize=(10, 20), 
                     height_ratios=(4, .2), 

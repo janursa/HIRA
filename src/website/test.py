@@ -1,12 +1,19 @@
+
 import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from collections import OrderedDict
+import os
+import anndata as ad
 
 
-save_dir = '/vol/projects/jnourisa/output/'
+# --------- variables 
+website_dir = '/vol/projects/jnourisa/website/'
+website_input_dir = f'{website_dir}/input'
+website_tmp_dir = f'{website_dir}/tmp'
+
 
 surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All batches', 
                     '34-':'35 below', '35_44':'35-45', '45_54':'45-55', '55_64':'55-65', '65_75':'65-75',
@@ -149,3 +156,115 @@ if True: # define palette for minor cell types
             palette_minor_types[minor] = color
 
 palette_minor_types_pretty = {surrogate_names[minor]: color for minor, color in palette_minor_types.items()}
+
+
+
+
+# - ----------------------- functions
+
+    
+def bin_feature_values(adata):
+    # - bin 
+    expr = adata.to_df()
+    expr = expr.merge(adata.obs[['age']], left_index=True, right_index=True, how='left').set_index('age')
+    expr.sort_index(inplace=True)
+    expr['age_bin'] = (expr.index.astype(int) // 5) * 5
+    expr_mean = expr.groupby('age_bin').mean().T
+    # Normalize expression
+    min_vals = expr_mean.min(axis=1)
+    max_vals = expr_mean.max(axis=1)
+    expr_mean = (expr_mean.sub(min_vals, axis=0)).div(max_vals - min_vals, axis=0)
+    return expr_mean
+def retrieve_feature_data(dataset, cell_type, type, feature_type='tf_activity'):
+    cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
+    file_path = f'{website_input_dir}/{feature_type}/{dataset}_{cell_type_major}_{type}.h5ad'
+    if os.path.exists(file_path) == False:
+        raise ValueError(f'File {file_path} does not exist')
+    adata = ad.read_h5ad(file_path)
+    
+    return adata
+def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", y_label="Genes", figsize=(2.5, 3), ax=None, show_cbar=True, shrink=.7):
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    import numpy as np
+    # Plot heatmap
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    sns.heatmap(mean_expr, cmap=cmap, cbar=show_cbar, 
+                cbar_kws={
+                    "shrink": shrink,
+                    "aspect": 10,       # Lower values = thicker colorbar (default is ~20)
+                    "fraction": 0.1    # Controls the width space the cbar takes in the figure
+                },
+                 ax=ax)
+    ax.set_yticks(np.arange(mean_expr.shape[0]) + 0.5)
+    ax.set_yticklabels(mean_expr.index, rotation=0)
+
+    # Adjust colorbar
+    if show_cbar:
+        cbar = ax.collections[0].colorbar
+        cbar.ax.set_ylabel(cbar_title, rotation=90, labelpad=5)
+
+    # Labels and formatting
+    ax.set_xlabel("Age")
+    # ax.set_ylabel(y_label)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
+
+def plot_feature_values_per_datasets(cell_type, features, type, datasets, feature_type='gene_expression', age_limit=[20, 75], cluster=False):
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    n_datasets = len(datasets)
+    n_features = len(features)
+    fig, axes = plt.subplots(1, n_datasets, figsize=(n_datasets*3, .2*n_features+1), sharey=False)
+    for i, (dataset) in enumerate(datasets):
+        adata = retrieve_feature_data(dataset, cell_type, type, feature_type=feature_type)
+        adata = adata[:, adata.var_names.isin(features)]
+        
+        if age_limit is not None:
+            adata = adata[(adata.obs['age'] < age_limit[1]) & (adata.obs['age'] > age_limit[0])]
+        # - plot target gene expression trend    
+        ax = axes[i]
+        mean_expr = bin_feature_values(adata)
+        if cluster:
+            if i == 0:
+                from sklearn.cluster import KMeans
+                if len(mean_expr) > 2:
+                    kmeans = KMeans(n_clusters=2, random_state=42, n_init=10)
+                    clusters = kmeans.fit_predict(mean_expr)
+                    mean_expr['cluster'] = clusters
+                    mean_expr = mean_expr.sort_values('cluster').drop(columns=['cluster'])
+                ordered_targets = mean_expr.index
+            else:
+                mean_expr = mean_expr.reindex(ordered_targets)
+        else:
+            mean_expr = mean_expr.reindex(features)
+        if i == 0:
+            show_cbar = True
+        else:
+            show_cbar = False
+        
+        heatplot_age_trend(mean_expr, cmap='viridis' if feature_type=='gene_expression' else 'magma', 
+                            cbar_title="Gene expression" if feature_type=='gene_expression' else "TF activity", 
+                            y_label="Genes" if feature_type=='gene_expression' else "TFs", 
+                            ax=ax, 
+                            show_cbar=show_cbar)
+        if i != 0:
+            # ax.set_yticklabels([])
+            ax.set_ylabel('')
+        ax.set_title(surrogate_names[dataset], pad=10, fontsize=10, fontweight='bold')
+    plt.tight_layout()
+    plt.suptitle(cell_type, fontsize=12, fontweight='bold', y=1.05)
+
+    return fig
+
+
+
+if __name__ == '__main__':
+    os.makedirs(website_tmp_dir, exist_ok=True)
+    features=['FOXO1', 'TCF7', 'BACH2', 'FOS', 'FOSB']
+    type = 'bulk'
+    cell_type='CD8T'
+    datasets = ['data7_allTPs_jalil', 'data13_Korean']
+    fig = plot_feature_values_per_datasets(cell_type, features, type, datasets, feature_type='tf_activity', age_limit=[20, 75], cluster=False)
+    fig.savefig(f'{website_tmp_dir}/test.png', dpi=300, bbox_inches='tight')

@@ -313,3 +313,114 @@ def basic_qc(adata, min_genes_per_cell = 200, max_genes_per_cell = 5000, min_cel
     print('shape after ', adata_f.shape)
     return adata_f
 
+import pandas as pd
+from scipy.stats import hypergeom
+import numpy as np
+
+def run_ora_local(gene_list, background_genes, gene_sets, min_size=5, max_size=500):
+    """
+    Perform Over-Representation Analysis (ORA).
+
+    Parameters:
+    - gene_list: set or list of input genes
+    - background_genes: set or list of background genes (universe)
+    - gene_sets: dict of pathway_name -> set/list of genes
+    - min_size: minimum gene set size to consider
+    - max_size: maximum gene set size to consider
+
+    Returns:
+    - pd.DataFrame with columns: Term, Overlap, P-value, Adjusted P-value (FDR), Gene Ratio, Genes
+    """
+
+    gene_list = set(gene_list)
+    background_genes = set(background_genes)
+
+    results = []
+
+    M = len(background_genes)  # total genes in background
+    n = len(gene_list & background_genes)  # overlap between input genes and background
+
+    for term, term_genes in gene_sets.items():
+        term_genes = set(term_genes)
+        term_genes = term_genes & background_genes  # restrict to universe
+
+        N = len(term_genes)
+        if N < min_size or N > max_size:
+            continue
+
+        k = len(gene_list & term_genes)  # hits in gene list
+        if k == 0:
+            continue
+
+        # Hypergeometric test: P(X ≥ k)
+        pval = hypergeom.sf(k - 1, M, N, n)
+
+        # Collect data
+        results.append({
+            "Term": term,
+            "Gene Set Size": N,
+            "Hits": k,
+            "P-value": pval,
+            "Gene Ratio": k / n,
+            "Genes": list(gene_list & term_genes),
+        })
+
+    # Compile and adjust p-values
+    df = pd.DataFrame(results)
+    if not df.empty:
+        df['FDR'] = np.minimum(1.0, df['P-value'] * len(df))  # Benjamini-Hochberg correction (simplified)
+        df = df.sort_values("P-value")
+    return df
+def pathway_analysis_wrapper(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hallmark_2020']):
+    import gseapy as gp
+    # from ciim.src.utils.util import get_genesets
+    from gseapy import barplot, dotplot
+    # all_genes = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str).tolist()
+    all_genes = np.loadtxt(f'/vol/projects/jnourisa/prior/gene_names.txt', dtype=str)
+    # gene_sets =  get_genesets()
+    res2d_store = []
+    for cell_type in df['cell_type'].unique():
+    # for cell_type in ['CD8T']:
+        for trend in df['trend'].unique():
+        # for trend in ['Decrease in aging']:
+            mask = (df['cell_type'] == cell_type) & (df['trend'] == trend)
+            if mask.sum() == 0:
+                continue
+            stats_df = df[mask]
+            # - prepare
+            stats_df = stats_df[['tf', pvalue_col]]
+            all_tfs = stats_df['tf'].unique().tolist()
+            genes = stats_df[stats_df[pvalue_col]<0.05]['tf'].unique().tolist()
+            if True:
+                rr = gp.enrichr(gene_list=list(genes),
+                                gene_sets=gene_sets, #, 'KEGG_2021_Human'
+                                organism='human', 
+                                outdir=None, 
+                                cutoff=1
+                                # background=list(tf_all),
+                                )
+                res2d = rr.res2d
+                res2d.rename(columns={'Adjusted P-value': 'FDR'}, inplace=True)
+            else:
+                res2d = run_ora_local(genes, background_genes=all_genes, gene_sets=gene_sets, min_size=1, max_size=500)
+                res2d['Term'] = (
+                res2d['Term']
+                    .str.replace('HALLMARK_', '', regex=False)
+                    .str.replace('_', ' ', regex=False)
+                    # .str.title()
+                )
+
+            filter_col = 'FDR' #'FDR q-val'
+            res2d = res2d[res2d[filter_col]<0.05]
+            
+            if res2d.shape[0] == 0:
+                continue
+            print(res2d.shape)
+            res2d['cell_type'] = cell_type
+            res2d['trend'] = trend
+            res2d_store.append(res2d)
+    if len(res2d_store) == 0:
+        return None
+    
+    res2d_all = pd.concat(res2d_store)
+    return res2d_all

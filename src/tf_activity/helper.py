@@ -18,18 +18,12 @@ from pandas.api.types import CategoricalDtype
 from ciim.src.common import datasets_e, datasets_a, surrogate_names, datasets_all
 from scipy.stats import mannwhitneyu
 from tqdm import tqdm
-from ciim.src.common import cell_types
-from ciim.src.common import mapping_major_2_minor, mapping_minor_2_major
+from ciim.src.common import cell_types, save_dir, mapping_major_2_minor, mapping_minor_2_major, minor_cell_types
 from scipy.sparse import issparse
 
 def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datasets=None, condition=None):
-    if feature_type == 'tf_activity':
-        save_dir = f'/home/jnourisa/projs/ongoing/ciim/output/tf_activity/'
-    elif feature_type == 'gene_expression':
-        save_dir = f'/home/jnourisa/projs/ongoing/ciim/output/gene_expression/'
-    else:
-        raise ValueError('Unknown feature type')
-    stats = pd.read_csv(f'{save_dir}/stats_features_{type}.csv')
+    from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
+    stats = pd.read_csv(f'{save_dir}/{feature_type}/stats_features_{type}.csv')
     if cell_type is not None: 
         if cell_type not in stats['cell_type'].unique():
             raise ValueError(f'Given cell type "{cell_type}" not in {stats["cell_type"].unique()}')
@@ -44,20 +38,18 @@ def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datas
     if race is not None:
         if race == 'european':
             datasets = datasets_e
-        else:
+        elif race =='asian':
             datasets = datasets_a
+        elif race == 'both':
+            datasets = datasets_all
         stats = stats[stats['dataset'].isin(datasets)]
     return stats
 
 def retrieve_feature_data(dataset, cell_type, type, feature_type='tf_activity'):
-    if feature_type == 'tf_activity':
-        save_dir = f'/home/jnourisa/projs/ongoing/ciim/output/tf_activity/tf_acts'
-    elif feature_type == 'gene_expression':
-        save_dir = f'/home/jnourisa/projs/ongoing/ciim/output/gene_expression/gene_expression'
-    else:
-        raise ValueError('Unknown feature type')
-    cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-    file_path = f'{save_dir}/{dataset}_{cell_type_major}_{type}.h5ad'
+    from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
+
+    # cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
+    file_path = f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad'
     if os.path.exists(file_path) == False:
         raise ValueError(f'File {file_path} does not exist')
     adata = ad.read_h5ad(file_path)
@@ -65,13 +57,7 @@ def retrieve_feature_data(dataset, cell_type, type, feature_type='tf_activity'):
     return adata
 
 def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activity'):
-    if feature_type == 'tf_activity':
-        save_dir = f'/home/jnourisa/projs/ongoing/ciim/output/tf_activity/tf_acts'
-    elif feature_type == 'gene_expression':
-        save_dir = f'/home/jnourisa/projs/ongoing/ciim/output/gene_expression/gene_expression'
-    else:
-        raise ValueError('Unknown feature type')
-    adata.write_h5ad(f'{save_dir}/{dataset}_{cell_type}_{type}.h5ad')
+    adata.write_h5ad(f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
 
 def retrieve_valid_stats(type):
     stats_e = retrieve_sig_stats(type, race='european')
@@ -85,8 +71,9 @@ def retrieve_valid_stats(type):
     stats_valid = stats_valid.drop_duplicates(subset=['cell_type', 'tf'])[['tf', 'cell_type', 'trend']]
     return stats_valid
 
-def retrieve_sig_stats(type, feature_type='tf_activity',race='european', filter_inconsistent=True, cell_type=None):
-    stats_all = pd.read_csv(f'../output/{feature_type}/stats_all_{type}.csv')
+def retrieve_sig_stats(type, feature_type='tf_activity', race='european', filter_inconsistent=True, cell_type=None):
+    from ciim.src.common import save_dir
+    stats_all = pd.read_csv(f'{save_dir}/{feature_type}/stats_all_{type}.csv')
     
     mask = (stats_all['condition']=='healthy') & (stats_all['meta_p_adj'] < 0.05) 
 
@@ -105,12 +92,13 @@ def retrieve_sig_stats(type, feature_type='tf_activity',race='european', filter_
     return stats_all
 
 def retrieve_net(dataset, cell_type, only_promotor_based=False, c_t=5):  
+    from ciim.src.common import save_dir
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
     if dataset == '!CXCL9':
         net = get_consensus_net(datasets_e, cell_type_major, min_degree=2)
     else:
-        net = pd.read_csv(f"/home/jnourisa/projs/ongoing/ciim/output/grns/{dataset}/net_{cell_type_major}_all_agegroups_all_batches.csv")
+        net = pd.read_csv(f"{save_dir}/grns/{dataset}/net_{cell_type_major}_all_agegroups_all_batches.csv")
     gene_names = np.loadtxt(f'/vol/projects/jnourisa/prior/gene_names.txt', dtype=str)
     net = net[net['target'].isin(gene_names)]
     # tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
@@ -137,13 +125,13 @@ def retrieve_nets(datasets, cell_type, only_promotor_based=False):
     return nets
 
 def retrieve_sig_net(type, race, cell_type=None):
-    df = pd.read_csv(f'/home/jnourisa/projs/ongoing/ciim/output/sig_nets/sig_nets_{type}_{race}.csv')
+    df = pd.read_csv(f'{save_dir}/sig_nets/sig_nets_{type}_{race}.csv')
     if cell_type is not None:
         df = df[df['cell_type'] == cell_type]
     return df
 
 def determine_sig_network(type, race, min_degree=3):
-    os.makedirs(f'/home/jnourisa/projs/ongoing/ciim/output/sig_nets', exist_ok=True)
+    os.makedirs(f'{save_dir}/sig_nets', exist_ok=True)
     from ciim.src.tf_activity.helper import retrieve_nets
     stats_tfs = retrieve_sig_stats(type, feature_type='tf_activity')
     stats_targets = retrieve_sig_stats(type, feature_type='gene_expression')
@@ -183,24 +171,32 @@ def determine_sig_network(type, race, min_degree=3):
         nets_stats['race'] = race
         nets_stats_store.append(nets_stats)
     nets_stats = pd.concat(nets_stats_store)
-    nets_stats.to_csv(f'/home/jnourisa/projs/ongoing/ciim/output/sig_nets/sig_nets_{type}_{race}.csv')
+
+    os.makedirs(f'{save_dir}/sig_nets', exist_ok=True)
+    nets_stats.to_csv(f'{save_dir}/sig_nets/sig_nets_{type}_{race}.csv')
 
 
 def retrieve_adata_bulk(dataset, type='bulk', cell_type=None): 
     base_path = "/vol/projects/jnourisa/datasets/"
     gene_names = np.loadtxt(f'/vol/projects/jnourisa/prior/gene_names.txt', dtype=str)
 
-    # assert type in ['bulk', 'sc', 'bulk_minor', 'bulk_M', 'bulk_F']
-    if (type == 'bulk_M') & (type == 'bulk_F'):
+    assert type in ['bulk', 'bulk_minor', 'bulk_M', 'bulk_F', 'bulk_minor_M', 'bulk_minor_F', 'metacell'], f'Unknown type {type}'
+    
+    if (type == 'bulk_M') | (type == 'bulk_F'):
         gender = type.split('_')[1]
-        type = type.split('_')[0]
+        type = 'bulk'
         adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
-        adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'Male': 'M', 'Female': 'F'}.get(name, name))
         adata = adata[adata.obs['sex']==gender]
-    else:
-        if 'std' in type:
-            type = type.split('_')[0]
+    elif (type == 'bulk_minor_M') | (type == 'bulk_minor_F'):
+        gender = type.split('_')[-1]
+        type = 'bulk_minor'
         adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
+        adata = adata[adata.obs['sex']==gender]
+
+    else:
+        adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
+    # if 'minor' in type:
+    #     adata.obs['cell_type'] = adata.obs['Sub_CT']
     adata.obs['dataset'] = dataset
     adata = adata[:, adata.var_names.isin(gene_names)]
 
@@ -411,7 +407,7 @@ def wrapper_meta_analysis(par):
         else:
             raise ValueError('Unknown type')
             
-        stats_all = run_func(datasets)
+        stats_all = run_func(datasets, min_degree, meta_analysis_type)
         stats_all['race'] = 'both'
     else: # seperate meta analysis for asian and european
         min_degree = 3
@@ -442,75 +438,79 @@ def wrapper_meta_analysis(par):
     print('Saving results to ', par['stats_all'])
     stats_all.to_csv(par['stats_all'], index=False)
 
-def wrapper_association_with_age_condition(par, cell_types, datasets, feature_type='tf_activity', features=None, test_type='unpaired'):
+def wrapper_association_with_age_condition(par, features=None, test_type='unpaired'):
     # - calculate tf activity for all datasets
+    
+    datasets = par['datasets']
+    feature_type = par['feature_type']
+    data_type = par['type']
+
     print(f'Association {feature_type} with age/disease...')
+
+    
+    if 'minor' in data_type:
+        cell_types_l = minor_cell_types
+    else:
+        cell_types_l = cell_types
     stats_store = []
-    for cell_type in tqdm(cell_types, desc='cell types'):
+    for cell_type in tqdm(cell_types_l, desc='cell types'):
         # ----------- calculate tf activity for all datasets
         for dataset in datasets:
             try:
-                adata = retrieve_feature_data(dataset, cell_type, par['type'], feature_type=feature_type)
+                adata = retrieve_feature_data(dataset, cell_type, data_type, feature_type=feature_type)
             except ValueError as e:
                 print(e)
                 continue
 
             # - add which cell type resolution to run the analysis
-            adata.obs['cell_type_resolution'] = adata.obs[par['cell_type_resolution']]
+            adata_sub = adata[adata.obs[par['cell_type_resolution']]==cell_type]
+            if adata_sub.shape[0] < 10:
+                print('Not enough samples for', cell_type, dataset)
+                continue
             
-            for cell_type_resolution in adata.obs['cell_type_resolution'].unique():
-                adata_sub = adata[adata.obs['cell_type_resolution']==cell_type_resolution]
-                if adata_sub.shape[0] < 10:
-                    print('Not enough samples for', cell_type, dataset, cell_type_resolution)
-                    continue
-                
-                # - subset based on prior (only for target genes) -> add this to meta analysis
-                if features is not None:
-                    genes = features
-                elif feature_type == 'gene_expression':
-                    net = retrieve_net(dataset, cell_type)
-                    targets = net['target'].unique()
-                    genes = targets
-                else:
-                    genes = adata_sub.var_names
-                
-                adata_sub = adata_sub[:, adata_sub.var_names.isin(genes)]
-                if issparse(adata_sub.X):
-                    adata_sub.X = adata_sub.X.toarray()
-                if 'SLE' in dataset:
-                    stats = determine_stats_condition(adata_sub, test_type=test_type)
-                elif dataset == 'CXCL9':
-                    stats_1 = determine_stats_condition(adata_sub, ctr_group='24 h RPMI', condition_col='treatment', test_type=test_type)
-                    stats_2 = determine_stats_condition(adata_sub, ctr_group='24 h LPS', condition_col='treatment', test_type=test_type,  conditions=['24 h LPS + metformin', '24 h LPS + metformin + ruxolitinib', '24 h LPS + ruxolitinib'])
-                    stats = pd.concat([stats_1, stats_2])
-                else:
-                    stats = association_with_age(adata_sub, association_type=par['association_type'])
-                    stats['condition'] = 'healthy'
-                    stats['dataset'] = dataset
-                stats['cell_type'] = cell_type_resolution
-                
-                stats_store.append(stats)
+            # - subset based on prior (only for target genes) -> add this to meta analysis
+            genes = adata_sub.var_names
+            adata_sub = adata_sub[:, adata_sub.var_names.isin(genes)]
+            if issparse(adata_sub.X):
+                adata_sub.X = adata_sub.X.toarray()
+            if 'SLE' in dataset:
+                stats = determine_stats_condition(adata_sub, test_type=test_type)
+            elif dataset == 'CXCL9':
+                stats_1 = determine_stats_condition(adata_sub, ctr_group='24 h RPMI', condition_col='treatment', test_type=test_type)
+                stats_2 = determine_stats_condition(adata_sub, ctr_group='24 h LPS', condition_col='treatment', test_type=test_type,  conditions=['24 h LPS + metformin', '24 h LPS + metformin + ruxolitinib', '24 h LPS + ruxolitinib'])
+                stats = pd.concat([stats_1, stats_2])
+            else:
+                stats = association_with_age(adata_sub, association_type=par['association_type'])
+                stats['condition'] = 'healthy'
+                stats['dataset'] = dataset
+            stats['cell_type'] = cell_type
+            
+            stats_store.append(stats)
         
     stats_all = pd.concat(stats_store)
     if feature_type == 'gene_expression':
         stats_all.rename(columns={'tf': 'target'}, inplace=True)
     return stats_all
 
-def wrapper_tf_activity(cell_types, datasets, type='bulk'):
+def wrapper_tf_activity(par):
     # --------- load data
     print('Loading data...')
-    adata_dict = {dataset: retrieve_adata_bulk(dataset, type) for dataset in datasets}
-    tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
+    data_type = par['type']
+    datasets = par['datasets']
+    cell_type_col = par['cell_type_resolution']
 
     # - calculate tf activity for all datasets
     print('Calculating TF activity...')
     stats_store = []
-    for cell_type in tqdm(cell_types, desc='cell types'):
-        # ----------- calculate tf activity for all datasets
-        for dataset in datasets:
-            adata = adata_dict[dataset][adata_dict[dataset].obs['cell_type']==cell_type]
+    # ----------- calculate tf activity for all datasets
+    for dataset in datasets:
+        adata = retrieve_adata_bulk(dataset, data_type)
+        cell_types_l = adata.obs[cell_type_col].unique()
+        all_types = list(minor_cell_types)+list(cell_types)
+        cell_types_l = [t for t in cell_types_l if t in all_types]
+        for cell_type in tqdm(cell_types_l, desc='cell types'):
+            adata_t = adata[adata.obs[cell_type_col]==cell_type]
             net = retrieve_net(dataset, cell_type)
-            net = net[net['source'].isin(tf_all)]
 
             if adata.shape[0] < 10:
                 continue
@@ -519,15 +519,9 @@ def wrapper_tf_activity(cell_types, datasets, type='bulk'):
             tf_acts.uns['dataset'] = dataset
             
             tf_acts = tf_acts[tf_acts.obs['age'].isna()==False] # there is a bug in the code that causes age to be NaN
-            if 'std' in type:
-                save_type = type.split('_')[0]
-            else:
-                save_type = type
-            write_feature_data(tf_acts, dataset, cell_type, save_type)
 
-            if type == 'sc_std':
-                tf_acts = determine_std(tf_acts)
-                write_feature_data(tf_acts, dataset, cell_type, type)
+            write_feature_data(tf_acts, dataset, cell_type, data_type)
+
 def wrapper_gene_expression(cell_types, datasets, type='bulk'):
     # --------- load data
     print('Loading data...')
@@ -752,114 +746,3 @@ def calculate_tf_activity(adata, net, tf_all=None):
     var_df['source'] = var_df.index
     tf_acts_adata = ad.AnnData(X=X_df.values, obs=obs_df, var=var_df)
     return tf_acts_adata
-import pandas as pd
-from scipy.stats import hypergeom
-import numpy as np
-
-def run_ora_local(gene_list, background_genes, gene_sets, min_size=5, max_size=500):
-    """
-    Perform Over-Representation Analysis (ORA).
-
-    Parameters:
-    - gene_list: set or list of input genes
-    - background_genes: set or list of background genes (universe)
-    - gene_sets: dict of pathway_name -> set/list of genes
-    - min_size: minimum gene set size to consider
-    - max_size: maximum gene set size to consider
-
-    Returns:
-    - pd.DataFrame with columns: Term, Overlap, P-value, Adjusted P-value (FDR), Gene Ratio, Genes
-    """
-
-    gene_list = set(gene_list)
-    background_genes = set(background_genes)
-
-    results = []
-
-    M = len(background_genes)  # total genes in background
-    n = len(gene_list & background_genes)  # overlap between input genes and background
-
-    for term, term_genes in gene_sets.items():
-        term_genes = set(term_genes)
-        term_genes = term_genes & background_genes  # restrict to universe
-
-        N = len(term_genes)
-        if N < min_size or N > max_size:
-            continue
-
-        k = len(gene_list & term_genes)  # hits in gene list
-        if k == 0:
-            continue
-
-        # Hypergeometric test: P(X ≥ k)
-        pval = hypergeom.sf(k - 1, M, N, n)
-
-        # Collect data
-        results.append({
-            "Term": term,
-            "Gene Set Size": N,
-            "Hits": k,
-            "P-value": pval,
-            "Gene Ratio": k / n,
-            "Genes": list(gene_list & term_genes),
-        })
-
-    # Compile and adjust p-values
-    df = pd.DataFrame(results)
-    if not df.empty:
-        df['FDR'] = np.minimum(1.0, df['P-value'] * len(df))  # Benjamini-Hochberg correction (simplified)
-        df = df.sort_values("P-value")
-    return df
-def pathway_analysis_wrapper(df, pvalue_col='meta_p_adj'):
-    import gseapy as gp
-    from ciim.src.utils.util import get_genesets
-    from gseapy import barplot, dotplot
-    # all_genes = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str).tolist()
-    all_genes = np.loadtxt(f'/vol/projects/jnourisa/prior/gene_names.txt', dtype=str)
-    gene_sets =  get_genesets()
-    res2d_store = []
-    for cell_type in df['cell_type'].unique():
-    # for cell_type in ['CD8T']:
-        for trend in df['trend'].unique():
-        # for trend in ['Decrease in aging']:
-            mask = (df['cell_type'] == cell_type) & (df['trend'] == trend)
-            if mask.sum() == 0:
-                continue
-            stats_df = df[mask]
-            # - prepare
-            stats_df = stats_df[['tf', pvalue_col]]
-            all_tfs = stats_df['tf'].unique().tolist()
-            genes = stats_df[stats_df[pvalue_col]<0.05]['tf'].unique().tolist()
-            if True:
-                rr = gp.enrichr(gene_list=list(genes),
-                                gene_sets=['MSigDB_Hallmark_2020'], #, 'KEGG_2021_Human'
-                                organism='human', 
-                                outdir=None, 
-                                cutoff=1
-                                # background=list(tf_all),
-                                )
-                res2d = rr.res2d
-                res2d.rename(columns={'Adjusted P-value': 'FDR'}, inplace=True)
-            else:
-                res2d = run_ora_local(genes, background_genes=all_genes, gene_sets=gene_sets, min_size=1, max_size=500)
-                res2d['Term'] = (
-                res2d['Term']
-                    .str.replace('HALLMARK_', '', regex=False)
-                    .str.replace('_', ' ', regex=False)
-                    # .str.title()
-                )
-
-            filter_col = 'FDR' #'FDR q-val'
-            res2d = res2d[res2d[filter_col]<0.05]
-            
-            if res2d.shape[0] == 0:
-                continue
-            print(res2d.shape)
-            res2d['cell_type'] = cell_type
-            res2d['trend'] = trend
-            res2d_store.append(res2d)
-    if len(res2d_store) == 0:
-        return None
-    
-    res2d_all = pd.concat(res2d_store)
-    return res2d_all

@@ -1,5 +1,5 @@
 
-from ciim.src.clock.helper import prepare_input, save_dir, wrapper_build_model_cell_type
+from ciim.src.clock.helper import prepare_input, wrapper_build_model_cell_type
 from ciim.src.common import cell_types
 
 import argparse
@@ -12,6 +12,9 @@ arg.add_argument('--data_type', type=str, default='metacell', help='Data type to
 arg.add_argument('--reg_type', type=str, default='ridge', help='Regularization type to use for training')
 arg.add_argument('--tune_model', action='store_true', help='Whether to tune the model or not')
 arg.add_argument('--version', type=str, default='v1.0')
+arg.add_argument('--temp_dir', type=str, default='tmp/')
+
+
 
 par = vars(arg.parse_args())
 

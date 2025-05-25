@@ -12,6 +12,8 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import subprocess
 
+from ciim.src.common import cell_types, minor_cell_types
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset_file', 
     type=str,
@@ -46,6 +48,13 @@ parser.add_argument(
     help="Type of data: bulk or single-cell"
 )
 
+parser.add_argument(
+    '--cell_type_granularity',
+    type=str,
+    default='major',
+    help="Whether to infer GRNs for major or minor cell types."
+)
+
 args = parser.parse_args()
 
 
@@ -54,12 +63,12 @@ par = {
         'dataset_file': args.dataset_file,
         'weight_t': 0.05,
         'batches': ['all_batches'],
-        'cell_types': ['B', 'CD4T', 'CD8T', 'MONO', 'NK', 'T'],
-        # 'cell_types': ['CD8T'],
+        # 'cell_types': minor_cell_types,
+        # 'cell_type_col': 'Sub_CT',
         'age_groups': ['all_agegroups'], # ['all_agegroups', '65_75', '55_64', '75+', '34-', '35_44', '45_54']
         'min_genes_per_cell': 10, 
         'max_genes_per_cell': 5000, 
-        'min_cells_per_gene': 2500,
+        'min_cells_per_gene': 1000,
         'data_type': args.data_type,
         'max_workers': args.max_workers, #TODO: reset this
         'force': args.force,
@@ -67,6 +76,14 @@ par = {
         'temp_dir': 'output/grns/temp/'
 } 
 
+if args.cell_type_granularity == 'major':
+    par['cell_types'] = cell_types
+    par['cell_type_col'] = 'Major_CT'
+elif args.cell_type_granularity == 'minor':
+    par['cell_types'] = minor_cell_types
+    par['cell_type_col'] = 'Sub_CT'
+else:
+    raise ValueError(f"Unknown cell type granularity: {args.cell_type_granularity}. Use 'major' or 'minor'.")
 
 dependencies = {
     'grn_method': '/home/jnourisa/projs/ongoing/ciim/src/inference_methods/simple_corr/script.py',
@@ -93,9 +110,9 @@ def wrapper_grn(task, par):
     if cell_type == 'all_celltypes':
         cell_type_mask = np.full(obs.shape[0], True, dtype=bool)
     elif cell_type == 'T':
-        cell_type_mask = (obs['cell_type'].isin(['CD4T', 'CD8T']))
+        cell_type_mask = (obs[par['cell_type_col']].isin(['CD4T', 'CD8T']))
     else:
-        cell_type_mask = (obs['cell_type'] == cell_type)
+        cell_type_mask = (obs[par['cell_type_col']] == cell_type)
     if batch_group == 'all_batches':
         batch_group_mask = np.full(obs.shape[0], True, dtype=bool)
     else:
@@ -127,7 +144,6 @@ def wrapper_grn(task, par):
 
     # Add metadata
     if os.path.exists(save_file_name):
-            
         print("Adding metadata to the inferred network")
         net = pd.read_csv(save_file_name)
         print('----- batch_group: ', batch_group)
