@@ -323,7 +323,10 @@ def select_features():
 
 def build_model(reg_type, X, y, batch_labels, par):
     # - choose the model
-    if reg_type == 'NN':
+    if reg_type == 'tabpfn':
+        from tabpfn import TabPFNRegressor 
+        model = TabPFNRegressor()  
+    elif reg_type == 'NN':
         
         from ciim.src.clock.NN import train, AgePredictionModel, seed_all, predict
         import torch

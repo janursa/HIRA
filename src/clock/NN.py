@@ -23,20 +23,36 @@ class FiLM(nn.Module):
         self.gamma = nn.Embedding(n_batches, hidden_dim)
         self.beta = nn.Embedding(n_batches, hidden_dim)
 
-    def forward(self, x, batch_idx):
-        gamma = self.gamma(batch_idx)
-        beta = self.beta(batch_idx)
-        return gamma * x + beta
+    def forward(self, x, batch_idx=None):
+        if batch_idx is None:
+            gamma = self.gamma.weight.mean(dim=0)
+            beta = self.beta.weight.mean(dim=0)
+            return gamma * x + beta
+        else:
+            gamma = self.gamma(batch_idx)
+            beta = self.beta(batch_idx)
+            return gamma * x + beta
+class Encoder(nn.Module):
+    def __init__(self, n_genes, n_batches, latent_dim, hidden_dim=128, dropout=.1):
+        super().__init__()
+        self.embedding = FiLM(n_batches, hidden_dim)
+        self.fc1 = nn.Linear(n_genes, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, latent_dim)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, batch_idx=None):
+        x = F.relu(self.fc1(x))              
+        x = self.embedding(x, batch_idx)
+        x = F.relu(self.fc2(x))
+        x = self.dropout(x)
+        x = self.fc3(x)
+        return x
 
 class Encoder(nn.Module):
     def __init__(self, n_genes, n_batches, latent_dim, hidden_dim=128, dropout=.1):
         super().__init__()
-        # self.film_model = film_model
-        # if self.film_model:
-        #     self.embedding = FiLM(n_batches, hidden_dim)
-        #     self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-        # else:
-        #     self.embedding = nn.Embedding(n_batches, hidden_dim//2)
+        self.embedding = FiLM(n_batches, hidden_dim)
         self.fc1 = nn.Linear(n_genes, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         self.fc3 = nn.Linear(hidden_dim, latent_dim)
@@ -44,32 +60,13 @@ class Encoder(nn.Module):
 
     def forward(self, x, batch_idx):
         x = F.relu(self.fc1(x))              
-        # if batch_idx is None:
-        #     batch_idx = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
-        
-        # if self.film_model:
-        #     x = self.embedding(x, batch_idx)
-        # else:
-        #     batch_embed = self.embedding(batch_idx)
-        #     x = torch.cat([x, batch_embed], dim=-1)
-        
+        if batch_idx is None:
+            batch_idx = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
+        x = self.embedding(x, batch_idx)
         x = F.relu(self.fc2(x))
         x = self.dropout(x)
         x = self.fc3(x)
         return x
-
-class ResidualBlock(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.block = nn.Sequential(
-            nn.Linear(dim, dim),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(dim, dim)
-        )
-
-    def forward(self, x):
-        return x + self.block(x)
 
 class AgeRegressor(nn.Module):
     def __init__(self, latent_dim, hidden_dim=64):
@@ -91,6 +88,20 @@ class AgePredictionModel(nn.Module):
         z = self.encoder(x, batch_idx)
         age_pred = self.decoder(z)
         return age_pred.squeeze()
+
+class ResidualBlock(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(dim, dim)
+        )
+
+    def forward(self, x):
+        return x + self.block(x)
+
 
 
 import torch
