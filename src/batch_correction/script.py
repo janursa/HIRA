@@ -40,8 +40,8 @@ if __name__ == '__main__':
     par = {
         'batch_key': 'dataset',
         'label_key': 'cell_type',
-        'adata': '/vol/projects/jnourisa/adata_all.h5ad',
-        'adata_bc': '/vol/projects/jnourisa/adata_all_bc.h5ad'
+        'adata': f'{base_dir}/adata_all.h5ad',
+        'adata_bc': f'{base_dir}/adata_all_bc.h5ad'
     }
 
     print(par)

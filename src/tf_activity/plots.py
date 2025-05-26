@@ -15,7 +15,7 @@ import scipy
 from scipy.stats import spearmanr, linregress
 from pandas.api.types import CategoricalDtype
 
-from ciim.src.common import colors_blind, datasets_all ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
+from ciim.src.common import base_dir, save_dir, colors_blind, datasets_all ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
 from ciim.src.tf_activity.helper import retrieve_adata_bulk, retrieve_net, calculate_tf_activity, bin_feature_values, retrieve_feature_data
 
 
@@ -382,7 +382,7 @@ def plot_feature_values_per_datasets(cell_type, features, type, datasets, featur
         if age_limit is not None:
             adata = adata[(adata.obs['age'] < age_limit[1]) & (adata.obs['age'] > age_limit[0])]
         # - plot target gene expression trend    
-        ax = axes[i]
+        ax = axes[i] if n_datasets > 1 else axes
         mean_expr = bin_feature_values(adata)
         if cluster:
             if i == 0:
@@ -413,7 +413,7 @@ def plot_feature_values_per_datasets(cell_type, features, type, datasets, featur
         ax.set_title(surrogate_names[dataset], pad=10, fontsize=10, fontweight='bold')
     plt.tight_layout()
     plt.suptitle(cell_type, fontsize=12, fontweight='bold', y=1.05)
-    plt.show()
+    return fig
 
 def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_type='tf_activity', sizes=(50, 100), 
                               top_features=20, min_degree=4, filter_meta_significant=False, race='european', width=3,
@@ -469,7 +469,7 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     else:
         if feature_type == 'tf_activity':
             # - check if the features are in the tf_all list
-            tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
+            tf_all = np.loadtxt(f"{base_dir}/prior/tf_all.csv", dtype=str)
             features = [tf for tf in features if tf in tf_all]
 
         # - check if the features are in the stats (remove those that are not present in at least one dataset)
@@ -604,6 +604,8 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     ax.set_yticks([])
     plt.subplots_adjust(wspace=0.1)
 
+    return fig
+
 def plot_tf_interactions_plus_target_stats_binary(net, ax=None, show_legend=True, sizes=(20, 200), annotate_sig=True, annotate_targets=False):
     from matplotlib.lines import Line2D
     import matplotlib.pyplot as plt
@@ -647,7 +649,7 @@ def plot_tf_interactions_plus_target_stats_binary(net, ax=None, show_legend=True
 
     # Optionally annotate targets that are TFs
     if annotate_targets:
-        tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
+        tf_all = np.loadtxt(f"{base_dir}/prior/tf_all.csv", dtype=str)
         plt.draw()
         for label in ax.get_xticklabels():
             if label.get_text() in tf_all:
@@ -710,7 +712,7 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
     ax.margins(x=0.05, y=0.2)
     plt.xticks(rotation=90)
     if annotate_targets:
-        tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
+        tf_all = np.loadtxt(f"{base_dir}/prior/tf_all.csv", dtype=str)
         # Set tick labels with color
         plt.draw()  # ensures tick labels are populated
 
@@ -1386,13 +1388,13 @@ def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net
             plt.title(f"{surrogate_names.get(dataset, dataset)}", fontsize=16, pad=20)
     if draw_collectri:
         # - add collectri
-        collectri = pd.read_csv(f'/vol/projects/jnourisa/prior/collectri_with_source.csv')
+        collectri = pd.read_csv(f'{base_dir}/prior/collectri_with_source.csv')
         collectri['dataset'] = collectri['ref']
         evidence = collectri.copy()
         if False:
             # - add skeleton
             # skeleton = pd.read_csv(f'/home/jnourisa/projs/ongoing/task_grn_inference/resources/grn_benchmark/prior//skeleton.csv')
-            skeleton = pd.read_csv(f'/vol/projects/jnourisa/prior/skeleton_promotor.csv')
+            skeleton = pd.read_csv(f'{base_dir}/prior/skeleton_promotor.csv')
             skeleton['weight'] = 1
             skeleton['dataset'] = 'skeleton'
             evidence = pd.concat([evidence, skeleton], ignore_index=True)

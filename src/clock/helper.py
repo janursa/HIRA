@@ -1,4 +1,7 @@
-clock_save_dir = "/vol/projects/jnourisa/clock/"
+
+from ciim.src.common import save_dir
+
+clock_save_dir = f"{save_dir}/clock/"
 
 
 def save_function(model, gene_names, cell_type, data_type, feature_type, reg_type, version, model_args=None, model_kwargs=None):

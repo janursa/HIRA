@@ -114,7 +114,7 @@ def flesh_out_collectri():
 
     # Create the new curated DataFrame
     curated_net = pd.DataFrame(expanded_rows)
-    curated_net.to_csv('/vol/projects/jnourisa/prior/collectri_with_source.csv', index=False)
+    curated_net.to_csv(f'{base_dir}/prior/collectri_with_source.csv', index=False)
 # - pseudotime analysis
 def run_pseudotime_analysis(adata, seed=32):
     # - add root age: #TODO: run this multiple times to choose different root cells 
@@ -375,8 +375,8 @@ def pathway_analysis_wrapper(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hal
     import gseapy as gp
     # from ciim.src.utils.util import get_genesets
     from gseapy import barplot, dotplot
-    # all_genes = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str).tolist()
-    all_genes = np.loadtxt(f'/vol/projects/jnourisa/prior/gene_names.txt', dtype=str)
+    # all_genes = np.loadtxt(f"{base_dir}/prior/tf_all.csv", dtype=str).tolist()
+    all_genes = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
     # gene_sets =  get_genesets()
     res2d_store = []
     for cell_type in df['cell_type'].unique():
