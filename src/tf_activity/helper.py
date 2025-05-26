@@ -9,7 +9,7 @@ from sklearn.metrics import r2_score
 import pandas as pd
 import os
 import scipy
-import shap
+
 import scanpy as sc
 import anndata as ad
 import scipy.sparse as sp
@@ -18,7 +18,7 @@ from pandas.api.types import CategoricalDtype
 from ciim.src.common import datasets_e, datasets_a, surrogate_names, datasets_all
 from scipy.stats import mannwhitneyu
 from tqdm import tqdm
-from ciim.src.common import cell_types, save_dir, mapping_major_2_minor, mapping_minor_2_major, minor_cell_types
+from ciim.src.common import cell_types,base_dir, save_dir, mapping_major_2_minor, mapping_minor_2_major, minor_cell_types
 from scipy.sparse import issparse
 
 def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datasets=None, condition=None):
@@ -99,11 +99,10 @@ def retrieve_net(dataset, cell_type, only_promotor_based=False, c_t=5):
         net = get_consensus_net(datasets_e, cell_type_major, min_degree=2)
     else:
         net = pd.read_csv(f"{save_dir}/grns/{dataset}/net_{cell_type_major}_all_agegroups_all_batches.csv")
-    gene_names = np.loadtxt(f'/vol/projects/jnourisa/prior/gene_names.txt', dtype=str)
+    gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
     net = net[net['target'].isin(gene_names)]
-    # tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
     if False:
-        skeleton = pd.read_csv(f'/vol/projects/jnourisa/prior/skeleton_promotor.csv')
+        skeleton = pd.read_csv(f'{base_dir}/prior/skeleton_promotor.csv')
         net['edge'] = net['source'] + '_' + net['target']
         net = net[net['edge'].isin(skeleton['edge'])]
         net = net.drop('edge', axis=1)
@@ -177,8 +176,8 @@ def determine_sig_network(type, race, min_degree=3):
 
 
 def retrieve_adata_bulk(dataset, type='bulk', cell_type=None): 
-    base_path = "/vol/projects/jnourisa/datasets/"
-    gene_names = np.loadtxt(f'/vol/projects/jnourisa/prior/gene_names.txt', dtype=str)
+    base_path = f"{base_dir}/datasets/"
+    gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
 
     assert type in ['bulk', 'bulk_minor', 'bulk_M', 'bulk_F', 'bulk_minor_M', 'bulk_minor_F', 'metacell'], f'Unknown type {type}'
     

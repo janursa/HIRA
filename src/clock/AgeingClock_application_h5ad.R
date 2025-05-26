@@ -414,9 +414,6 @@ data_file <- args[1]  # e.g., "data12" or "CXCL9"
 output_file <- args[2]
 condition_col <- args[3]
 
-# data_file <- "/vol/projects/jnourisa/datasets/data13_metacell.h5ad"
-# output_file <- '../output/data13.csv'
-# condition_col <- 'disease'
 
 
 cat("Running AgeingClock on:", data_file, "\n")

@@ -5,8 +5,8 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from collections import OrderedDict
 
-
-save_dir = '/vol/projects/jnourisa/output/'
+base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
+save_dir = f'{base_dir}/output/'
 
 surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All batches', 
                     '34-':'35 below', '35_44':'35-45', '45_54':'45-55', '55_64':'55-65', '65_75':'65-75',
@@ -42,7 +42,7 @@ surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All 
                     'Memory_B': 'Memory B',
                     'CD16_NK': 'CD16+ NK',
                     'NK': 'NK',}
-
+surrogate_names_reverse = {v: k for k, v in surrogate_names.items()}
 
 # - datasets
 datasets_e = ['data1', 'data7_allTPs_jalil', 'data12', 'SLE_European']

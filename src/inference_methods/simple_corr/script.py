@@ -152,11 +152,11 @@ def main(par):
         net = infer_grn(expression_sample, gene_names, p_value_filter=True)
     net = net[net['weight'].abs() > par['weight_t']]
 
-    tf_all = np.loadtxt(f"/vol/projects/jnourisa/prior/tf_all.csv", dtype=str)
+    tf_all = np.loadtxt(f"{base_dir}/prior/tf_all.csv", dtype=str)
     net = net[net['source'].isin(tf_all)]
     
     if True:
-        skeleton = pd.read_csv(f'/vol/projects/jnourisa/prior/skeleton_promotor.csv')
+        skeleton = pd.read_csv(f'{base_dir}/prior/skeleton_promotor.csv')
         net['edge'] = net['source'] + '_' + net['target']
         net['promotor_based'] = net['edge'].isin(skeleton['edge'])
         net = net.drop('edge', axis=1)
