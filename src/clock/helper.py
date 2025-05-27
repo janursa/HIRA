@@ -365,6 +365,14 @@ def build_model(reg_type, X, y, batch_labels, par):
             StandardScaler(),
             Ridge(alpha=1.0, random_state=42)
         )
+    elif reg_type == 'elasticnet':
+        from sklearn.pipeline import make_pipeline
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.linear_model import ElasticNet
+        model = make_pipeline(
+            StandardScaler(),
+            ElasticNet(alpha=1.0, l1_ratio=0.1, random_state=42)
+        )
     elif reg_type == 'GBM':
         import lightgbm as lgb
         model = lgb.LGBMRegressor(

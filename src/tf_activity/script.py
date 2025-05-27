@@ -65,7 +65,7 @@ if __name__ == '__main__':
     
     if run_flag:
         for data_type in ['bulk', 'bulk_minor']:
-            for feature_type in ['gene_expression']:
+            for feature_type in ['tf_activity']:
             # for feature_type in [ 'tf_activity']:
                 par = {
                     'type': data_type,
