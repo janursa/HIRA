@@ -49,6 +49,10 @@ datasets_e = ['data1', 'data7_allTPs_jalil', 'data12', 'SLE_European']
 datasets_a = ['data13_Korean' , 'data13_Japanese']
 datasets_all = datasets_e + datasets_a
 
+aging_clock_train_datasets = ['data1', 'data7_allTPs_jalil', 'SLE_European', 'data13_Japanese']
+datasets_disease = ['SLE_European', 'Covid_50MHH']
+datasets_drug_perturbation = ['CXCL9']
+
 # - palettes  
 colors_blind = [
           '#E69F00',  # Orange
