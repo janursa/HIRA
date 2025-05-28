@@ -280,7 +280,6 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='disease'
             
             stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
             stats_df['condition'] = name_mapping.get(group, group)
-            # stats_df['dataset'] = f"{dataset}_{group}"
             stats_all.append(stats_df)
     
     # case 2: condition vs ctrl 
@@ -295,7 +294,6 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='disease'
             print('Not enough samples for', condition, ' vs ', ctr_group)
             return None
         results = []
-        # adata = adata[:, adata.var_names.isin(['FOXO1', 'FOXO3', 'FOXO4', 'NFE2L2', 'TP53', 'SIRT1', 'HIF1A'])] #TODO: remove this
         for i, gene in enumerate(adata.var_names):
             values_case = case_group[:, i]
             values_control = control_group[:, i]
@@ -349,14 +347,31 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='disease'
             }) 
         results = pd.DataFrame(results)
         return results
-    for condition in conditions:
-        if condition == ctr_group:
-            continue
-        stats_df = stats_condition_vs_ctr(adata, condition)
-        if stats_df is None:
-            continue
-        stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
-        stats_all.append(stats_df)
+    stats_all = []
+    if 'SLE' in dataset:
+        # Run for each age subset
+        age_masks = {
+            'all': adata.obs.index.notnull(),  # All samples
+            'under_50': adata.obs['age'] < 50,
+            '50_plus': adata.obs['age'] >= 50
+        }
+    else:
+        age_masks = {
+            'all': adata.obs.index.notnull()
+        }
+    for age_subset, mask in age_masks.items():
+        adata_sub = adata[mask, :].copy()
+        assert adata_sub.shape[0]!=0, f'shouldnt be empty'
+        for condition in conditions:
+            if condition == ctr_group:
+                continue
+            stats_df = stats_condition_vs_ctr(adata_sub, condition)
+            if stats_df is None:
+                continue
+            stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
+            stats_df['age_group'] = age_subset
+            stats_all.append(stats_df)
+    
     # Combine all stats
     stats_df = pd.concat(stats_all, ignore_index=True)
     stats_df['dataset'] = dataset
