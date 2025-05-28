@@ -198,6 +198,7 @@ class ModularizedNetPlot:
         # Pivot to create source-target matrix
         if 'sign' not in net.columns:
             net['sign'] = np.sign(net['weight'])
+            
         adj_matrix = net.pivot_table(index='source', columns='target', values='sign', fill_value=0)
 
         from scipy.cluster.hierarchy import linkage, fcluster
@@ -1183,7 +1184,7 @@ def cluster_trends(adata):
     mean_expr = mean_expr[age_group_order]  # Keep original order
     return mean_expr
 def plot_net_nx(net, figsize=(6, 6), draw_evidence=True, rad_negative=-.3, rad_positive=0, palette_evidence=None, 
-                offset_evidence = 0.1, arc_offset = 0.05):
+                offset_evidence = 0.1, arc_offset = 0.05, ax=None):
     import networkx as nx
 
     G = nx.DiGraph()
@@ -1212,7 +1213,9 @@ def plot_net_nx(net, figsize=(6, 6), draw_evidence=True, rad_negative=-.3, rad_p
     pos = nx.circular_layout(G)
     scale_factor = 0.3  # adjust this between 0 (tight) and 1 (default)
     pos = {k: v * scale_factor for k, v in pos.items()}
-    fig, ax = plt.subplots(figsize=figsize)
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+        
 
     nx.draw_networkx_nodes(
         G, pos,
@@ -1377,8 +1380,8 @@ def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net
     
     # - keep edges with min degree
     net = net.groupby(['source', 'target']).filter(lambda x: len(x) >= min_degree)
-
-    plot_net_nx(net, figsize=figsize, draw_evidence=draw_evidence, palette_evidence=palette_datasets, offset_evidence=offset_evidence, arc_offset=arc_offset)
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    plot_net_nx(net, ax=ax, figsize=figsize, draw_evidence=draw_evidence, palette_evidence=palette_datasets, offset_evidence=offset_evidence, arc_offset=arc_offset)
     plt.title(f"{cell_type_major}", fontsize=14, pad=20, weight='bold')
 
     if indivitual_net:
@@ -1408,6 +1411,7 @@ def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net
         palette_evidence ={d: color for d, color in zip(refs, set2_colors)}
         plot_net_nx(evidence, figsize=figsize_collectri, draw_evidence=True, palette_evidence=palette_evidence, offset_evidence=offset_evidence_collectri, arc_offset=arc_offset)
         plt.title(f"{cell_type_major} - CollecTRI", fontsize=14, pad=20, weight='bold')
+    return fig
 
 def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", y_label="Genes", figsize=(2.5, 3), ax=None, show_cbar=True, shrink=.7):
     import seaborn as sns

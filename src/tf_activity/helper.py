@@ -23,6 +23,7 @@ from scipy.sparse import issparse
 
 def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datasets=None, condition=None):
     from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
+    
     stats = pd.read_csv(f'{save_dir}/{feature_type}/stats_features_{type}.csv')
     if cell_type is not None: 
         if cell_type not in stats['cell_type'].unique():
