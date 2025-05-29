@@ -65,8 +65,10 @@ def perturb_tf(adata, tfs, slope_df, years=10):
 def experiment_perturb_tfs(dataset, cell_type, data_type, tfs,n_donors=20, reg_type='ridge', ctr='Unperturbed', treatment='Perturbed'):
     from ciim.src.clock.helper import prepare_input, predict_age
     from ciim.src.common import save_dir
+    from ciim.src.common import save_dir
     import anndata as ad
     # - prepare the input and select donors 
+    adata = ad.read_h5ad(f"{save_dir}/tf_activity_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
     adata = ad.read_h5ad(f"{save_dir}/tf_activity_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
     adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + '_' + adata.obs['age'].astype(str)
     donors = adata.obs['donor_age'].unique()

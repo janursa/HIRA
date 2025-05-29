@@ -1,6 +1,8 @@
 
 from ciim.src.common import save_dir
-
+import pandas as pd
+import numpy as np
+import anndata as ad
 clock_save_dir = f"{save_dir}/clock/"
 
 
@@ -166,40 +168,91 @@ def predict_age(X, cell_type, feature_type='tf_activity', data_type='bulk', reg_
         print(scores)
     return adata
 
-def stability_selection_shap(model, X, y,  top_q=80):
+# def stability_selection_shap(model, X, y,  top_q=80):
+#     """
+#     Perform stability selection using SHAP values for feature importance.
+
+#     Parameters:
+#     - X: Feature matrix
+#     - y: Target vector
+#     - n_bootstrap: Number of bootstrap iterations.
+#     - top_k: Number of top features to select.
+
+#     Returns:
+#     - top_predictors: List of selected top-q most important features.
+#     """
+#     import shap
+#     import numpy as np
+
+#     model_function = lambda X: model.predict(X)
+
+#     model.fit(X, y)
+
+#     # Compute SHAP values
+#     explainer = shap.Explainer(model_function, X)
+#     required_evals = 2 * X.shape[1] + 1
+#     shap_values = explainer(X, max_evals=required_evals)
+
+#     # Compute mean absolute SHAP values for feature importance
+#     feature_importances = np.abs(shap_values.values).mean(axis=0)
+
+
+#     # Compute the q percentile threshold
+#     threshold = np.percentile(feature_importances, top_q)
+
+#     # Select features above the threshold
+#     top_features_idx = np.where(feature_importances >= threshold)[0]
+
+
+#     return top_features_idx
+
+def stability_selection_shap(features, model, X, y, top_q=80, top_features=50):
     """
-    Perform stability selection using SHAP values for feature importance.
+    Perform stability selection using SHAP values for feature importance (linear model version).
 
     Parameters:
-    - X: Feature matrix
+    - model: A sklearn pipeline with a StandardScaler and a linear model (e.g., Ridge).
+    - X: Feature matrix (DataFrame or ndarray)
     - y: Target vector
-    - n_bootstrap: Number of bootstrap iterations.
-    - top_k: Number of top features to select.
+    - top_q: Percentile threshold to select top features
 
     Returns:
-    - top_predictors: List of selected top-q most important features.
+    - top_features_idx: Indices of selected top-q most important features
     """
     import shap
     import numpy as np
-    
+    import pandas as pd
+
+    # Fit the pipeline model
     model.fit(X, y)
 
-    # Compute SHAP values
-    explainer = shap.Explainer(model, X)
-    shap_values = explainer(X)
+    # Extract components from the pipeline
+    scaler = model.named_steps['standardscaler']
+    linear_model = model.named_steps['ridge']
 
-    # Compute mean absolute SHAP values for feature importance
-    feature_importances = np.abs(shap_values.values).mean(axis=0)
+    # Apply the same transformation used in training
+    X_scaled = scaler.transform(X)
 
+    # Use SHAP's LinearExplainer for efficiency
+    explainer = shap.LinearExplainer(linear_model, X_scaled)
+    shap_values = explainer(X_scaled)
+
+    # Compute mean SHAP values for each feature
+    feature_importances = shap_values.values.mean(axis=0)
 
     # Compute the q percentile threshold
-    threshold = np.percentile(feature_importances, top_q)
+    if top_q is None:
+        top_features_idx = np.argsort(np.abs(feature_importances))[-top_features:]
+    else:
+        threshold = np.percentile(feature_importances, top_q)
+        # Select features above the threshold
+        top_features_idx = np.where(feature_importances >= threshold)[0]
+    feature_importances = feature_importances[top_features_idx]
+    features = features[top_features_idx]
 
-    # Select features above the threshold
-    top_features_idx = np.where(feature_importances >= threshold)[0]
-
-
-    return top_features_idx
+    rr = {'importance': feature_importances, 'feature': features}
+     
+    return pd.DataFrame(rr)
 
 def tune_params_gbm(model, X, y, groups, scoring, n_trials=50, random_state=42):
     import optuna
@@ -279,8 +332,6 @@ def tune_params_ridge(model, X, y, groups, scoring):
     model.set_params(ridge__alpha=alpha)
     return model
 
-
-
 def pivot_adata_minor(adata):
     from scipy.sparse import issparse
     import pandas as pd
@@ -318,14 +369,7 @@ def pivot_adata_minor(adata):
     
     adata_pivot.obs = adata_pivot.obs.merge(adata.obs.drop_duplicates(subset=unique_samples), on=unique_samples, how='left')
     return adata_pivot
-def select_features():
-    if feature_type == 'gene_expression':
-        # - feature selection
-        top_q = 80
-        top_features_idx = stability_selection_shap(model, X.copy(), y, top_q=top_q)
-        gene_names = gene_names[top_features_idx]
-        X = X[:, top_features_idx]
-        print(X.shape)
+
 
 def build_model(reg_type, X, y, batch_labels, par):
     # - choose the model
@@ -333,7 +377,6 @@ def build_model(reg_type, X, y, batch_labels, par):
         from tabpfn import TabPFNRegressor 
         model = TabPFNRegressor()  
     elif reg_type == 'NN':
-        
         from ciim.src.clock.NN import train, AgePredictionModel, seed_all, predict
         import torch
         import numpy as np
@@ -358,15 +401,16 @@ def build_model(reg_type, X, y, batch_labels, par):
 
         y_trained = predict(model, X, batch_labels).detach().numpy()
 
-        return model, model_args, model_kwargs, y_trained
-        
+        return model, model_args, model_kwargs, y_trained 
     elif reg_type == 'ridge':
         from sklearn.pipeline import make_pipeline
         from sklearn.preprocessing import StandardScaler
         from sklearn.linear_model import Ridge
+
+
         model = make_pipeline(
             StandardScaler(),
-            Ridge(alpha=1.0, random_state=42)
+            Ridge(alpha=1, random_state=42)
         )
     elif reg_type == 'elasticnet':
         from sklearn.pipeline import make_pipeline
@@ -382,17 +426,6 @@ def build_model(reg_type, X, y, batch_labels, par):
                 random_state=42,
                 n_jobs=-1
             )        
-    elif reg_type == 'RF':
-        import lightgbm as lgb
-        model = lgb.LGBMRegressor(
-            boosting_type='rf',         # use random forest instead of gradient boosting
-            n_estimators=100,           # number of trees in the forest
-            random_state=42,
-            subsample=0.8,           # enables row sampling
-            subsample_freq=1,        # activate bagging every iteration
-            feature_fraction=0.8,    # enables feature sampling
-            n_jobs=-1
-        )
     else:
         raise ValueError('Unknown reg_type')
     if reg_type != 'NN':
@@ -411,64 +444,55 @@ def build_model(reg_type, X, y, batch_labels, par):
         # - save
         return model, None, None, y_trained    
 
-def prepare_training_data(cell_type, par):
+def wrapper_build_model_cell_type(cell_type, par):
     import anndata as ad
-    datasets_training = par['datasets_training']
+    from scipy.sparse import issparse
+    # - prepare the data
+    reg_type = par['reg_type']
     feature_type = par['feature_type']
     data_type = par['data_type']
+    datasets_training = par['datasets_training']
     adata_store = []
     for dataset in datasets_training:
-        adata = prepare_input(dataset, cell_type, feature_type=feature_type, data_type=data_type)
+        # adata = prepare_input(dataset, cell_type, feature_type=feature_type, data_type=data_type)
+        adata = ad.read_h5ad(f"{save_dir}/tf_activity_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
         if 'SLE' in dataset:
             adata = adata[adata.obs['disease']=='normal'].copy()
         adata_store.append(adata)
     adata_all = ad.concat(adata_store, join='inner', axis=0)
-
-    adata_all.write(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_adata.h5ad")
-
-def wrapper_build_model_cell_type(
-                        cell_type, par):
-    import os
-    from sklearn.linear_model import Ridge
-    import numpy as np
-    import pandas as pd
-    import anndata as ad
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.model_selection import GroupKFold
-    from scipy.sparse import issparse
-    from sklearn.pipeline import make_pipeline
-    from ciim.src.clock.helper import prepare_input
-    from sklearn.metrics import make_scorer, r2_score
-    from sklearn.model_selection import cross_val_score
-    # - prepare the data
-    
-    reg_type = par['reg_type']
-
-    feature_type = par['feature_type']
-    data_type = par['data_type']
-
-    data_file = f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_adata.h5ad"
-
-    # if not os.path.exists(data_file):
-    if True:
-        prepare_training_data(cell_type, par)
-    adata_all = ad.read(data_file)
-
-    batch_labels = adata_all.obs['dataset'].astype('category').cat.codes.values
     gene_names = adata_all.var_names.values
 
+    batch_labels = adata_all.obs['dataset'].astype('category').cat.codes.values # is used for NN training
+    
     X = adata_all.X
     y = adata_all.obs['age']
-
     if issparse(X):
         X = X.toarray()  
-    
+    # - train the model
+
+    def remove_collinear_features(X, threshold=0.9):
+        """
+        Remove collinear features from X using a correlation threshold.
+        Returns reduced X and list of retained feature names.
+        """
+        corr_matrix = X.corr().abs()
+        upper = np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
+        to_drop = set()
+
+        for i in range(corr_matrix.shape[0]):
+            for j in range(i+1, corr_matrix.shape[1]):
+                if corr_matrix.iloc[i, j] > threshold:
+                    to_drop.add(corr_matrix.columns[j])  # drop the second TF
+
+        retained_features = [f for f in X.columns if f not in to_drop]
+        return X[retained_features], retained_features
+    X, gene_names = remove_collinear_features(pd.DataFrame(X, columns=gene_names), threshold=0.95)
+    print(cell_type, f"Number of features after removing collinear features: {X.shape[1]}")
     model, model_args, model_kwargs, y_trained = build_model(reg_type, X, y, batch_labels, par)
-
+    # - save the training performance
     adata_all.obs['predicted_age'] = y_trained.copy()
-
     adata_all.write(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_adata.h5ad")
-
+    # - save the model and feature space
     save_function(model, gene_names, cell_type, data_type, feature_type, reg_type, version=par['version'], model_args=model_args, model_kwargs=model_kwargs)
         
     
