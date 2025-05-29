@@ -53,6 +53,7 @@ def retrieve_feature_data(dataset, cell_type, type, feature_type='tf_activity'):
     file_path = f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad'
     if os.path.exists(file_path) == False:
         raise ValueError(f'File {file_path} does not exist')
+
     adata = ad.read_h5ad(file_path)
     
     return adata

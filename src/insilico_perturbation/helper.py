@@ -62,11 +62,12 @@ def perturb_tf(adata, tfs, slope_df, years=10):
     adata_perturb.X = expr_df.values
 
     return adata_perturb
-def experiment_perturb_tfs(dataset, cell_type, data_type, tfs, n_donors=20, reg_type='ridge'):
+def experiment_perturb_tfs(dataset, cell_type, data_type, tfs,n_donors=20, reg_type='ridge', ctr='Unperturbed', treatment='Perturbed'):
     from ciim.src.clock.helper import prepare_input, predict_age
+    from ciim.src.common import save_dir
     import anndata as ad
     # - prepare the input and select donors 
-    adata = prepare_input(dataset, cell_type, feature_type='tf_activity', data_type=data_type)
+    adata = ad.read_h5ad(f"{save_dir}/tf_activity_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
     adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + '_' + adata.obs['age'].astype(str)
     donors = adata.obs['donor_age'].unique()
     np.random.seed(0)
@@ -88,11 +89,13 @@ def experiment_perturb_tfs(dataset, cell_type, data_type, tfs, n_donors=20, reg_
     else:
         raise ValueError("perturb_coverage should be either 'aging_tfs' or 'all_tfs'")
     slope_df = compute_tf_slopes(adata.copy(), tfs)
+    # slope_df = pd.DataFrame({'slope':1},index=tfs)
+    # print(slope_df)
 
-    trend = 'increase'  # specify the trend for perturbation
-    if trend == 'increase':
+    trend = 'anti-aging'  # specify the trend for perturbation
+    if trend == 'aging':
         slope_df = slope_df
-    elif trend == 'decrease':
+    elif trend == 'anti-aging':
         slope_df = -slope_df
     else:
         raise ValueError("trend should be either 'increase' or 'decrease'")
@@ -100,8 +103,6 @@ def experiment_perturb_tfs(dataset, cell_type, data_type, tfs, n_donors=20, reg_
     # - perturb the TFs and create a new adata object
     adata_perturb = perturb_tf(adata.copy(), tfs, slope_df)
     # - combine the adatas and predict age
-    ctr = 'Unperturbed'
-    treatment = 'Perturbed'
 
     adata.obs['condition'] = ctr
     adata_perturb.obs['condition'] = treatment
@@ -116,3 +117,29 @@ def experiment_perturb_tfs(dataset, cell_type, data_type, tfs, n_donors=20, reg_
     df_pivot['dataset'] = dataset
 
     return df_pivot
+
+def perform_stat_test(df_pivot, ctr='baseline', treatment='perturb'):
+    
+    t_stat, p_value = stats.ttest_rel(df_pivot[treatment], df_pivot[ctr])
+    slope = (df_pivot[treatment] - df_pivot[ctr]).mean()
+    return p_value, slope
+def plot_age_acceleration_donors(df_pivot, ax=None, ctr='baseline', treatment='perturb'):
+    if False: # line plot
+        fig, ax = plt.subplots(figsize=(4, 4))
+        sns.scatterplot(data=df_pivot, x=ctr, y=treatment, alpha=0.7, ax=ax)
+        min_age, max_age = df_pivot[ctr].min(), df_pivot[treatment].max()
+        ax.plot([min_age, max_age], [min_age, max_age], color='gray', linestyle='--', label='Ideal')
+
+    if True: # donor plot
+        df_plot = df_pivot.reset_index().melt(id_vars='donor_age', 
+                                            value_vars=[ctr, treatment],
+                                            var_name='condition', 
+                                            value_name='predicted_age')
+
+        # plt.figure(figsize=(3, 2.5))
+        if ax is None:
+             plt.subplots(figsize=(2.5, 2))
+        sns.lineplot(data=df_plot, x='condition', y='predicted_age', 
+                    hue='donor_age', marker='o', alpha=0.6, legend=False, ax=ax)
+        ax.margins(x=.1, y=0.1)
+        

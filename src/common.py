@@ -5,7 +5,7 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from collections import OrderedDict
 
-base_dir = '/vol/projects/jnourisa/' #'/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
+base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder' #'/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
 save_dir = f'{base_dir}/output/'
 
 surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All batches', 

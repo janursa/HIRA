@@ -26,9 +26,11 @@ def retrieve_function(reg_type, cell_type, data_type, feature_type, version):
     import os
     import joblib
     import numpy as np
-    import torch
-    from ciim.src.clock.NN import AgePredictionModel
+    
+    
     if reg_type == 'NN':
+        from ciim.src.clock.NN import AgePredictionModel
+        import torch
         model_path = os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_model.pt")
         model_class = AgePredictionModel
         checkpoint = torch.load(model_path, map_location=torch.device('cpu'))
@@ -106,7 +108,7 @@ def predict_age(X, cell_type, feature_type='tf_activity', data_type='bulk', reg_
     from sklearn.metrics import r2_score
     from sklearn.preprocessing import StandardScaler
     from scipy.sparse import issparse
-    import torch
+    
 
     if isinstance(X, pd.DataFrame):
         adata = _df_to_adata(X)
@@ -141,6 +143,7 @@ def predict_age(X, cell_type, feature_type='tf_activity', data_type='bulk', reg_
         X = X.toarray()  # convert sparse to dense
     
     if reg_type == 'NN':
+        import torch
         from ciim.src.clock.NN import predict
         X = torch.tensor(X, dtype=torch.float32)
         predicted_age = predict(model, X)
