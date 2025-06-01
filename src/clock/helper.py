@@ -1,18 +1,16 @@
 
-from ciim.src.common import save_dir
+from ciim.src.common import clock_save_dir
 import pandas as pd
 import numpy as np
 import anndata as ad
-clock_save_dir = f"{save_dir}/clock/"
 
 
 def save_function(model, gene_names, cell_type, data_type, feature_type, reg_type, version, model_args=None, model_kwargs=None):
     import os
     import joblib
     import numpy as np
-    import torch
-
     if reg_type == 'NN':
+        import torch
         model_path = os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_model.pt")
     
         torch.save({
@@ -86,12 +84,14 @@ def prepare_input(dataset, cell_type, feature_type='tf_activity', data_type='bul
     from scipy.sparse import issparse
 
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
+    net = get_consensus_net(datasets_all, cell_type_major, min_degree=3)
+    
     adata = retrieve_adata_bulk(dataset, cell_type=cell_type_major, type=data_type)
     if feature_type == 'tf_activity':
-        net = get_consensus_net(datasets_all, cell_type_major, min_degree=3)
         adata = calculate_tf_activity(adata, net)
     elif feature_type == 'gene_expression':
-        pass
+        targets = net['target'].unique()
+        adata = adata[:, adata.var_names.isin(targets)].copy()
     else:
         raise ValueError('Unknown feature type')
     print(dataset, adata.X.shape)
@@ -254,83 +254,11 @@ def stability_selection_shap(features, model, X, y, top_q=80, top_features=50):
      
     return pd.DataFrame(rr)
 
-def tune_params_gbm(model, X, y, groups, scoring, n_trials=50, random_state=42):
-    import optuna
-    import lightgbm as lgb
-    from sklearn.model_selection import LeaveOneGroupOut, cross_val_score
-    import numpy as np
-    # Silence Optuna logs
-    optuna.logging.set_verbosity(optuna.logging.WARNING)
-
-    # Silence LightGBM logs
-    model.set_params(verbosity=-1)
-
-    logo = LeaveOneGroupOut()
-    cv_splits = list(logo.split(X, y, groups=groups))
-
-    def objective(trial):
-        params = {
-            'num_leaves': trial.suggest_int('num_leaves', 7, 20),  # Must be int
-            'max_depth': trial.suggest_int('max_depth', 3, 10),    # Must be int
-            # 'min_split_gain': trial.suggest_float('min_split_gain', 0.0, 1.0),
-            # 'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),  # Add log for efficiency
-            'subsample': trial.suggest_float('subsample', 0.6, 1.0),
-            # 'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 1.0),
-            'min_child_samples': trial.suggest_int('min_child_samples', 20, 100),
-            # 'reg_alpha': trial.suggest_float('reg_alpha', 0.01, 10.0, log=True),
-            # 'reg_lambda': trial.suggest_float('reg_lambda', 0.01, 10.0, log=True),
-            # 'n_estimators': trial.suggest_int('n_estimators', 100, 1000, step=100),
-            'random_state': random_state,
-            'n_jobs': -1,
-            'verbosity': -1 
-        }
-
-        model.set_params(**params)
-        scores = cross_val_score(model, X, y, cv=cv_splits, scoring=scoring)
-        return np.mean(scores)
-
-    study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=n_trials)
-
-    print("Best parameters:")
-    print(study.best_params)
-    print("Best CV score:")
-    print(study.best_value)
-
-    # Return trained model with best parameters
-    model.set_params(**study.best_params)
-    return model
 
 def spearman_corr(y_true, y_pred):
     from scipy.stats import spearmanr
     return spearmanr(y_true, y_pred).correlation
-def tune_params_ridge(model, X, y, groups, scoring):
-    from sklearn.metrics import make_scorer, r2_score
-    from sklearn.model_selection import cross_val_score
-    import numpy as np
-    from sklearn.model_selection import LeaveOneGroupOut
 
-    # Define candidate alphas
-    alphas = [.1, 1, 10, 100]
-
-    best_alpha = None
-    best_score = -np.inf
-
-    for alpha in alphas:
-        model = model.set_params(ridge__alpha=alpha)
-        cv = LeaveOneGroupOut().split(X, y, groups=groups)
-        scores = cross_val_score(model, X, y, cv=list(cv), scoring=scoring)
-        mean_score = np.mean(scores)
-        print(scores)
-        print(f"Alpha: {alpha}, Mean performance: {mean_score:.4f}")
-        
-        if mean_score > best_score:
-            best_score = mean_score
-            best_alpha = alpha
-
-    print(f"\nBest alpha: {best_alpha}, Best CV performance: {best_score:.4f}")
-    model.set_params(ridge__alpha=alpha)
-    return model
 
 def pivot_adata_minor(adata):
     from scipy.sparse import issparse
@@ -371,109 +299,11 @@ def pivot_adata_minor(adata):
     return adata_pivot
 
 
-def build_model(reg_type, X, y, batch_labels, par):
-    # - choose the model
-    if reg_type == 'tabpfn':
-        from tabpfn import TabPFNRegressor 
-        model = TabPFNRegressor()  
-    elif reg_type == 'NN':
-        from ciim.src.clock.NN import train, AgePredictionModel, seed_all, predict
-        import torch
-        import numpy as np
-        from torch.utils.data import DataLoader, TensorDataset
-
-        # - format the inputs
-        X = torch.tensor(X, dtype=torch.float32)
-        y = torch.tensor(y, dtype=torch.float32)
-        batch_labels = torch.tensor(batch_labels, dtype=torch.long)
-
-        # - train
-        n_genes = X.shape[1]
-        n_batches = int(batch_labels.max().item()) + 1
-
-        model_args = (n_genes, n_batches)
-        model_kwargs = {'latent_dim': 32, 'hidden_dim': 128, 'dropout': .2}
-
-        seed_all(42)
-        model = AgePredictionModel(*model_args, **model_kwargs)
-
-        model = train(model, X, y, batch_labels, epochs=500, lr=1e-3, batch_size=64, tmp_dir=par['temp_dir'])
-
-        y_trained = predict(model, X, batch_labels).detach().numpy()
-
-        return model, model_args, model_kwargs, y_trained 
-    elif reg_type == 'ridge':
-        from sklearn.pipeline import make_pipeline
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.linear_model import Ridge
-
-
-        model = make_pipeline(
-            StandardScaler(),
-            Ridge(alpha=1, random_state=42)
-        )
-    elif reg_type == 'elasticnet':
-        from sklearn.pipeline import make_pipeline
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.linear_model import ElasticNet
-        model = make_pipeline(
-            StandardScaler(),
-            ElasticNet(alpha=1.0, l1_ratio=0.1, random_state=42)
-        )
-    elif reg_type == 'GBM':
-        import lightgbm as lgb
-        model = lgb.LGBMRegressor(
-                random_state=42,
-                n_jobs=-1
-            )        
-    else:
-        raise ValueError('Unknown reg_type')
-    if reg_type != 'NN':
-        # - feature selection
-        # select_features()
-        # - tune the model
-        if  par['tune_model']:
-            groups = adata_all.obs['dataset'].values
-            if reg_type == 'GBM':
-                model = tune_params_gbm(model, X, y, groups, scoring=make_scorer(r2_score, greater_is_better=False))
-            elif reg_type == 'ridge':
-                model = tune_params_ridge(model, X, y, groups, scoring=make_scorer(spearman_corr, greater_is_better=True))
-        # - fit the model
-        model.fit(X, y)
-        y_trained = model.predict(X)
-        # - save
-        return model, None, None, y_trained    
-
-def wrapper_build_model_cell_type(cell_type, par):
-    import anndata as ad
-    from scipy.sparse import issparse
-    # - prepare the data
-    reg_type = par['reg_type']
-    feature_type = par['feature_type']
-    data_type = par['data_type']
-    datasets_training = par['datasets_training']
-    adata_store = []
-    for dataset in datasets_training:
-        # adata = prepare_input(dataset, cell_type, feature_type=feature_type, data_type=data_type)
-        adata = ad.read_h5ad(f"{save_dir}/tf_activity_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
-        if 'SLE' in dataset:
-            adata = adata[adata.obs['disease']=='normal'].copy()
-        adata_store.append(adata)
-    adata_all = ad.concat(adata_store, join='inner', axis=0)
-    gene_names = adata_all.var_names.values
-
-    batch_labels = adata_all.obs['dataset'].astype('category').cat.codes.values # is used for NN training
-    
-    X = adata_all.X
-    y = adata_all.obs['age']
-    if issparse(X):
-        X = X.toarray()  
-    # - train the model
-
     def remove_collinear_features(X, threshold=0.9):
         """
         Remove collinear features from X using a correlation threshold.
         Returns reduced X and list of retained feature names.
+        How to use: X, gene_names = remove_collinear_features(pd.DataFrame(X, columns=gene_names), threshold=0.99)
         """
         corr_matrix = X.corr().abs()
         upper = np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
@@ -486,13 +316,3 @@ def wrapper_build_model_cell_type(cell_type, par):
 
         retained_features = [f for f in X.columns if f not in to_drop]
         return X[retained_features], retained_features
-    X, gene_names = remove_collinear_features(pd.DataFrame(X, columns=gene_names), threshold=0.95)
-    print(cell_type, f"Number of features after removing collinear features: {X.shape[1]}")
-    model, model_args, model_kwargs, y_trained = build_model(reg_type, X, y, batch_labels, par)
-    # - save the training performance
-    adata_all.obs['predicted_age'] = y_trained.copy()
-    adata_all.write(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_adata.h5ad")
-    # - save the model and feature space
-    save_function(model, gene_names, cell_type, data_type, feature_type, reg_type, version=par['version'], model_args=model_args, model_kwargs=model_kwargs)
-        
-    

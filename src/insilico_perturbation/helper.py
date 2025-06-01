@@ -29,8 +29,73 @@ def compute_tf_slopes(adata, sig_tfs):
 
     slope_df = pd.DataFrame.from_dict(slopes, orient='index', columns=['slope'])
     return slope_df
+def perturb_tf_simulation(adata, net, tfs, slope_df, years=10):
+    '''
+     - 
+    '''
+    print('Number of tfs to perturb:', len(tfs))
 
-def perturb_tf(adata, tfs, slope_df, years=10):
+    # Extract gene names (first part before //)
+    gene_names = adata.var_names.str.split('//').str[0]
+    perturb_tfs = slope_df.index.str.split('//').str[0].values
+    delta = slope_df.values.flatten()   # scale by years
+
+    # Create expression DataFrame
+    expr_df = pd.DataFrame(adata.X.toarray() if hasattr(adata.X, 'toarray') else adata.X,
+                           columns=adata.var_names,
+                           index=adata.obs_names)
+
+    # Construct network matrix: rows = targets, columns = sources
+    net_matrix_df = net.pivot(index='target', columns='source', values='weight').fillna(0)
+
+    # Extend net_matrix_df to include all genes from adata.var_names (as targets)
+    all_genes = expr_df.columns
+    missing_genes = all_genes.difference(net_matrix_df.index)
+
+    if len(missing_genes) > 0:
+        zero_df = pd.DataFrame(
+            0, index=missing_genes, columns=net_matrix_df.columns
+        )
+        net_matrix_df = pd.concat([net_matrix_df, zero_df], axis=0)
+    # Reorder to match expr_df
+    net_matrix_df = net_matrix_df.loc[expr_df.columns]
+    
+
+    # Final matrices
+    N = net_matrix_df.values             # (num_targets = genes, num_sources = TFs)
+    X0s = expr_df.values                 # (num_cells, num_targets = genes)
+
+    # Build perturbation vector p aligned to net_matrix_df.columns (sources)
+    tf_list = net_matrix_df.columns.str.split('//').str[0]
+    p = np.zeros(len(net_matrix_df.columns))  # initialize
+
+    tf_to_delta = dict(zip(perturb_tfs, delta))
+    for i, tf in enumerate(tf_list):
+        if tf in tf_to_delta:
+            p[i] = tf_to_delta[tf]  # apply perturbation correct because the delta is for 10 years
+
+    # Simulate per cell
+    X_store = []
+    for X0 in X0s:
+        Xs = run_simulation(N, X0, p, n_iter=10)
+        X = Xs[-1]
+        X_store.append(X)
+
+    # Create perturbed AnnData
+    adata_perturb = adata.copy()
+    adata_perturb.X = np.array(X_store)
+
+    return adata_perturb
+
+def run_simulation(N, X0, p, n_iter=10):
+    X = X0.copy()
+    X_store = [X0]
+    for it in range(n_iter):
+        X = X + np.dot(N, p)
+        X_store.append(X)
+    return np.array(X_store)
+
+def perturb_tf_activity(adata, tfs, slope_df, years=10):
     print('Number of tfs to perturb:', len(tfs))
 
     # Extract gene names (first part before //)
@@ -62,20 +127,15 @@ def perturb_tf(adata, tfs, slope_df, years=10):
     adata_perturb.X = expr_df.values
 
     return adata_perturb
-def experiment_perturb_tfs(dataset, cell_type, data_type, tfs,n_donors=20, reg_type='ridge', ctr='Unperturbed', treatment='Perturbed'):
+def experiment_perturb_tfs(dataset, cell_type, data_type, tfs, trends, n_donors=20, 
+                            reg_type='ridge', feature_type='tf_activity', ctr='Unperturbed', treatment='Perturbed'):
     from ciim.src.clock.helper import prepare_input, predict_age
     from ciim.src.common import save_dir
     from ciim.src.common import save_dir
     import anndata as ad
-    # - prepare the input and select donors 
+    # - calculate slope
     adata = ad.read_h5ad(f"{save_dir}/tf_activity_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
-    adata = ad.read_h5ad(f"{save_dir}/tf_activity_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
-    adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + '_' + adata.obs['age'].astype(str)
-    donors = adata.obs['donor_age'].unique()
-    np.random.seed(0)
-    donors = np.random.choice(donors, n_donors, replace=False)
-    adata = adata[adata.obs['donor_age'].isin(donors)]
-
+    
     # - get the significant TFs and compute slopes
     if tfs == 'aging_tfs': # perturb the sig tfs 
         print('Perturbing the aging TFs')
@@ -90,28 +150,47 @@ def experiment_perturb_tfs(dataset, cell_type, data_type, tfs,n_donors=20, reg_t
         tfs = [tf for tf in tfs if tf in adata.var_names]
     else:
         raise ValueError("perturb_coverage should be either 'aging_tfs' or 'all_tfs'")
-    slope_df = compute_tf_slopes(adata.copy(), tfs)
-    # slope_df = pd.DataFrame({'slope':1},index=tfs)
-    # print(slope_df)
-
-    trend = 'anti-aging'  # specify the trend for perturbation
-    if trend == 'aging':
-        slope_df = slope_df
-    elif trend == 'anti-aging':
-        slope_df = -slope_df
-    else:
-        raise ValueError("trend should be either 'increase' or 'decrease'")
-
+    
+    
+    if trends is None: # calculate the slope based on the activity slope
+        slope_df = compute_tf_slopes(adata.copy(), tfs) # slope is for one year
+        trend = 'aging'  # specify the trend for perturbation
+        if trend == 'aging':
+            slope_df = slope_df
+        elif trend == 'anti-aging':
+            slope_df = -slope_df
+        else:
+            raise ValueError("trend should be either 'increase' or 'decrease'")
+    else:  # fixed slope
+        slope_df = pd.DataFrame(trends)
+        slope_df.index = tfs
+        print('Slopes per year: ', slope_df)
     # - perturb the TFs and create a new adata object
-    adata_perturb = perturb_tf(adata.copy(), tfs, slope_df)
+    if feature_type == 'tf_activity': # here, we just change the TF activity based on the slope
+        adata_perturb = perturb_tf_activity(adata.copy(), tfs, slope_df)
+    elif feature_type == 'gene_expression': # here, we simulate the expression change in response to TF perturbation
+        from ciim.src.tf_activity.helper import get_consensus_net, retrieve_net
+        from ciim.src.common import datasets_all
+        adata = ad.read_h5ad(f"{save_dir}/gene_expression_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
+        # net = get_consensus_net(datasets=datasets_all, cell_type=cell_type, min_degree=3)
+        net = retrieve_net(dataset, cell_type)
+        adata_perturb = perturb_tf_simulation(adata.copy(), net, tfs, slope_df, years=10)
+    else:
+        raise ValueError("feature_type should be either 'tf_activity' or 'gene_expression'")
     # - combine the adatas and predict age
 
     adata.obs['condition'] = ctr
     adata_perturb.obs['condition'] = treatment
     adata_combined = ad.concat([adata, adata_perturb], axis=0)
-    adata_combined = predict_age(adata_combined, cell_type, feature_type='tf_activity', data_type=data_type, reg_type=reg_type)
+    adata_combined = predict_age(adata_combined, cell_type, feature_type=feature_type, data_type=data_type, reg_type=reg_type)
     obs_combined = adata_combined.obs.copy()
     # - subset and calculate age acceleration
+    if True:
+        obs_combined['donor_age'] = obs_combined['donor_id'].astype(str) + '_' + obs_combined['age'].astype(str)
+        donors = obs_combined['donor_age'].unique()
+        np.random.seed(0)
+        donors = np.random.choice(donors, n_donors, replace=False)
+        obs_combined = obs_combined[obs_combined['donor_age'].isin(donors)]
     df_pivot = obs_combined.pivot(index='donor_age', columns='condition', values='predicted_age')
     df_pivot = df_pivot.dropna(subset=[ctr, treatment])
     df_pivot['diff'] = df_pivot[treatment] - df_pivot[ctr]
@@ -140,8 +219,8 @@ def plot_age_acceleration_donors(df_pivot, ax=None, ctr='baseline', treatment='p
 
         # plt.figure(figsize=(3, 2.5))
         if ax is None:
-             plt.subplots(figsize=(2.5, 2))
+            fig, ax = plt.subplots(figsize=(2.5, 2))
         sns.lineplot(data=df_plot, x='condition', y='predicted_age', 
                     hue='donor_age', marker='o', alpha=0.6, legend=False, ax=ax)
+ 
         ax.margins(x=.1, y=0.1)
-        

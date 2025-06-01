@@ -1,6 +1,7 @@
 
-from ciim.src.clock.helper import prepare_input, wrapper_build_model_cell_type
+from ciim.src.clock.train import wrapper_build_model_cell_type
 from ciim.src.common import cell_types
+import os
 
 import argparse
 
@@ -27,4 +28,5 @@ def wrapper_build_model_all(par):
 
 if __name__ == "__main__":
     print(par)
+    os.makedirs(par['temp_dir'], exist_ok=True)
     wrapper_build_model_all(par)

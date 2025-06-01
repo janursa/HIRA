@@ -7,6 +7,7 @@ from collections import OrderedDict
 
 base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder' #'/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
 save_dir = f'{base_dir}/output/'
+clock_save_dir = f"{save_dir}/clock/"
 
 surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All batches', 
                     '34-':'35 below', '35_44':'35-45', '45_54':'45-55', '55_64':'55-65', '65_75':'65-75',
