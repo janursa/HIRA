@@ -19,7 +19,6 @@ arg.add_argument('--temp_dir', type=str, default='tmp/')
 
 par = vars(arg.parse_args())
 
-
 def wrapper_build_model_all(par):
     for cell_type in par['cell_types']:
         print('building model for cell type:', cell_type)

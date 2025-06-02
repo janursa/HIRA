@@ -65,7 +65,7 @@ par = {
         'batches': ['all_batches'],
         # 'cell_types': minor_cell_types,
         # 'cell_type_col': 'Sub_CT',
-        'age_groups': ['all_agegroups'], # ['all_agegroups', '65_75', '55_64', '75+', '34-', '35_44', '45_54']
+        'age_groups': ['all_agegroups'], # ['all_agegroups',  '50-', '50+' '65_75', '55_64', '75+', '34-', '35_44', '45_54']
         'min_genes_per_cell': 10, 
         'max_genes_per_cell': 5000, 
         'min_cells_per_gene': 1000,

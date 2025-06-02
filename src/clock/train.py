@@ -72,7 +72,7 @@ def tune_params_ridge(X, y, cv_groups=None, scoring='r2'):
     import optuna
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     def objective(trial):
-        alpha = trial.suggest_float("alpha", 0.01, 100.0, log=True)
+        alpha = trial.suggest_float("alpha", 0.01, 1000.0, log=True)
         model = Pipeline([
             ('standardscaler', StandardScaler()),
             ('ridge', Ridge(alpha=alpha, random_state=42))
@@ -135,6 +135,7 @@ def tune_params_elasticnet(X, y, cv_groups=None, scoring='r2'):
 def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
     import anndata as ad
     from ciim.src.clock.helper import spearman_corr
+    from sklearn.metrics import r2_score, make_scorer
     
     # - choose the model
     if reg_type == 'tabpfn':

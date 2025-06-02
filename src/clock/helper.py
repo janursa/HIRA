@@ -165,7 +165,7 @@ def predict_age(X, cell_type, feature_type='tf_activity', data_type='bulk', reg_
         print(rr_dict)
     else:
         scores = evaluate_groupwise_median(adata.obs)
-        print(scores)
+        # print(scores)
     return adata
 
 # def stability_selection_shap(model, X, y,  top_q=80):
