@@ -10,28 +10,28 @@ from ciim.src.tf_activity.helper import retrieve_sig_stats
 from ciim.src.tf_activity.helper import get_consensus_net
 from ciim.src.common import datasets_all
 
-# def compute_tf_slopes(adata, sig_tfs):
-#     gene_names = adata.var_names.str.split('//').str[0]
-#     sig_tfs = [tf for tf in sig_tfs if tf in gene_names]
-#     mask_genes = gene_names.isin(sig_tfs)
-#     assert len(mask_genes) == adata.n_vars  # should now pass
-#     adata.var.index = adata.var.index.astype('category')
+def compute_tf_slopes(adata, sig_tfs):
+    gene_names = adata.var_names.str.split('//').str[0]
+    sig_tfs = [tf for tf in sig_tfs if tf in gene_names]
+    mask_genes = gene_names.isin(sig_tfs)
+    assert len(mask_genes) == adata.n_vars  # should now pass
+    adata.var.index = adata.var.index.astype('category')
 
-#     adata_sig = adata[:, mask_genes].copy()
-#     adata_sig.X = adata_sig.X.toarray() if hasattr(adata_sig.X, 'toarray') else adata_sig.X
-#     X = pd.DataFrame(adata_sig.X, columns=adata_sig.var_names)
-#     ages = adata_sig.obs['age'].astype(float).values.reshape(-1, 1)
-#     slopes = {}
-#     for tf in adata_sig.var_names:
-#         tf_values = X[tf].values.reshape(-1, 1)
-#         if np.all(np.isnan(tf_values)) or np.all(tf_values == tf_values[0]):
-#             continue
-#         model = LinearRegression()
-#         model.fit(ages, tf_values)
-#         slopes[tf] = model.coef_.item()
+    adata_sig = adata[:, mask_genes].copy()
+    adata_sig.X = adata_sig.X.toarray() if hasattr(adata_sig.X, 'toarray') else adata_sig.X
+    X = pd.DataFrame(adata_sig.X, columns=adata_sig.var_names)
+    ages = adata_sig.obs['age'].astype(float).values.reshape(-1, 1)
+    slopes = {}
+    for tf in adata_sig.var_names:
+        tf_values = X[tf].values.reshape(-1, 1)
+        if np.all(np.isnan(tf_values)) or np.all(tf_values == tf_values[0]):
+            continue
+        model = LinearRegression()
+        model.fit(ages, tf_values)
+        slopes[tf] = model.coef_.item()
 
-#     slope_df = pd.DataFrame.from_dict(slopes, orient='index', columns=['slope'])
-#     return slope_df
+    slope_df = pd.DataFrame.from_dict(slopes, orient='index', columns=['slope'])
+    return slope_df
 def perturb_tf_simulation(adata, net, tfs, slope_df, years=10):
     '''
      - 
@@ -285,7 +285,7 @@ def wrapper_plot_age_acceleration_for_tf_perturbation(df_cell, top_n=30, feature
 
     ax.axvline(0, color='gray', linestyle='--')
     ax.set_title(f'Top {top_n} TFs')
-    ax.set_xlabel('Age accelieration \n signed –log₁₀(p-value)')
+    ax.set_xlabel('Age acceleration significance')
     ax.set_ylabel('TF')
     ax.margins(y=.05)
     ax.legend(title='Dataset', bbox_to_anchor=(1.05, 1), loc='upper left', frameon=False)
@@ -313,14 +313,18 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.simplefilter(action='ignore', category=UserWarning)
 
-def get_perturbation_slopes(all_tfs, mode='overexpression'):
+def get_perturbation_slopes(adata, all_tfs, mode='overexpression'):
+
+
     if mode == 'overexpression':
         direction = 1
-    elif mode == 'knockdown':  
-        direction = -1        
+        slope_df = pd.DataFrame({'slope': direction}, index=all_tfs)
+    elif mode == 'natural_aging':  
+        slope_df = compute_tf_slopes(adata, all_tfs)
+        slope_df = slope_df.abs()  # take absolute values
     else:
         raise ValueError(f"Unknown perturbation mode: {mode}")
-    slope_df = pd.DataFrame({'slope': direction}, index=all_tfs)
+    
     return slope_df
 def run_tf_screen_all(
         dataset,
@@ -336,7 +340,7 @@ def run_tf_screen_all(
         perturbation_type='single'  # either 'single' or 'multi'
     ):
     print(f"Processing: {cell_type} - {dataset} ({perturbation_mode} | {perturbation_type})")
-    # net = retrieve_net(dataset, cell_type)
+    
     net = get_consensus_net(datasets=datasets_all, cell_type=cell_type, min_degree=3)
     
     if tfs is None:
@@ -348,7 +352,8 @@ def run_tf_screen_all(
             tfs = net['source'].unique()
 
     adata = ad.read_h5ad(f"{save_dir}/gene_expression_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
-    slope_df = get_perturbation_slopes(tfs, mode=perturbation_mode)
+    slope_df = get_perturbation_slopes(adata, tfs, mode=perturbation_mode)
+    tfs = slope_df.index.tolist()
 
     def process_perturbation(adata_base, perturbed, tfs):
         adata_base.obs['condition'] = 'Baseline'

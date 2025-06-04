@@ -73,7 +73,7 @@ def retrieve_valid_stats(type):
     stats_valid = stats_valid.drop_duplicates(subset=['cell_type', 'tf'])[['tf', 'cell_type', 'trend']]
     return stats_valid
 
-def retrieve_sig_stats(type, feature_type='tf_activity', race='european', filter_inconsistent=True, cell_type=None):
+def retrieve_sig_stats(type, feature_type='tf_activity', race='both', filter_inconsistent=True, cell_type=None):
     from ciim.src.common import save_dir
     stats_all = pd.read_csv(f'{save_dir}/{feature_type}/stats_all_{type}.csv')
     
@@ -84,8 +84,10 @@ def retrieve_sig_stats(type, feature_type='tf_activity', race='european', filter
     stats_all = stats_all[
         mask
     ]
+    
     if filter_inconsistent:
         stats_all = stats_all[stats_all['trend'] != 'Inconsistent']
+    
     # stats_all = stats_all[~stats_all['trend'].isna()]
     if cell_type is not None:
         if cell_type not in stats_all['cell_type'].unique():
@@ -131,12 +133,11 @@ def retrieve_sig_net(type, race, cell_type=None):
         df = df[df['cell_type'] == cell_type]
     return df
 
-def determine_sig_network(type, race, min_degree=3):
+def determine_sig_network(type, race='both', min_degree=3):
     os.makedirs(f'{save_dir}/sig_nets', exist_ok=True)
     from ciim.src.tf_activity.helper import retrieve_nets
     stats_tfs = retrieve_sig_stats(type, feature_type='tf_activity')
     stats_targets = retrieve_sig_stats(type, feature_type='gene_expression')
-
     if race == 'european':
         datasets = datasets_e
     elif race == 'asian':

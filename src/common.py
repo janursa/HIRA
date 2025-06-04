@@ -24,6 +24,8 @@ surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All 
                     'Covid_50MHH': 'C6: Covid',
                     'normal': 'Healthy',
                     'systemic lupus erythematosus': 'SLE',
+                    'mild': 'Mild',
+                    'severe': 'Severe',
                     'european': 'European',
                     'asian': 'Asian',
                     'collectri': 'CollecTRI',

@@ -10,7 +10,7 @@ import scanpy as sc
 import matplotlib.pyplot as plt
 
 from task_grn_inference.src.utils.util import sum_by, read_gmt
-
+from ciim.src.common import base_dir, save_dir
 
 def get_genesets():
 
