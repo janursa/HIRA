@@ -1458,7 +1458,9 @@ def heamap_plot_minor_cell_types(stats_all, palette,
     
     stats_all['trend_int'] = stats_all[slope_col].map(lambda value: 1 if value > 0 else (-1 if value < 0 else 0))
     pivot_df = stats_all.pivot(index='tf', columns=minor_col, values='trend_int').fillna(0)
-    pivot_df = pivot_df.reindex(columns=cell_types)
+    
+    pivot_df = pivot_df.reindex(columns=cell_types).fillna(0)
+
 
     # - color map
     cols_names = pivot_df.columns.map(lambda name: mapping_minor_2_major.get(name, name))

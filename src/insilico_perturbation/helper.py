@@ -329,6 +329,7 @@ def get_perturbation_slopes(adata, all_tfs, mode='overexpression'):
 def run_tf_screen_all(
         dataset,
         cell_type,
+        slope_df=None,
         tfs = None,
         data_type='bulk',
         years=10,
@@ -341,8 +342,8 @@ def run_tf_screen_all(
     ):
     print(f"Processing: {cell_type} - {dataset} ({perturbation_mode} | {perturbation_type})")
     
-    net = get_consensus_net(datasets=datasets_all, cell_type=cell_type, min_degree=3)
-    
+    # net = get_consensus_net(datasets=datasets_all, cell_type=cell_type, min_degree=3)
+    net = retrieve_net(dataset=dataset, cell_type=cell_type)
     if tfs is None:
         if False:
             stats_sig = retrieve_sig_stats(type='bulk', race='both', filter_inconsistent=True)
@@ -352,7 +353,8 @@ def run_tf_screen_all(
             tfs = net['source'].unique()
 
     adata = ad.read_h5ad(f"{save_dir}/gene_expression_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
-    slope_df = get_perturbation_slopes(adata, tfs, mode=perturbation_mode)
+    if slope_df is None:
+        slope_df = get_perturbation_slopes(adata, tfs, mode=perturbation_mode)
     tfs = slope_df.index.tolist()
 
     def process_perturbation(adata_base, perturbed, tfs):
