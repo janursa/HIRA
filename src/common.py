@@ -5,7 +5,7 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from collections import OrderedDict
 
-base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder' #'/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
+base_dir = '/vol/projects/jnourisa/' #'/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
 save_dir = f'{base_dir}/output/'
 clock_save_dir = f"{save_dir}/clock/"
 

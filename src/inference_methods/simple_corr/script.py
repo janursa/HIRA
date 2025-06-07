@@ -9,6 +9,8 @@ from scipy.stats import spearmanr
 import scipy.sparse as sp
 import pandas as pd
 
+from ciim.src.common import base_dir
+
 parser = argparse.ArgumentParser(description='Infer GRN')
 parser.add_argument('--rna', type=str, required=True, help='Input AnnData file')
 parser.add_argument('--prediction', type=str, required=True, help='Output file')
