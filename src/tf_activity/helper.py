@@ -61,17 +61,6 @@ def retrieve_feature_data(dataset, cell_type, type, feature_type='tf_activity'):
 def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activity'):
     adata.write_h5ad(f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
 
-def retrieve_valid_stats(type):
-    stats_e = retrieve_sig_stats(type, race='european')
-    stats_a = retrieve_sig_stats(type, race='asian')
-    stats_valid = pd.concat([stats_e, stats_a]).drop_duplicates(subset=['cell_type', 'tf', 'race'])
-
-    degree = stats_valid.groupby(['cell_type', 'tf']).size()
-    
-    tuple_index = degree[degree==2].index
-    stats_valid = stats_valid.set_index(['cell_type', 'tf']).loc[tuple_index].reset_index()
-    stats_valid = stats_valid.drop_duplicates(subset=['cell_type', 'tf'])[['tf', 'cell_type', 'trend']]
-    return stats_valid
 
 def retrieve_sig_stats(type, feature_type='tf_activity', race='both', filter_inconsistent=True, cell_type=None):
     from ciim.src.common import save_dir
@@ -179,7 +168,10 @@ def determine_sig_network(type, race='both', min_degree=3):
 
 
 def retrieve_adata_bulk(dataset, type='bulk', cell_type=None): 
-    base_path = f"{base_dir}/datasets/"
+    base_path = f"{base_dir}/dataset/"
+    if 'bulk' in type:
+        base_path = f"{base_path}/bulk/"
+       
     gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
 
     assert type in ['bulk', 'bulk_minor', 'bulk_M', 'bulk_F', 'bulk_minor_M', 'bulk_minor_F', 'metacell'], f'Unknown type {type}'
@@ -267,8 +259,6 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='disease'
     from scipy.stats import mannwhitneyu
     from scipy.stats import ttest_rel
     import statsmodels.formula.api as smf
-
-
     if conditions is None:
         conditions = adata.obs[condition_col].unique()
     dataset = adata.obs['dataset'].unique()[0]
@@ -309,11 +299,12 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='disease'
                 values_control = values_control.todense().A.flatten()
             
             if test_type == 'unpaired':
+                from scipy.stats import ttest_ind
                 stat, pval = mannwhitneyu(values_case, values_control, alternative="two-sided")
+                # stat, pval = ttest_ind(values_case, values_control, equal_var=False)
                 coef = np.median(values_case) - np.median(values_control)
             elif test_type == 'paired':
                 stat, pval = ttest_rel(values_case, values_control)
-                # stat, pval = wilcoxon(values_case, values_control, alternative="two-sided")
                 coef = np.median(values_case) - np.median(values_control)
             elif test_type == 'mixed-effect':
                 import warnings
@@ -353,9 +344,9 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='disease'
     if 'SLE' in dataset:
         # Run for each age subset
         age_masks = {
-            'all': adata.obs.index.notnull(),  # All samples
-            'under_50': adata.obs['age'] < 50,
-            '50_plus': adata.obs['age'] >= 50
+            'Both age groups': adata.obs.index.notnull(),  # All samples
+            'Younger than 50': adata.obs['age'] < 50,
+            'Older than 50': adata.obs['age'] >= 50
         }
     else:
         age_masks = {
@@ -457,14 +448,11 @@ def wrapper_meta_analysis(par):
 
 def wrapper_association_with_age_condition(par, features=None, test_type='unpaired'):
     # - calculate tf activity for all datasets
-    
     datasets = par['datasets']
     feature_type = par['feature_type']
     data_type = par['type']
 
     print(f'Association {feature_type} with age/disease...')
-
-    
     if 'minor' in data_type:
         cell_types_l = minor_cell_types
     else:
@@ -490,8 +478,10 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
             adata_sub = adata_sub[:, adata_sub.var_names.isin(genes)]
             if issparse(adata_sub.X):
                 adata_sub.X = adata_sub.X.toarray()
-            if 'SLE' in dataset:
+            if ('SLE' in dataset):
                 stats = determine_stats_condition(adata_sub, test_type=test_type)
+            elif ('Covid' in dataset):
+                stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col='Max_WHO_Group', ctr_group='mild')
             elif dataset == 'CXCL9':
                 stats_1 = determine_stats_condition(adata_sub, ctr_group='24 h RPMI', condition_col='treatment', test_type=test_type)
                 stats_2 = determine_stats_condition(adata_sub, ctr_group='24 h LPS', condition_col='treatment', test_type=test_type,  conditions=['24 h LPS + metformin', '24 h LPS + metformin + ruxolitinib', '24 h LPS + ruxolitinib'])
@@ -527,7 +517,11 @@ def wrapper_tf_activity(par):
         cell_types_l = [t for t in cell_types_l if t in all_types]
         for cell_type in tqdm(cell_types_l, desc='cell types'):
             adata_t = adata[adata.obs[cell_type_col]==cell_type]
-            net = retrieve_net(dataset, cell_type)
+            if dataset == 'Covid_50MHH':
+                # net = retrieve_net(dataset, cell_type)
+                net = get_consensus_net(datasets=datasets_all, cell_type=cell_type, min_degree=3)
+            else:
+                net = retrieve_net(dataset, cell_type)
 
             if adata.shape[0] < 10:
                 continue
