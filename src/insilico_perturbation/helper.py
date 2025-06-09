@@ -342,8 +342,8 @@ def run_tf_screen_all(
     ):
     print(f"Processing: {cell_type} - {dataset} ({perturbation_mode} | {perturbation_type})")
     
-    # net = get_consensus_net(datasets=datasets_all, cell_type=cell_type, min_degree=3)
-    net = retrieve_net(dataset=dataset, cell_type=cell_type)
+    net = get_consensus_net(datasets=datasets_all, cell_type=cell_type, min_degree=3)
+    # net = retrieve_net(dataset=dataset, cell_type=cell_type)
     if tfs is None:
         if False:
             stats_sig = retrieve_sig_stats(type='bulk', race='both', filter_inconsistent=True)

@@ -162,7 +162,7 @@ def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
         seed_all(42)
         model = AgePredictionModel(*model_args, **model_kwargs)
 
-        model = train(model, X, y, batch_labels, epochs=500, lr=1e-3, batch_size=64, tmp_dir=temp_dir)
+        model = train(model, X, y, batch_labels, epochs=200, lr=1e-3, batch_size=64, tmp_dir=temp_dir)
 
         y_trained = predict(model, X, batch_labels).detach().numpy()
 

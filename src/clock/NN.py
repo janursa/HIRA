@@ -32,26 +32,28 @@ class FiLM(nn.Module):
             gamma = self.gamma(batch_idx)
             beta = self.beta(batch_idx)
             return gamma * x + beta
+
+# class Encoder(nn.Module):
+#     def __init__(self, n_genes, n_batches, latent_dim, hidden_dim=128, dropout=.1):
+#         super().__init__()
+#         self.embedding = FiLM(n_batches, hidden_dim)
+#         self.fc1 = nn.Linear(n_genes, hidden_dim)
+#         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+#         self.fc3 = nn.Linear(hidden_dim, latent_dim)
+#         self.dropout = nn.Dropout(dropout)
+
+#     def forward(self, x, batch_idx=None):
+#         x = F.relu(self.fc1(x))              
+#         x = self.embedding(x, batch_idx)
+#         x = F.relu(self.fc2(x))
+#         x = self.dropout(x)
+#         x = self.fc3(x)
+#         return x
+
 class Encoder(nn.Module):
     def __init__(self, n_genes, n_batches, latent_dim, hidden_dim=128, dropout=.1):
         super().__init__()
-        self.embedding = FiLM(n_batches, hidden_dim)
-        self.fc1 = nn.Linear(n_genes, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-        self.fc3 = nn.Linear(hidden_dim, latent_dim)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x, batch_idx=None):
-        x = F.relu(self.fc1(x))              
-        x = self.embedding(x, batch_idx)
-        x = F.relu(self.fc2(x))
-        x = self.dropout(x)
-        x = self.fc3(x)
-        return x
-
-class Encoder(nn.Module):
-    def __init__(self, n_genes, n_batches, latent_dim, hidden_dim=128, dropout=.1):
-        super().__init__()
+        self.n_batches = n_batches
         self.embedding = FiLM(n_batches, hidden_dim)
         self.fc1 = nn.Linear(n_genes, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
@@ -60,8 +62,17 @@ class Encoder(nn.Module):
 
     def forward(self, x, batch_idx):
         x = F.relu(self.fc1(x))              
+        # if batch_idx is None:
+        #     batch_idx = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
         if batch_idx is None:
-            batch_idx = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
+            # Compute the mean embedding effect across all batches
+            batch_means = []
+            for b in range(self.n_batches):  # assuming FiLM has n_conditions attribute
+                batch_b = torch.full((x.size(0),), b, dtype=torch.long, device=x.device)
+                batch_means.append(self.embedding(x, batch_b))
+            x = torch.stack(batch_means).mean(0)
+        else:
+            x = self.embedding(x, batch_idx)    
         x = self.embedding(x, batch_idx)
         x = F.relu(self.fc2(x))
         x = self.dropout(x)
@@ -73,7 +84,6 @@ class AgeRegressor(nn.Module):
         super().__init__()
         self.fc1 = nn.Linear(latent_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, 1)
-
     def forward(self, z):
         x = F.relu(self.fc1(z))
         return self.fc2(x)
@@ -98,11 +108,8 @@ class ResidualBlock(nn.Module):
             nn.Dropout(0.2),
             nn.Linear(dim, dim)
         )
-
     def forward(self, x):
         return x + self.block(x)
-
-
 
 import torch
 from torch.utils.data import DataLoader, TensorDataset
@@ -142,7 +149,7 @@ def train(model, X, y, batch_idx, epochs=50, lr=1e-3, batch_size=64, tmp_dir='tm
     
     np.save(os.path.join(tmp_dir, 'loss.npy'), np.array(loss_store))
     return model
-# inference.py
+
 def predict(model, X, batch_idx=None):
     model.eval()
     with torch.no_grad():

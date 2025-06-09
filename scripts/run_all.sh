@@ -13,10 +13,10 @@
 declare -A dependencies
 
 dependencies=(
-    ["grn_inference"]="/home/jnourisa/projs/ongoing/ciim/src/workflows/grn_inference/script.py"
-    ["process_dataset"]="/home/jnourisa/projs/ongoing/ciim/src/process_dataset/preprocess/script.py"
-    ["alis_code"]="/home/jnourisa/projs/ongoing/ciim/src/process_dataset/ali/script.py"
-    ["bulkify_code"]="/home/jnourisa/projs/ongoing/ciim/src/process_dataset/bulkify/script.py"
+    ["process_dataset"]="src/process_dataset/preprocess/script.py"
+    ["alis_code"]="src/process_dataset/ali/script.py"
+    ["bulkify_code"]="src/process_dataset/bulkify/script.py"
+    ["grn_inference"]="src/workflows/grn_inference/script.py"
     
 )
 
@@ -26,7 +26,7 @@ RUN_ALIS_CODE=false
 RUN_PROCESS_DATASET=false
 RUN_PSEUDOBULK=false
 RUN_GRN=true
-CELL_TYPE_GRANULARITY='minor'
+CELL_TYPE_GRANULARITY='major'
 SAVE_DIR='/vol/projects/jnourisa/output/'
 RUN_ASSOCIATION=false
 
@@ -47,7 +47,7 @@ for dataset in $datasets; do
         fi
 done
 
-datasets="  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European " #CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European
+datasets=" Covid_50MHH" #CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European
 
 
 for dataset in $datasets; do
