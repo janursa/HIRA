@@ -168,7 +168,7 @@ def determine_sig_network(type, race='both', min_degree=3):
 
 
 def retrieve_adata_bulk(dataset, type='bulk', cell_type=None): 
-    base_path = f"{base_dir}/dataset/"
+    base_path = f"{base_dir}/datasets/"
     if 'bulk' in type:
         base_path = f"{base_path}/bulk/"
        
