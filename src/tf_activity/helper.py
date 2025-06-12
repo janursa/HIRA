@@ -228,13 +228,24 @@ def get_consensus_nets(datasets, cell_types, min_degree=5):
             net_store.append(net)
         nets = pd.concat(net_store)
 
+        # Create a unique identifier for each link
         nets['link'] = nets['source'] + '_' + nets['target']
+
+        # Keep only links shared by at least min_degree datasets
         degrees = nets.groupby(['link'])['dataset'].size()
-        shared_links = degrees[degrees>=min_degree].index
+        shared_links = degrees[degrees >= min_degree].index
         nets = nets[nets['link'].isin(shared_links)]
 
-        net_mean = nets.groupby(['source', 'target', 'cell_type'])['weight'].mean().reset_index()
-        consensus_nets[cell_type] = net_mean
+        # Identify and remove links with conflicting signs
+        if True:
+            sign_info = nets.groupby('link')['weight'].apply(lambda x: set(np.sign(x)))
+            consistent_links = sign_info[sign_info.apply(lambda x: len(x) == 1)].index
+            nets = nets[nets['link'].isin(consistent_links)]
+
+        # Take the median weight of consistent links
+        net_median = nets.groupby(['source', 'target', 'cell_type'])['weight'].median().reset_index()
+        consensus_nets[cell_type] = net_median
+
     return consensus_nets
 def get_consensus_net(datasets, cell_type, min_degree=5):
     consensus_nets = {}
@@ -350,7 +361,7 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='disease'
         }
     else:
         age_masks = {
-            'all': adata.obs.index.notnull()
+            'Both age groups': adata.obs.index.notnull()
         }
     for age_subset, mask in age_masks.items():
         adata_sub = adata[mask, :].copy()

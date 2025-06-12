@@ -136,7 +136,7 @@ def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
     import anndata as ad
     from ciim.src.clock.helper import spearman_corr
     from sklearn.metrics import r2_score, make_scorer
-    
+    print(X.shape, y.shape)
     # - choose the model
     if reg_type == 'tabpfn':
         from tabpfn import TabPFNRegressor 
@@ -193,7 +193,6 @@ def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
     else:
         raise ValueError('Unknown reg_type')
     if reg_type != 'NN':
-        # - tune the model
         if tune_model:
             if reg_type == 'GBM':
                 model = tune_params_gbm(model, X, y, batch_labels, scoring=make_scorer(r2_score, greater_is_better=False))

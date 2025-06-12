@@ -153,9 +153,7 @@ def predict_age(X, cell_type, feature_type='tf_activity', data_type='bulk', reg_
     else:
         predicted_age = model.predict(X)
 
-
     adata.obs['predicted_age'] = predicted_age.copy()
-
     # - show the score
     if False:
         age = adata.obs['age']
