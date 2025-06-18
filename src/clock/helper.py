@@ -84,7 +84,7 @@ def prepare_input(dataset, cell_type, feature_type='tf_activity', data_type='bul
     from scipy.sparse import issparse
 
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-    net = get_consensus_net(datasets_all, cell_type_major, min_degree=3)
+    net = get_consensus_net(datasets_all, cell_type_major)
     
     adata = retrieve_adata_bulk(dataset, cell_type=cell_type_major, type=data_type)
     if feature_type == 'tf_activity':
@@ -250,12 +250,6 @@ def stability_selection_shap(features, model, X, y, top_q=80, top_features=50):
     rr = {'importance': feature_importances, 'feature': features}
      
     return pd.DataFrame(rr)
-
-
-def spearman_corr(y_true, y_pred):
-    from scipy.stats import spearmanr
-    return spearmanr(y_true, y_pred).correlation
-
 
 def pivot_adata_minor(adata):
     from scipy.sparse import issparse

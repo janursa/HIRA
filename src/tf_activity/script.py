@@ -27,6 +27,7 @@ def run_workflow_tf_activity(par):
     # - step 2: calculate TF association with age
     if True:
         stats_features_all = wrapper_association_with_age_condition(par)
+
         stats_features_all.to_csv(par['stats_features'], index=False)
     if True:
         print('TF discovery/validation...')
@@ -61,11 +62,11 @@ if __name__ == '__main__':
     os.makedirs(f'{save_dir}/gene_expression/gene_expression', exist_ok=True)
 
     run_flag = True
-    run_flag_gender = True
+    run_flag_gender = False
     
     if run_flag:
-        for data_type in ['bulk', 'bulk_minor']:
-            for feature_type in ['tf_activity', 'gene_expression']:
+        for data_type in ['bulk']:
+            for feature_type in ['tf_activity']:
                 par = {
                     'type': data_type,
                     'feature_type': feature_type,

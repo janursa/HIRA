@@ -10,13 +10,13 @@ from ciim.src.tf_activity.helper import retrieve_sig_stats
 from ciim.src.tf_activity.helper import get_consensus_net
 from ciim.src.common import datasets_all
 
-def compute_tf_slopes(adata, sig_tfs):
+def compute_tf_slopes(adata, tfs):
     '''
         Slope in natural aging
     '''
     gene_names = adata.var_names.str.split('//').str[0]
-    sig_tfs = [tf for tf in sig_tfs if tf in gene_names]
-    mask_genes = gene_names.isin(sig_tfs)
+    tfs = [tf for tf in tfs if tf in gene_names]
+    mask_genes = gene_names.isin(tfs)
     assert len(mask_genes) == adata.n_vars  # should now pass
     adata.var.index = adata.var.index.astype('category')
 
@@ -35,7 +35,7 @@ def compute_tf_slopes(adata, sig_tfs):
 
     slope_df = pd.DataFrame.from_dict(slopes, orient='index', columns=['slope'])
     return slope_df
-def perturb_tf_simulation(adata, net, tfs, slope_df, years=10):
+def perturb_tf_simulation(adata, net, tfs, slope_df, simulation_iteration=10):
     '''
      - 
     '''
@@ -112,7 +112,7 @@ def run_simulation_nonlin(N, X0, p, n_iter=10):
         X = X + delta
         X_store.append(X)
     return np.array(X_store)
-def perturb_tf_activity(adata, tfs, slope_df, years=10):
+def perturb_tf_activity(adata, tfs, slope_df, simulation_iteration=10):
     # print('Number of tfs to perturb:', len(tfs))
 
     # Extract gene names (first part before //)
@@ -137,110 +137,19 @@ def perturb_tf_activity(adata, tfs, slope_df, years=10):
             delta = slope_df.loc[varname].values
             if pd.isna(delta).any():
                 continue
-            expr_df[varname] += delta * years
+            expr_df[varname] += delta * simulation_iteration
 
     # Create a copy of the original AnnData and replace X
     adata_perturb = adata.copy()
     adata_perturb.X = expr_df.values
 
     return adata_perturb
-# def experiment_perturb_tfs(dataset, cell_type, data_type, tfs, trends, n_donors=20, 
-#                             reg_type='ridge', feature_type='tf_activity', ctr='Unperturbed', treatment='Perturbed'):
-#     from ciim.src.clock.helper import prepare_input, predict_age
-#     from ciim.src.common import save_dir
-#     from ciim.src.common import save_dir
-#     import anndata as ad
-#     # - calculate slope
-#     adata = ad.read_h5ad(f"{save_dir}/tf_activity_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
-    
-#     # - get the significant TFs and compute slopes
-#     if tfs == 'aging_tfs': # perturb the sig tfs 
-#         print('Perturbing the aging TFs')
-#         stats_sig = retrieve_sig_stats(type='bulk', race='both', filter_inconsistent=True)
-#         stats_sig = stats_sig[stats_sig['cell_type'] == cell_type]
-#         tfs = stats_sig['tf'].unique()
-#     elif tfs == 'all_tfs': # perturb all tfs
-#         print('Perturbing all TFs')
-#         tfs = adata.var_names
-#     elif isinstance(tfs, list): # perturb the given tfs
-#         print('Perturbing the given TFs')
-#         tfs = [tf for tf in tfs if tf in adata.var_names]
-#     else:
-#         raise ValueError("perturb_coverage should be either 'aging_tfs' or 'all_tfs'")
-    
-    
-#     if trends is None: # calculate the slope based on the activity slope
-#         slope_df = compute_tf_slopes(adata.copy(), tfs) # slope is for one year
-#         trend = 'aging'  # specify the trend for perturbation
-#         if trend == 'aging':
-#             slope_df = slope_df
-#         elif trend == 'anti-aging':
-#             slope_df = -slope_df
-#         else:
-#             raise ValueError("trend should be either 'increase' or 'decrease'")
-#     else:  # fixed slope
-#         slope_df = pd.DataFrame(trends)
-#         slope_df.index = tfs
-#         print('Slopes per year: ', slope_df)
-#     # - perturb the TFs and create a new adata object
-#     if feature_type == 'tf_activity': # here, we just change the TF activity based on the slope
-#         adata_perturb = perturb_tf_activity(adata.copy(), tfs, slope_df)
-#     elif feature_type == 'gene_expression': # here, we simulate the expression change in response to TF perturbation
-#         from ciim.src.tf_activity.helper import get_consensus_net, retrieve_net
-#         from ciim.src.common import datasets_all
-#         adata = ad.read_h5ad(f"{save_dir}/gene_expression_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
-#         # net = get_consensus_net(datasets=datasets_all, cell_type=cell_type, min_degree=3)
-#         net = retrieve_net(dataset, cell_type)
-#         adata_perturb = perturb_tf_simulation(adata.copy(), net, tfs, slope_df, years=10)
-#     else:
-#         raise ValueError("feature_type should be either 'tf_activity' or 'gene_expression'")
-#     # - combine the adatas and predict age
-
-#     adata.obs['condition'] = ctr
-#     adata_perturb.obs['condition'] = treatment
-#     adata_combined = ad.concat([adata, adata_perturb], axis=0)
-#     adata_combined = predict_age(adata_combined, cell_type, feature_type=feature_type, data_type=data_type, reg_type=reg_type)
-#     obs_combined = adata_combined.obs.copy()
-#     # - subset and calculate age acceleration
-#     if True:
-#         obs_combined['donor_age'] = obs_combined['donor_id'].astype(str) + '_' + obs_combined['age'].astype(str)
-#         donors = obs_combined['donor_age'].unique()
-#         np.random.seed(0)
-#         donors = np.random.choice(donors, n_donors, replace=False)
-#         obs_combined = obs_combined[obs_combined['donor_age'].isin(donors)]
-#     df_pivot = obs_combined.pivot(index='donor_age', columns='condition', values='predicted_age')
-#     df_pivot = df_pivot.dropna(subset=[ctr, treatment])
-#     df_pivot['diff'] = df_pivot[treatment] - df_pivot[ctr]
-#     df_pivot['cell_type'] = cell_type
-#     df_pivot['dataset'] = dataset
-
-#     return df_pivot
 
 def perform_stat_test(df_pivot, ctr='baseline', treatment='perturb'):
     
     t_stat, p_value = stats.ttest_rel(df_pivot[treatment], df_pivot[ctr])
     slope = (df_pivot[treatment] - df_pivot[ctr]).mean()
     return p_value, slope
-# def plot_age_acceleration_donors(df_pivot, ax=None, ctr='baseline', treatment='perturb'):
-#     if False: # line plot
-#         fig, ax = plt.subplots(figsize=(4, 4))
-#         sns.scatterplot(data=df_pivot, x=ctr, y=treatment, alpha=0.7, ax=ax)
-#         min_age, max_age = df_pivot[ctr].min(), df_pivot[treatment].max()
-#         ax.plot([min_age, max_age], [min_age, max_age], color='gray', linestyle='--', label='Ideal')
-
-#     if True: # donor plot
-#         df_plot = df_pivot.reset_index().melt(id_vars='donor_age', 
-#                                             value_vars=[ctr, treatment],
-#                                             var_name='condition', 
-#                                             value_name='predicted_age')
-
-#         # plt.figure(figsize=(3, 2.5))
-#         if ax is None:
-#             fig, ax = plt.subplots(figsize=(2.5, 2))
-#         sns.lineplot(data=df_plot, x='condition', y='predicted_age', 
-#                     hue='donor_age', marker='o', alpha=0.6, legend=False, ax=ax)
- 
-#         ax.margins(x=.1, y=0.1)
 
 def wrapper_plot_age_acceleration_for_tf_perturbation(df_cell, top_n=30, features=None, value_col='signed_neg_log10_pval'):
     from ciim.src.common import save_dir, surrogate_names, palette_datasets_pretty
@@ -270,6 +179,7 @@ def wrapper_plot_age_acceleration_for_tf_perturbation(df_cell, top_n=30, feature
         ci=None,
         ax=ax
     )
+    
 
     # Dataset-colored points
     sns.stripplot(
@@ -292,7 +202,7 @@ def wrapper_plot_age_acceleration_for_tf_perturbation(df_cell, top_n=30, feature
     ax.set_ylabel('TF')
     ax.margins(y=.05)
     ax.legend(title='Dataset', bbox_to_anchor=(1.05, 1), loc='upper left', frameon=False)
-    return fig
+    return fig, top_tfs
 
 from joblib import Parallel, delayed
 import os
@@ -332,7 +242,7 @@ def run_tf_screen_all(
         slope_df=None,
         tfs = None,
         data_type='bulk',
-        years=10,
+        simulation_iteration=10,
         version='v1',
         reg_type='ridge',
         feature_type='gene_expression',
@@ -342,7 +252,7 @@ def run_tf_screen_all(
     ):
     print(f"Processing: {cell_type} - {dataset} ({perturbation_mode} | {perturbation_type})")
     
-    net = get_consensus_net(datasets=datasets_all, cell_type=cell_type, min_degree=4)
+    net = get_consensus_net(datasets=datasets_all, cell_type=cell_type)
     # net = retrieve_net(dataset=dataset, cell_type=cell_type)
     if tfs is None:
         tfs = net['source'].unique()
@@ -354,6 +264,8 @@ def run_tf_screen_all(
         pass
 
     adata = ad.read_h5ad(f"{save_dir}/gene_expression_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
+    if 'disease' in adata.obs.columns:
+        adata = adata[adata.obs['disease'] == 'normal'].copy()
     if slope_df is None:
         slope_df = get_perturbation_slopes(adata, tfs, mode=perturbation_mode)
     if 'cell_type' in slope_df.columns:
@@ -379,164 +291,72 @@ def run_tf_screen_all(
         pivot = obs.pivot(index='donor_age', columns='condition', values='predicted_age')
         if 'Perturbed' not in pivot.columns or 'Baseline' not in pivot.columns:
             return None
-
+        pivot['cell_type'] = cell_type
+        pivot['dataset'] = dataset
+        pivot['perturbation'] = perturbation_mode
+        pivot['perturbation_type'] = perturbation_type
+        pivot['tf'] = ','.join(tfs)
         pivot['diff'] = pivot['Perturbed'] - pivot['Baseline']
-        return {
-            'mean_diff': pivot['diff'].mean(),
-            'tf': ','.join(tfs),
-            'cell_type': cell_type,
-            'dataset': dataset,
-            'perturbation': perturbation_mode,
-            'perturbation_type': perturbation_type
-        }
+
+        # pd.DataFrame({
+        #     'mean_diff': pivot['diff'].mean(),
+        #     'tf': ','.join(tfs),
+        #     'cell_type': cell_type,
+        #     'dataset': dataset,
+        #     'perturbation': perturbation_mode,
+        #     'perturbation_type': perturbation_type
+        # }) 
+        # return 
+        return pivot
 
     
     if perturbation_type == 'multi':
-        adata_perturb = perturb_tf_simulation(adata.copy(), net, list(tfs), slope_df.loc[tfs], years=years)
+        slope_df = slope_df.loc[tfs]
+        # if perturbation_mode == 'natural_aging':
+        #     slope_aging = compute_tf_slopes(adata, tfs)
+        #     slope_abs = 10 * slope_aging['slope'].abs()
+        #     slope_df.loc[tfs, 'slope'] = np.sign(slope_df.loc[tfs, 'slope']) * slope_abs
+
+        adata_perturb = perturb_tf_simulation(adata.copy(), net, list(tfs), slope_df, simulation_iteration=simulation_iteration)
         result = process_perturbation(adata, adata_perturb, tfs)
-        return pd.DataFrame([result]) 
+        return result
         
     else:
         slope_df = slope_df.abs()  # take absolute values
         tf_results = []
         for tf in tfs:
             slope_tf = slope_df.loc[[tf]]
-            adata_perturb = perturb_tf_simulation(adata.copy(), net, [tf], slope_tf, years=years)
+            adata_perturb = perturb_tf_simulation(adata.copy(), net, [tf], slope_tf, simulation_iteration=simulation_iteration)
             result = process_perturbation(adata, adata_perturb, [tf])
             tf_results.append(result)
-        rr = pd.DataFrame(tf_results)
-
+        rr = pd.concat(tf_results)
         return rr
 
-def wrapper_drug_aging_overlap(
-        stats_drug_sig, 
-        aging_stats_sig, 
-        col='cell_type',
-        agreement='opposite' # the tretment effect should be 'opposite' to the aging effect
-        ):
-    from ciim.src.common import palette_trend_2, cell_types
-    # Merge on tf and cell_type
-    # stats_drug_sig_all = stats_drug_sig_all[['tf', 'cell_type', 'slope_condition', 'comparision']]
-    # stats_drug_sig = stats_drug_sig_all[stats_drug_sig_all['cell_type'] == cell_type].copy()
-    # aging_stats_sig = aging_stats_sig_all[aging_stats_sig_all['cell_type'] == cell_type].copy()
 
-    merged = aging_stats_sig.merge(stats_drug_sig, on=['tf', col], how='inner')
-
-    
-    # Compute sign of slopes
-    merged['slope_sign'] = np.sign(merged['slope'])
-    merged['slope_condition_sign'] = np.sign(merged['slope_condition'])
-    merged = merged.drop_duplicates(subset=['tf', col, 'slope_sign', 'slope_condition_sign', 'comparision'])
-
-    # Assign trend from reference slope
-    merged['trend'] = merged['slope_sign'].map({1: 'positive', -1: 'negative'})
-
-    # Now filter for agreement within each trend group
-    def compute_agreement(group):
-        total = len(group)
-        if agreement == 'opposite':
-            agree = (group['slope_sign'] != group['slope_condition_sign']).sum()
-        else:
-            agree = (group['slope_sign'] == group['slope_condition_sign']).sum()
-        return pd.Series({'n_total_tfs': total, 'n_agreeing_tfs': agree})
-
-    summary = (
-        merged.groupby([col, 'trend'])
-        .apply(compute_agreement)
-        .reset_index()
-    )
-
-    if col == 'cell_type':
-        cell_types = [t for t in cell_types if t in summary[col].unique()]
-        summary[col] = pd.Categorical(
-            summary[col],
-            categories=cell_types,
-            ordered=True
-        )
-
-    summary['fraction_agree'] = summary['n_agreeing_tfs'] / summary['n_total_tfs']
-    summary['trend'] = ['Increase in aging' if x == 'positive' else 'Decrease in aging' for x in summary['trend']]
-
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    import matplotlib.patches as mpatches
-
-    fig, ax = plt.subplots(1, 1, figsize=(3, 2.5))
-    df = summary.copy()
-
-    # Barplot (background)
-    ax = sns.barplot(
-        data=df,
-        x=col,
-        y='n_total_tfs',
-        hue='trend',
-        dodge=True,
-        alpha=0.5,
-        palette=palette_trend_2,
-        edgecolor='black',
-        linewidth=0.1
-    )
-
-    # Overlay agreeing TFs as hatched bars
-    offset = {'Decrease in aging': -0.2, 'Increase in aging': 0.2}
-    colors = {'Decrease in aging': 'tab:blue', 'Increase in aging': 'tab:red'}
-
-    # Build x-tick mapping from ordered category
-    x_locs = {cat: i for i, cat in enumerate(summary[col].cat.categories)}
-
-    for i, row in df.iterrows():
-        base_x = x_locs[row[col]]
-        xpos = base_x + offset[row['trend']]
-        ax.bar(
-            xpos,
-            row['n_agreeing_tfs'],
-            width=0.4,
-            edgecolor=colors[row['trend']],
-            facecolor='none',
-            hatch='///',
-            linewidth=1,
-            zorder=1
-        )
-        ax.text(
-            xpos,
-            row['n_agreeing_tfs'] + 1,
-            f"{row['fraction_agree']:.2f}",
-            ha='center',
-            va='bottom',
-            fontsize=8
-        )
-
-    ax.set_xticks(list(x_locs.values()))
-    ax.set_xticklabels(list(x_locs.keys()), rotation=45, ha='right')
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
-    # plt.grid(axis='y', linestyle='--', alpha=0)
-    ax.set_ylabel("Number of TFs")
-    ax.set_xlabel("")
-    ax.margins(x=0.1, y=0.1)
-
-    # Legend
-    handles, labels = ax.get_legend_handles_labels()
-    hatch_patch = mpatches.Patch(facecolor='white', edgecolor='black', hatch='///', label='Agreeing TFs (overlap)')
-    handles.append(hatch_patch)
-    labels.append('Counter-effect overlap')
-    ax.legend(handles=handles, labels=labels, title='Trend', loc=(1.05, .5), frameon=False)
-    
-
-def plot_age_acceleration(df_all, x_col='cell_type', log_y=False):
+def plot_age_acceleration(df_all, x_col='cell_type', log_y=False, margins=(0.1, 0.2)):
+    # If a specific order is given, enforce it
+    order = df_all[x_col].unique()
+    print(df_all['cell_type'].unique())
+    # Calculate median per category
     df_median = df_all.groupby(x_col)['mean_diff'].median().reset_index()
+
+    # Plotting
     fig, ax = plt.subplots(figsize=(3, 3))
     df_all['dataset'] = df_all['dataset'].apply(lambda name: surrogate_names.get(name, name))
-    sns.stripplot(ax=ax, data=df_all, y='mean_diff', x=x_col, hue='dataset', 
-            palette=palette_datasets_pretty, alpha=0.7)
-    sns.barplot(ax=ax, data=df_median, y='mean_diff', x=x_col, alpha=0.5, color='gray')
+    sns.stripplot(ax=ax, data=df_all, y='mean_diff', x=x_col, hue='dataset',
+                  palette=palette_datasets_pretty, alpha=0.7, order=order)
+    sns.barplot(ax=ax, data=df_median, y='mean_diff', x=x_col, alpha=0.5, color='gray', order=order)
+
+    # Axes and labels
     ax.legend(loc=(1.05, .2), frameon=False, title='Dataset')
-    ax.margins(x=.1, y=.1)
+    ax.margins(x=margins[0], y=margins[1])
     ax.set_ylabel("Age shift (years)")
     ax.set_xlabel("")
-    # plt.tick_params(axis='x', rotation=45, ha='left')
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
+
     if log_y:
-        ax.set_yscale('log')
+        ax.set_yscale('symlog')
+
     return fig
 
 def wrapper_run_tf_screening(par, cell_types, datasets, n_jobs=10):
@@ -560,10 +380,10 @@ def wrapper_run_tf_screening(par, cell_types, datasets, n_jobs=10):
     df_all = pd.concat(results, axis=0)
     from scipy.stats import norm
 
-    df_all['z_score'] = df_all.groupby('cell_type')['mean_diff'].transform(
-        lambda x: (x - x.mean()) / x.std()
-    )
+    # df_all['z_score'] = df_all.groupby('cell_type')['mean_diff'].transform(
+    #     lambda x: (x - x.mean()) / x.std()
+    # )
 
-    df_all['empirical_pval_two_sided'] = 2 * norm.sf(np.abs(df_all['z_score']))
-    df_all['signed_neg_log10_pval'] = -np.sign(df_all['mean_diff']) * np.log10(df_all['empirical_pval_two_sided'])
+    # df_all['empirical_pval_two_sided'] = 2 * norm.sf(np.abs(df_all['z_score']))
+    # df_all['signed_neg_log10_pval'] = -np.sign(df_all['mean_diff']) * np.log10(df_all['empirical_pval_two_sided'])
     return df_all
