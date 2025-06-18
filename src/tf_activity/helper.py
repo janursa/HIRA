@@ -88,8 +88,8 @@ def retrieve_net(dataset, cell_type, only_promotor_based=False, c_t=5):
     from ciim.src.common import save_dir
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
-    if dataset == '!CXCL9':
-        net = get_consensus_net(datasets_e, cell_type_major, min_degree=2)
+    if dataset == 'CXCL9':
+        net = get_consensus_net(cell_type=cell_type_major)
     else:
         net = pd.read_csv(f"{save_dir}/grns/{dataset}/net_{cell_type_major}_all_agegroups_all_batches.csv")
     gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
@@ -149,7 +149,7 @@ def determine_sig_network(type, race='both', min_degree=3):
             continue
         
         # - get the nets
-        net = get_consensus_nets(datasets, [cell_type], min_degree=min_degree)[cell_type]
+        net = get_consensus_net(datasets, cell_type, min_degree=min_degree)
         sig_tfs = stats_tfs_t['tf'].unique()
         sig_targets = stats_targets_t['target'].unique()
         net = net[(net['source'].isin(sig_tfs)) & (net['target'].isin(sig_targets))]
@@ -218,36 +218,8 @@ def bin_feature_values(adata):
     max_vals = expr_mean.max(axis=1)
     expr_mean = (expr_mean.sub(min_vals, axis=0)).div(max_vals - min_vals, axis=0)
     return expr_mean
-def get_consensus_nets(datasets, cell_types, min_degree=5):
-    consensus_nets = {}
-    for cell_type in cell_types:
-        net_store = []
-        for dataset in datasets:
-            net = retrieve_net(dataset, cell_type)
-            net['dataset'] = dataset
-            net_store.append(net)
-        nets = pd.concat(net_store)
 
-        # Create a unique identifier for each link
-        nets['link'] = nets['source'] + '_' + nets['target']
-
-        # Keep only links shared by at least min_degree datasets
-        degrees = nets.groupby(['link'])['dataset'].size()
-        shared_links = degrees[degrees >= min_degree].index
-        nets = nets[nets['link'].isin(shared_links)]
-
-        # Identify and remove links with conflicting signs
-        if True:
-            sign_info = nets.groupby('link')['weight'].apply(lambda x: set(np.sign(x)))
-            consistent_links = sign_info[sign_info.apply(lambda x: len(x) == 1)].index
-            nets = nets[nets['link'].isin(consistent_links)]
-
-        # Take the median weight of consistent links
-        net_median = nets.groupby(['source', 'target', 'cell_type'])['weight'].median().reset_index()
-        consensus_nets[cell_type] = net_median
-
-    return consensus_nets
-def get_consensus_net(datasets, cell_type, min_degree=5):
+def get_consensus_net(datasets=datasets_all, cell_type='CD8T', min_degree=4):
     consensus_nets = {}
 
     net_store = []
@@ -258,13 +230,19 @@ def get_consensus_net(datasets, cell_type, min_degree=5):
     nets = pd.concat(net_store)
 
     nets['link'] = nets['source'] + '_' + nets['target']
+    # - filter out inconsistent links
+    sign_info = nets.groupby('link')['weight'].apply(lambda x: set(np.sign(x)))
+    consistent_links = sign_info[sign_info.apply(lambda x: len(x) == 1)].index
+    nets = nets[nets['link'].isin(consistent_links)]
+
+    # - filter out links that are not shared by at least min_degree datasets
     degrees = nets.groupby(['link'])['dataset'].size()
     shared_links = degrees[degrees>=min_degree].index
     nets = nets[nets['link'].isin(shared_links)]
 
     net_mean = nets.groupby(['source', 'target', 'cell_type'])['weight'].mean().reset_index()
     return net_mean
-def determine_stats_condition(adata, ctr_group='normal', condition_col='disease', test_type='unpaired', conditions=None, name_mapping = {'normal': 'healthy', 'systemic lupus erythematosus': 'SLE'}):
+def determine_stats_condition(adata, association_type='spearman', ctr_group='normal', condition_col='disease', test_type='unpaired', conditions=None):
     from scipy.stats import wilcoxon
     from scipy.sparse import issparse
     from scipy.stats import mannwhitneyu
@@ -273,18 +251,20 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='disease'
     if conditions is None:
         conditions = adata.obs[condition_col].unique()
     dataset = adata.obs['dataset'].unique()[0]
-    
+    name_mapping = {'normal': 'healthy', 'systemic lupus erythematosus': 'SLE'}
     stats_all = []
     if 'SLE' in dataset:
+        
         # case 1: association with age in healhty and disease samples
         for group in conditions:
             adata_sub = adata[adata.obs[condition_col] == group]
-            stats_df = association_with_age(adata_sub)
+            stats_df = association_with_age(adata_sub, association_type=association_type)
             
             stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
             stats_df['condition'] = name_mapping.get(group, group)
+            
             stats_all.append(stats_df)
-    
+        
     # case 2: condition vs ctrl 
     def stats_condition_vs_ctr(adata, condition):  
         mask_ctr = adata.obs[condition_col] == ctr_group
@@ -351,7 +331,6 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='disease'
             }) 
         results = pd.DataFrame(results)
         return results
-    stats_all = []
     if 'SLE' in dataset:
         # Run for each age subset
         age_masks = {
@@ -429,29 +408,32 @@ def wrapper_meta_analysis(par):
         stats_all = run_func(datasets, min_degree, meta_analysis_type)
         stats_all['race'] = 'both'
     else: # seperate meta analysis for asian and european
-        min_degree = 3
-        meta_analysis_type='fisher'
-        print(f'Running meta analysis for European datasets, min degree  {min_degree}, meta_analysis_type {meta_analysis_type}')
-        stats_e = run_func(datasets_e, min_degree, meta_analysis_type)
-        stats_e['race'] = 'european'
-
-        min_degree = 2
-        meta_analysis_type='max'
-        print(f'Running meta analysis for Asian datasets, min degree  {min_degree}, meta_analysis_type {meta_analysis_type}')
-        stats_a = run_func(datasets_a, min_degree, meta_analysis_type)
-        stats_a['race'] = 'asian'
+        stats_store = []
+        if False:
+            min_degree = 3
+            meta_analysis_type='fisher'
+            print(f'Running meta analysis for European datasets, min degree  {min_degree}, meta_analysis_type {meta_analysis_type}')
+            stats_e = run_func(datasets_e, min_degree, meta_analysis_type)
+            stats_e['race'] = 'european'
+            stats_store.append(stats_e)
+        if False:
+            min_degree = 2
+            meta_analysis_type='max'
+            print(f'Running meta analysis for Asian datasets, min degree  {min_degree}, meta_analysis_type {meta_analysis_type}')
+            stats_a = run_func(datasets_a, min_degree, meta_analysis_type)
+            stats_a['race'] = 'asian'
+            stats_store.append(stats_a)
 
         
         meta_analysis_type='fisher'
         min_degree = 4
         print(f'Running meta analysis for all datasets, min degree  {min_degree}, meta_analysis_type {meta_analysis_type}')
         stats_both = run_func(datasets_all, min_degree, meta_analysis_type)
-        # print(stats_both[stats_both['cell_type'] == 'CD8T'].groupby('tf').size().sort_values(ascending=False).head(20))
-        # aaa
         stats_both['race'] = 'both'
+        stats_store.append(stats_both)
 
         # - combine
-        stats_all = pd.concat([stats_e, stats_a, stats_both])
+        stats_all = pd.concat(stats_store, ignore_index=True)
 
     #- save
     print('Saving results to ', par['stats_all'])
@@ -490,9 +472,9 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
             if issparse(adata_sub.X):
                 adata_sub.X = adata_sub.X.toarray()
             if ('SLE' in dataset):
-                stats = determine_stats_condition(adata_sub, test_type=test_type)
+                stats = determine_stats_condition(adata_sub, test_type=test_type, association_type=par['association_type'])
             elif ('Covid' in dataset):
-                stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col='Max_WHO_Group', ctr_group='mild')
+                stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col='Max_WHO_Group', ctr_group='mild', association_type=par['association_type'])
             elif dataset == 'CXCL9':
                 stats_1 = determine_stats_condition(adata_sub, ctr_group='24 h RPMI', condition_col='treatment', test_type=test_type)
                 stats_2 = determine_stats_condition(adata_sub, ctr_group='24 h LPS', condition_col='treatment', test_type=test_type,  conditions=['24 h LPS + metformin', '24 h LPS + metformin + ruxolitinib', '24 h LPS + ruxolitinib'])
@@ -500,7 +482,7 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
             else:
                 stats = association_with_age(adata_sub, association_type=par['association_type'])
                 stats['condition'] = 'healthy'
-                stats['dataset'] = dataset
+            stats['dataset'] = dataset
             stats['cell_type'] = cell_type
             
             stats_store.append(stats)
@@ -508,6 +490,7 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
     stats_all = pd.concat(stats_store)
     if feature_type == 'gene_expression':
         stats_all.rename(columns={'tf': 'target'}, inplace=True)
+
     return stats_all
 
 def wrapper_tf_activity(par):
@@ -522,6 +505,7 @@ def wrapper_tf_activity(par):
     stats_store = []
     # ----------- calculate tf activity for all datasets
     for dataset in datasets:
+        print(dataset, data_type)
         adata = retrieve_adata_bulk(dataset, data_type)
         cell_types_l = adata.obs[cell_type_col].unique()
         all_types = list(minor_cell_types)+list(cell_types)
@@ -530,10 +514,10 @@ def wrapper_tf_activity(par):
             adata_t = adata[adata.obs[cell_type_col]==cell_type]
             if dataset == 'Covid_50MHH':
                 # net = retrieve_net(dataset, cell_type)
-                net = get_consensus_net(datasets=datasets_all, cell_type=cell_type, min_degree=3)
+                net = get_consensus_net(datasets=datasets_all, cell_type=cell_type)
             else:
                 # net = retrieve_net(dataset, cell_type)
-                net = get_consensus_net(datasets=datasets_all, cell_type=cell_type, min_degree=3)
+                net = get_consensus_net(datasets=datasets_all, cell_type=cell_type)
 
             if adata.shape[0] < 10:
                 continue
@@ -603,7 +587,7 @@ def determine_std(adata):
 
     return std_adata
 
-def association_with_age(adata, gene_col='tf', association_type='linear'):
+def association_with_age(adata, association_type, gene_col='tf'):
     '''
     Calculate p-values for the linear regression of the top tfs across datasets with ageing,
     and apply FDR correction (Benjamini-Hochberg).
@@ -629,7 +613,9 @@ def association_with_age(adata, gene_col='tf', association_type='linear'):
                 slope, intercept, r_value, p_value, _ = linregress(ages, expression)
             elif association_type == 'spearman':
                 slope, p_value = spearmanr(ages, expression)
-            
+            if abs(slope)>1:
+                print('Slope is too high for', gene, slope, association_type)
+                aaa
             p_value_store.append({
                 gene_col: gene, 
                 'p_value': p_value,

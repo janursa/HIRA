@@ -134,7 +134,6 @@ def tune_params_elasticnet(X, y, cv_groups=None, scoring='r2'):
 
 def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
     import anndata as ad
-    from ciim.src.clock.helper import spearman_corr
     from sklearn.metrics import r2_score, make_scorer
     print(X.shape, y.shape)
     # - choose the model
@@ -195,7 +194,7 @@ def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
     if reg_type != 'NN':
         if tune_model:
             if reg_type == 'GBM':
-                model = tune_params_gbm(model, X, y, batch_labels, scoring=make_scorer(r2_score, greater_is_better=False))
+                model = tune_params_gbm(model, X, y, batch_labels, scoring=make_scorer(spearman_corr, greater_is_better=False))
             elif reg_type == 'ridge':
                 model = tune_params_ridge(X, y, batch_labels, scoring=make_scorer(spearman_corr, greater_is_better=True))
             elif reg_type == 'elasticnet':
@@ -205,6 +204,10 @@ def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
         y_trained = model.predict(X)
         # - save
         return model, None, None, y_trained    
+def spearman_corr(y_true, y_pred):
+    from scipy.stats import spearmanr
+    return spearmanr(y_true, y_pred).correlation
+
 
 def wrapper_build_model_cell_type(cell_type, par):
     import anndata as ad

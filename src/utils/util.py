@@ -14,7 +14,7 @@ from ciim.src.common import base_dir, save_dir
 
 def get_genesets():
 
-    geneset_file = '../input/prior/h.all.v2024.1.Hs.symbols.gmt'
+    geneset_file = f'{base_dir}/prior/h.all.v2024.1.Hs.symbols.gmt'
     genesets_all = read_gmt(geneset_file) 
     genesets_all = {key:gs['genes'] for key, gs in genesets_all.items()}
     # extract relevant sets 

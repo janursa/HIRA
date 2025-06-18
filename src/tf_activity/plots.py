@@ -416,9 +416,160 @@ def plot_feature_values_per_datasets(cell_type, features, type, datasets, featur
     plt.suptitle(cell_type, fontsize=12, fontweight='bold', y=1.05)
     return fig
 
+def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5)):
+    
+    # stats_d_sig = stats_d[stats_d['p_value_adj'] < 0.05]
+    # --- Plot ---
+    tfs = df['tf'].unique()
+    fig, axes = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': [1.2, .8]})
+
+    # - Scatter plot
+    ax0 = axes[0]
+    sns.scatterplot(data=df, x='analysis', y='tf', hue='trend', ax=ax0, palette=palette_all, s=100)
+
+    # Overlay black stars
+    aging_df = df[df['analysis'] == 'Aging TFs']
+    assert aging_df.shape[0] > 0, "No Aging TFs found in the data"
+    ax0.scatter(aging_df['analysis'], aging_df['tf'], color='black', marker='*', s=20, zorder=10)
+    sig_df = df[df.get('p_value_adj', 1.0) < 0.05]
+    ax0.scatter(sig_df['analysis'], sig_df['tf'], color='black', marker='*', s=20, zorder=10)
+
+    # Fill in missing x-axis categories
+    missing = set(all_groups) - set(df['analysis'].unique())
+    for cat in missing:
+        ax0.scatter(cat, df['tf'].iloc[0], color='white', alpha=0)
+
+    ax0.set_xticklabels(ax0.get_xticklabels(), rotation=45, ha="right")
+    ax0.set_xlabel('')
+    ax0.set_ylabel('TFs')
+    ax0.margins(x=.2, y=.05 if len(tfs) > 10 else 0.2)
+    ax0.get_legend().remove()
+    # - Degree barplot
+    ax1 = axes[1]
+    bar_data = df.drop_duplicates(subset='tf')
+    sns.barplot(data=bar_data, x='degree', y='tf', ax=ax1, color='#56B4E9', alpha=0.7, ci=None)
+    ax1.set_xlabel('Centrality')
+    ax1.set_ylabel('')
+    ax1.set_yticks([])
+    ax1.margins(y=.05)
+    ax1.spines[['top', 'right']].set_visible(False)
+
+    # - Place legend on the outer right of both subplots
+    handles, labels = ax0.get_legend_handles_labels()
+    fig.legend(handles, labels, loc='center left', bbox_to_anchor=(1.02, 0.7), frameon=False)
+
+    
+def wrapper_drug_aging_overlap(
+        stats_drug_sig, 
+        aging_stats_sig, 
+        how='inner',
+        col='cell_type',
+        agreement='opposite',  # treatment effect should be 'opposite' to aging
+        ax=None,
+        legend=True
+    ):
+    from ciim.src.common import palette_trend_2, cell_types
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import matplotlib.patches as mpatches
+    import numpy as np
+    import pandas as pd
+
+    merged = aging_stats_sig.merge(stats_drug_sig, on=['tf', col], how=how)
+    merged['slope_sign'] = np.sign(merged['slope'])
+    merged['slope_condition_sign'] = np.sign(merged['slope_condition'])
+    merged = merged.drop_duplicates(subset=['tf', col, 'slope_sign', 'slope_condition_sign'])
+    merged['trend'] = merged['slope_sign'].map({1: 'positive', -1: 'negative'})
+
+    def compute_agreement(group):
+        total = len(group)
+        group = group[(~group['slope_sign'].isna()) & (~group['slope_condition_sign'].isna())]
+        if agreement == 'opposite':
+            agree = (group['slope_sign'] != group['slope_condition_sign']).sum()
+        elif agreement == 'same':
+            agree = (group['slope_sign'] == group['slope_condition_sign']).sum()
+        else:
+            raise ValueError("Agreement must be either 'opposite' or 'same'")
+        return pd.Series({'n_total_tfs': total, 'n_agreeing_tfs': agree})
+
+    summary = (
+        merged.groupby([col, 'trend'])
+        .apply(compute_agreement)
+        .reset_index()
+    )
+
+    if col == 'cell_type':
+        cell_types = [t for t in cell_types if t in summary[col].unique()]
+        summary[col] = pd.Categorical(summary[col], categories=cell_types, ordered=True)
+
+    summary['trend'] = ['Increase in aging' if x == 'positive' else 'Decrease in aging' for x in summary['trend']]
+    df = summary.copy()
+
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5))
+
+    # Background bars
+    sns.barplot(
+        data=df,
+        x=col,
+        y='n_total_tfs',
+        hue='trend',
+        dodge=True,
+        alpha=0.5,
+        palette=palette_trend_2,
+        edgecolor='black',
+        linewidth=0.1,
+        ax=ax,
+    )
+
+    offset = {'Decrease in aging': -0.2, 'Increase in aging': 0.2}
+    colors = {'Decrease in aging': 'tab:blue', 'Increase in aging': 'tab:red'}
+    x_locs = {cat: i for i, cat in enumerate(summary[col].cat.categories)}
+
+    for i, row in df.iterrows():
+        base_x = x_locs[row[col]]
+        xpos = base_x + offset[row['trend']]
+        ax.bar(
+            xpos,
+            row['n_agreeing_tfs'],
+            width=0.4,
+            edgecolor=colors[row['trend']],
+            facecolor='none',
+            hatch='///',
+            linewidth=1,
+            zorder=1
+        )
+        ax.text(
+            xpos,
+            row['n_total_tfs'] + 1,
+            f"{round(row['n_agreeing_tfs']/row['n_total_tfs'], 2)}",
+            ha='center',
+            va='bottom',
+            fontsize=8
+        )
+
+    ax.set_xticks(list(x_locs.values()))
+    ax.set_xticklabels(list(x_locs.keys()), rotation=45, ha='right')
+    ax.set_ylabel("Number of TFs")
+    ax.set_xlabel("")
+    ax.margins(x=0.1, y=0.2)
+    ax.spines[['right', 'top']].set_visible(False)
+
+    # Custom legend
+    ax.get_legend().remove()
+    handles, labels = ax.get_legend_handles_labels()
+    if agreement == 'opposite':
+        label = 'Counter-effect overlap'
+    elif agreement == 'same':
+        label = 'Same-effect overlap'
+    
+    hatch_patch = mpatches.Patch(facecolor='white', edgecolor='black', hatch='///', label=label)
+    handles.append(hatch_patch)
+    if legend:
+        ax.legend(handles=handles, title='Trend', loc=(1.05, 0.5), frameon=False)
 def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_type='tf_activity', sizes=(50, 100), 
                               top_features=20, min_degree=4, filter_meta_significant=False, race='european', width=3,
-                              margins={'x': 0.1, 'y': 0.1}):
+                             margins_ax1={'x': 0.1, 'y': 0.1}, margins_ax2={'x': 0.1, 'y': 0.1}, show_size_legend = False):
     from ciim.src.utils.plots import dotplot
     from matplotlib.colors import TwoSlopeNorm
     from ciim.src.common import cmap_trend, palette_trend_2, surrogate_names
@@ -494,16 +645,14 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     ax = fig.add_subplot(gs[0])
     ax_legend = fig.add_subplot(gs[-1])
     ax_legend.set_axis_off()
-    show_size_legend = True
+    
     if len(features) < 7:
         size_legend_loc = None
-        show_size_legend = False
         cbar_height='10%'
         cbar_width = "50%"
         bbox_to_anchor_cbar=(1.25, -.5, 1, 1)
     elif len(features) < 15:
         size_legend_loc = None
-        show_size_legend = False
         cbar_height='10%'
         cbar_width = "50%"
         bbox_to_anchor_cbar=(1.25, -.5, 1, 1)
@@ -543,7 +692,7 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
             size_legend_scale = 200/max(df['neg_log10_adj_pval']),
             )
     
-    ax.margins(**margins)
+    ax.margins(**margins_ax1)
     ax.set_ylabel('TFs' if feature_col=='source' else 'Genes')
     title = 'TF activity' if feature_col=='source' else 'Gene expression'
     ax.set_title(f'{title} - {cell_type}', pad=10, fontsize=10, fontweight='bold')
@@ -599,7 +748,7 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
         ax.set_yticklabels(y_labels)
 
     ax.spines[['top', 'right']].set_visible(False)
-    ax.margins(**margins)
+    ax.margins(**margins_ax2)
     ax.set_xlabel('Centrality\n(out-degree)' if feature_col=='source' else 'Centrality\n(in-degree)')
     ax.set_ylabel('')
     ax.set_yticks([])
