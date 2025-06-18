@@ -532,7 +532,8 @@ def wrapper_tf_activity(par):
                 # net = retrieve_net(dataset, cell_type)
                 net = get_consensus_net(datasets=datasets_all, cell_type=cell_type, min_degree=3)
             else:
-                net = retrieve_net(dataset, cell_type)
+                # net = retrieve_net(dataset, cell_type)
+                net = get_consensus_net(datasets=datasets_all, cell_type=cell_type, min_degree=3)
 
             if adata.shape[0] < 10:
                 continue
