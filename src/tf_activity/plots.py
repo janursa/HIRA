@@ -635,7 +635,8 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
 
     if stats_t.shape[0]==0:
         print(f'No data for {cell_type} {feature_col}')
-        return 
+        raise ValueError(f'No data for {cell_type} {feature_col}')
+        
     # - main plot
     df = stats_t.copy()
     fig = plt.figure(figsize=(width, .15*len(features)+1.5))
