@@ -277,6 +277,8 @@ def run_tf_screen_all(
         adata_base.obs['condition'] = 'Baseline'
         perturbed.obs['condition'] = 'Perturbed'
         combined = ad.concat([adata_base, perturbed], axis=0)
+        # combined.write(f"{temp_dir}/perturbation_{dataset}_{cell_type}.h5ad", compression='gzip')
+
         combined = predict_age(combined, cell_type, feature_type, data_type, reg_type, version)
         obs = combined.obs.copy()
         obs['donor_age'] = obs['donor_id'].astype(str) + '_' + obs['age'].astype(str)
