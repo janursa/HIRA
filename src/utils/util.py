@@ -8,42 +8,43 @@ import scipy.sparse as sp
 import sys
 import scanpy as sc
 import matplotlib.pyplot as plt
-
+from collections import defaultdict
 from task_grn_inference.src.utils.util import sum_by, read_gmt
-from ciim.src.common import base_dir, save_dir
+from ciim.src.common import base_dir, save_dir, prior_dir
 
-def get_genesets():
+def get_opengenes_sets():
+    df = pd.read_csv(f'{prior_dir}/gene-aging-mechanisms.tsv', sep='\t')
+    reported_genes = df.index.unique().to_list()
+    # Flattened reverse map
+    reverse_map = defaultdict(list)
+    for idx, row in df.iterrows():
+        for cell in row:
+            # print(cell)
+            # aa
+            if cell is None or pd.isna(cell) or cell == '':
+                continue
+            try:
+                cell.strip()
+            except:
+                print(cell)
+            for item in cell.split(','):
+                k = item.strip('\'"')
+                k = k[0].upper() + k[1:]
+                reverse_map[k].append(idx)
 
-    geneset_file = f'{base_dir}/prior/h.all.v2024.1.Hs.symbols.gmt'
-    genesets_all = read_gmt(geneset_file) 
-    genesets_all = {key:gs['genes'] for key, gs in genesets_all.items()}
-    # extract relevant sets 
-    # gene_sets = {}
-    # # map_dict = {
-    # #     'HALLMARK_PI3K_AKT_MTOR_SIGNALING': 'PI3K/AKT/MTOR',
-    # #     'HALLMARK_MTORC1_SIGNALING': 'MTORC1',
-    # #     'HALLMARK_P53_PATHWAY': 'P53',
-    # #     'HALLMARK_TNFA_SIGNALING_VIA_NFKB': 'TNFA/NFKB',
-    # #     'HALLMARK_TGF_BETA_SIGNALING': 'TGF-Beta',
-    # #     'HALLMARK_WNT_BETA_CATENIN_SIGNALING': 'WNT-Beta Catenin',
-    # #     'HALLMARK_OXIDATIVE_PHOSPHORYLATION': 'Oxidative Phos.'
-    # # }
-    # for key, key_simple in genesets_all.items():
-    #     gene_sets[key_simple] = genesets_all[key]
+    # Convert to regular dict if needed
+    reverse_map = dict(reverse_map)
+    return reverse_map
 
-    # geneset_file = '../input/prior/c5.all.v2024.1.Hs.symbols.gmt'
-    # genesets_all = read_gmt(geneset_file) 
-    # genesets_all = {key:gs['genes'] for key, gs in genesets_all.items()}
-    # # extract relevant sets 
-    # gene_sets_andreas = {}
-    # map_dict = {'GOMF_ANTIGEN_BINDING': 'Antigen binding', 
-    #             'GOCC_NUCLEOSOME': 'Nucleosome', 
-    #             'GOMF_EXTRACELLULAR_MATRIX_BINDING': 'ECM-binding', 
-    #             'GOCC_RNA_POLYMERASE_II_CORE_COMPLEX': 'RNA polymerase 2'}
-    # for key, key_simple in map_dict.items():
-    #     gene_sets_andreas[key_simple] = genesets_all[key]
-
-    # gene_sets = {**gene_sets, **gene_sets_andreas}
+def get_genesets(pathway):
+    if pathway == 'canonical':
+        geneset_file = f'{base_dir}/prior/h.all.v2024.1.Hs.symbols.gmt'
+        genesets_all = read_gmt(geneset_file) 
+        genesets_all = {' '.join(key.split('_')[1:]):gs['genes'] for key, gs in genesets_all.items()}
+    elif pathway == 'opengenes':
+        genesets_all = get_opengenes_sets()
+    else:
+        raise ValueError(f"Unsupported pathway type: {pathway}. Choose 'canonical' or 'opengenes'.")
     return genesets_all
 def get_gene2pathway():
     genesets_dict = get_genesets()

@@ -5,13 +5,14 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from collections import OrderedDict
 
-if True: # running on the server
+if False: # running on the server
     base_dir = '/vol/projects/jnourisa/'
 else:
     base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
 save_dir = f'{base_dir}/output/'
 clock_save_dir = f"{save_dir}/clock/"
 plots_dir = f"{save_dir}/plots/"
+prior_dir = f"{base_dir}/prior/"
 
 surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All batches', 
                     '34-':'35 below', '35_44':'35-45', '45_54':'45-55', '55_64':'55-65', '65_75':'65-75',
@@ -56,7 +57,7 @@ datasets_e = ['data1', 'data7_allTPs_jalil', 'data12', 'SLE_European']
 datasets_a = ['data13_Korean' , 'data13_Japanese']
 datasets_all = datasets_e + datasets_a
 
-aging_clock_train_datasets = ['data1', 'data7_allTPs_jalil', 'SLE_European', 'data13_Japanese']
+aging_clock_train_datasets = ['data1', 'data7_allTPs_jalil', 'SLE_European', 'data13_Japanese', 'data12', 'data13_Korean']
 datasets_disease = ['SLE_European', 'Covid_50MHH']
 datasets_drug_perturbation = ['CXCL9']
 

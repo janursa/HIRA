@@ -9,6 +9,8 @@ from ciim.src.common import save_dir, surrogate_names, palette_datasets_pretty
 from ciim.src.tf_activity.helper import retrieve_sig_stats
 from ciim.src.tf_activity.helper import get_consensus_net
 from ciim.src.common import datasets_all
+import warnings
+warnings.filterwarnings('ignore')
 
 def compute_tf_slopes(adata, tfs):
     '''
@@ -236,9 +238,51 @@ def get_perturbation_slopes(adata, all_tfs, mode='overexpression'):
     else:
         raise ValueError(f"Unknown perturbation mode: {mode}")
     return slope_df
+def compute_age_shift(adata_base, perturbed, **kwargs):
+        adata_base.obs['condition'] = 'Baseline'
+        perturbed.obs['condition'] = 'Perturbed'
+        combined = ad.concat([adata_base, perturbed], axis=0)
+
+        combined = predict_age(combined, **kwargs)
+        obs = combined.obs.copy()
+        obs['donor_age'] = obs['donor_id'].astype(str) + '_' + obs['age'].astype(str)
+
+        donors = obs['donor_age'].unique()
+
+        donors = np.random.choice(donors, len(donors), replace=False)
+        obs = obs[obs['donor_age'].isin(donors)]
+
+        pivot = obs.pivot(index='donor_age', columns='condition', values='predicted_age')
+        if 'Perturbed' not in pivot.columns or 'Baseline' not in pivot.columns:
+            return None
+        
+        pivot['age_shift'] = pivot['Perturbed'] - pivot['Baseline']
+
+        return pivot
+def compute_gene_score_shift(adata_base, adata_perturbed, genes):
+    import scanpy as sc
+    genes = [g for g in genes if g in adata_base.var_names]
+    # Compute gene scores
+    sc.tl.score_genes(adata_base, gene_list=genes, score_name='gene_score_orig', use_raw=False)
+    sc.tl.score_genes(adata_perturbed, gene_list=genes, score_name='gene_score_perturbed', use_raw=False)
+
+    # Compute expression shift
+    score_shift = adata_perturbed.obs['gene_score_perturbed'] - adata_base.obs['gene_score_orig']
+    
+    adata_base.obs['donor_age'] = adata_base.obs['donor_id'].astype(str) + '_' + adata_base.obs['age'].astype(str)
+    result_df = pd.DataFrame({
+        'donor_age': adata_base.obs['donor_age'],
+        'Baseline_gene_score': adata_base.obs['gene_score_orig'].values,
+        'Perturbed_gene_score': adata_perturbed.obs['gene_score_perturbed'].values,
+        'gene_score_shift': score_shift.values
+    }, index=adata_base.obs_names)
+    result_df.set_index('donor_age', inplace=True)
+    return result_df
+
 def run_tf_screen_all(
         dataset,
         cell_type,
+        genes=None,
         slope_df=None,
         tfs = None,
         data_type='bulk',
@@ -273,54 +317,27 @@ def run_tf_screen_all(
         slope_df = slope_df[['slope']]
     tfs = slope_df.index.tolist()
 
-    def process_perturbation(adata_base, perturbed, tfs):
-        adata_base.obs['condition'] = 'Baseline'
-        perturbed.obs['condition'] = 'Perturbed'
-        combined = ad.concat([adata_base, perturbed], axis=0)
-        # combined.write(f"{temp_dir}/perturbation_{dataset}_{cell_type}.h5ad", compression='gzip')
-
-        combined = predict_age(combined, cell_type, feature_type, data_type, reg_type, version)
-        obs = combined.obs.copy()
-        obs['donor_age'] = obs['donor_id'].astype(str) + '_' + obs['age'].astype(str)
-
-        donors = obs['donor_age'].unique()
-        if len(donors) < n_donors:
-            return None
-
-        donors = np.random.choice(donors, n_donors, replace=False)
-        obs = obs[obs['donor_age'].isin(donors)]
-
-        pivot = obs.pivot(index='donor_age', columns='condition', values='predicted_age')
-        if 'Perturbed' not in pivot.columns or 'Baseline' not in pivot.columns:
-            return None
-        pivot['cell_type'] = cell_type
-        pivot['dataset'] = dataset
-        pivot['perturbation'] = perturbation_mode
-        pivot['perturbation_type'] = perturbation_type
-        pivot['tf'] = ','.join(tfs)
-        pivot['diff'] = pivot['Perturbed'] - pivot['Baseline']
-
-        # pd.DataFrame({
-        #     'mean_diff': pivot['diff'].mean(),
-        #     'tf': ','.join(tfs),
-        #     'cell_type': cell_type,
-        #     'dataset': dataset,
-        #     'perturbation': perturbation_mode,
-        #     'perturbation_type': perturbation_type
-        # }) 
-        # return 
-        return pivot
-
-    
+   
     if perturbation_type == 'multi':
         slope_df = slope_df.loc[tfs]
-        # if perturbation_mode == 'natural_aging':
-        #     slope_aging = compute_tf_slopes(adata, tfs)
-        #     slope_abs = 10 * slope_aging['slope'].abs()
-        #     slope_df.loc[tfs, 'slope'] = np.sign(slope_df.loc[tfs, 'slope']) * slope_abs
 
         adata_perturb = perturb_tf_simulation(adata.copy(), net, list(tfs), slope_df, simulation_iteration=simulation_iteration)
-        result = process_perturbation(adata, adata_perturb, tfs)
+        result = compute_age_shift(adata, adata_perturb, 
+                                    cell_type=cell_type, 
+                                    data_type=data_type,
+                                    version=version,
+                                    reg_type=reg_type,
+                                    feature_type=feature_type)
+        result['tf'] = ','.join(tfs)
+        result['cell_type'] = cell_type
+        result['dataset'] = dataset
+        result['perturbation'] = perturbation_mode
+        result['perturbation_type'] = perturbation_type
+        if genes is not None:
+            result_2 = compute_gene_score_shift(adata, adata_perturb, genes)
+            result = result.merge(result_2, left_index=True, right_index=True, how='left')
+            # print(result)
+            # aaa
         return result
         
     else:
@@ -329,9 +346,20 @@ def run_tf_screen_all(
         for tf in tfs:
             slope_tf = slope_df.loc[[tf]]
             adata_perturb = perturb_tf_simulation(adata.copy(), net, [tf], slope_tf, simulation_iteration=simulation_iteration)
-            result = process_perturbation(adata, adata_perturb, [tf])
+            result = compute_age_shift(adata, adata_perturb, 
+                                    cell_type=cell_type, 
+                                    data_type=data_type,
+                                    version=version,
+                                    reg_type=reg_type,
+                                    feature_type=feature_type)
+            result['tf'] = ','.join([tf])
+            result['cell_type'] = cell_type
+            result['dataset'] = dataset
+            result['perturbation'] = perturbation_mode
+            result['perturbation_type'] = perturbation_type
             tf_results.append(result)
-        rr = pd.concat(tf_results)
+        rr = pd.concat(tf_results).reset_index()
+        
         return rr
 
 

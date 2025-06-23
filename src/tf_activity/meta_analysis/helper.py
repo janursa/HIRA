@@ -29,6 +29,9 @@ def run_meta_analysis(stats_all, meta_analysis_type='max', min_degree=2, temp_di
     elif 'target' in stats_all_c.columns:
         stats_all_c.rename(columns={'target': 'gene'}, inplace=True)
         original_name = 'target'
+    elif 'pathway' in stats_all_c.columns:
+        stats_all_c.rename(columns={'pathway': 'gene'}, inplace=True)
+        original_name = 'pathway'
     else:
         raise ValueError('No gene, tf or target column in stats_all')
     # -------- actual run

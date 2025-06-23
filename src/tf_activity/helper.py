@@ -20,7 +20,8 @@ from scipy.stats import mannwhitneyu
 from tqdm import tqdm
 from ciim.src.common import cell_types,base_dir, save_dir, mapping_major_2_minor, mapping_minor_2_major, minor_cell_types
 from scipy.sparse import issparse
-
+import warnings
+warnings.filterwarnings("ignore")
 def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datasets=None, condition=None):
     from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
     
@@ -46,7 +47,7 @@ def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datas
         stats = stats[stats['dataset'].isin(datasets)]
     return stats
 
-def retrieve_feature_data(dataset, cell_type, type, feature_type='tf_activity'):
+def retrieve_feature_data(dataset, cell_type, type, feature_type='tf_activity', condition='healthy'):
     from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
 
     # cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
@@ -55,14 +56,16 @@ def retrieve_feature_data(dataset, cell_type, type, feature_type='tf_activity'):
         raise ValueError(f'File {file_path} does not exist')
 
     adata = ad.read_h5ad(file_path)
-    
+    if 'SLE' in dataset:
+        adata = adata[adata.obs['disease'] == 'normal'].copy()
+    # adata = adata[adata.obs['condition'] == condition].copy()
     return adata
 
 def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activity'):
     adata.write_h5ad(f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
 
 
-def retrieve_sig_stats(type, feature_type='tf_activity', race='both', filter_inconsistent=True, cell_type=None):
+def retrieve_sig_stats(type='bulk', feature_type='tf_activity', race='both', filter_inconsistent=True, cell_type=None):
     from ciim.src.common import save_dir
     stats_all = pd.read_csv(f'{save_dir}/{feature_type}/stats_all_{type}.csv')
     
@@ -116,7 +119,7 @@ def retrieve_nets(datasets, cell_type, only_promotor_based=False):
     nets = pd.concat(net_store, ignore_index=True)
     return nets
 
-def retrieve_sig_net(type, race, cell_type=None):
+def retrieve_sig_net(type='bulk', race='both', cell_type=None):
     df = pd.read_csv(f'{save_dir}/sig_nets/sig_nets_{type}_{race}.csv')
     if cell_type is not None:
         df = df[df['cell_type'] == cell_type]
@@ -219,29 +222,41 @@ def bin_feature_values(adata):
     expr_mean = (expr_mean.sub(min_vals, axis=0)).div(max_vals - min_vals, axis=0)
     return expr_mean
 
-def get_consensus_net(datasets=datasets_all, cell_type='CD8T', min_degree=4):
-    consensus_nets = {}
+from scipy.stats import zscore
 
+def get_consensus_net(datasets=datasets_all, cell_type='CD8T', min_degree=4):
     net_store = []
     for dataset in datasets:
         net = retrieve_net(dataset, cell_type)
         net['dataset'] = dataset
         net_store.append(net)
+
     nets = pd.concat(net_store)
 
     nets['link'] = nets['source'] + '_' + nets['target']
-    # - filter out inconsistent links
+
+    # Filter out inconsistent links (keep those with consistent sign)
     sign_info = nets.groupby('link')['weight'].apply(lambda x: set(np.sign(x)))
     consistent_links = sign_info[sign_info.apply(lambda x: len(x) == 1)].index
     nets = nets[nets['link'].isin(consistent_links)]
 
-    # - filter out links that are not shared by at least min_degree datasets
-    degrees = nets.groupby(['link'])['dataset'].size()
-    shared_links = degrees[degrees>=min_degree].index
+    # Filter links shared by at least min_degree datasets
+    degrees = nets.groupby('link')['dataset'].nunique()
+    shared_links = degrees[degrees >= min_degree].index
     nets = nets[nets['link'].isin(shared_links)]
 
-    net_mean = nets.groupby(['source', 'target', 'cell_type'])['weight'].mean().reset_index()
-    return net_mean
+    # Compute z-score per link (within each link group)
+    nets['zscore'] = nets.groupby('dataset')['weight'].transform(zscore)
+
+    # Compute mean z-score across datasets per (source, target)
+    net_mean_z = (
+        nets.groupby(['source', 'target'])['zscore']
+        .mean()
+        .reset_index()
+        .rename(columns={'zscore': 'weight'})
+    )
+    
+    return net_mean_z
 def determine_stats_condition(adata, association_type='spearman', ctr_group='normal', condition_col='disease', test_type='unpaired', conditions=None):
     from scipy.stats import wilcoxon
     from scipy.sparse import issparse
@@ -363,12 +378,13 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
 
 def wrapper_meta_analysis(par):
     from ciim.src.tf_activity.meta_analysis.helper import run_meta_analysis
-    stats_features = pd.read_csv(par['stats_features'])
-    
+    stats_features = pd.read_csv(par['stats_features'])    
     if 'tf' in stats_features.columns:
         feature_col = 'tf'
     elif 'target' in stats_features.columns:
         feature_col = 'target'
+    elif 'pathway' in stats_features.columns:
+        feature_col = 'pathway'
     else:
         print(stats_features)
         raise ValueError('Unknown feature column')
@@ -497,6 +513,7 @@ def wrapper_tf_activity(par):
     # --------- load data
     print('Loading data...')
     data_type = par['type']
+    cell_types = par['cell_types']
     datasets = par['datasets']
     cell_type_col = par['cell_type_resolution']
 
@@ -529,8 +546,75 @@ def wrapper_tf_activity(par):
 
             write_feature_data(tf_acts, dataset, cell_type, data_type)
 
-def wrapper_gene_expression(cell_types, datasets, type='bulk'):
+def wrapper_gene_score(par):
+    from ciim.src.utils.util import get_genesets
     # --------- load data
+    cell_types = par['cell_types']
+    type = par['type']
+    datasets = par['datasets']
+    feature_type = par['feature_type']
+
+    # --------- load data
+    print('Loading data...')
+    adata_dict = {dataset: retrieve_adata_bulk(dataset, type) for dataset in datasets}
+
+    pathways = get_genesets(pathway=par['pathway'])
+    
+    print('Calculating gene scores...')
+    stats_store = []
+    for cell_type in tqdm(cell_types, desc='cell types'):
+        # ----------- calculate tf activity for all datasets
+        net = get_consensus_net(cell_type=cell_type) #TOGO 
+        net_genes = net['target'].unique()
+        for dataset in datasets:
+            adata = adata_dict[dataset][adata_dict[dataset].obs['cell_type']==cell_type]
+            
+            # Ensure genes are in adata.var_names
+            gene_scores = {}
+            n_matching_genes = {}
+            for pathway, genes in pathways.items():
+                if par['gene_coverage'] == 'all_genes':
+                    pass
+                elif par['gene_coverage'] == 'target_genes':
+                    genes = [gene for gene in genes if gene in net_genes]  # TOGO: Filter genes based on the net
+                else:
+                    raise ValueError(f'Unknown gene coverage {par["gene_coverage"]}, should be one of all_genes, target_genes')
+                genes_present = list(set(genes).intersection(adata.var_names))
+                if len(genes_present) == 0:
+                    continue
+                if False:
+                    score = np.array(adata[:, genes_present].X.mean(axis=1)).flatten()
+                else:
+                    sc.tl.score_genes(adata, gene_list=genes_present, score_name=pathway, use_raw=False)
+                    score = adata.obs[pathway].values
+                
+                gene_scores[pathway] = score
+                n_matching_genes[pathway] = len(genes_present)
+
+            if not gene_scores:
+                print(f"No matching genes found for {cell_type} in {dataset}. Skipping.")
+                continue
+
+            # Create a new AnnData object to store scores
+            X_df = pd.DataFrame(gene_scores, index=adata.obs_names)
+
+            # Make sure index (cell names) is properly set as obs
+            obs = adata.obs.loc[X_df.index].copy()
+
+            # Each column in X_df is a gene score for a pathway
+            var = pd.DataFrame(index=X_df.columns)
+            var['n_matching_genes'] = pd.Series(n_matching_genes)
+
+            adata_scores = sc.AnnData(X=X_df.values, obs=obs, var=var)
+            write_feature_data(adata_scores, dataset, cell_type, type, feature_type=feature_type)
+
+
+    
+def wrapper_gene_expression(par):
+    # --------- load data
+    cell_types = par['cell_types']
+    type = par['type']
+    datasets = par['datasets']
     print('Loading data...')
     adata_dict = {dataset: retrieve_adata_bulk(dataset, type) for dataset in datasets}
 

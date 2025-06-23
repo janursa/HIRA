@@ -365,7 +365,7 @@ def dotplot_category_color(df, ax,
             frameon=False
         )
         ax.add_artist(size_legend_handle)
-def plot_feature_values_per_datasets(cell_type, features, type, datasets, feature_type='gene_expression', age_limit=[20, 75], cluster=False):
+def plot_feature_values_per_datasets(cell_type, features, type, datasets, feature_type='gene_expression', age_limit=[20, 75], cluster=False, figsize=None):
     import matplotlib.pyplot as plt
     import seaborn as sns
     # from ciim.src.utils.plots import heatplot_age_trend
@@ -375,7 +375,9 @@ def plot_feature_values_per_datasets(cell_type, features, type, datasets, featur
 
     n_datasets = len(datasets)
     n_features = len(features)
-    fig, axes = plt.subplots(1, n_datasets, figsize=(n_datasets*3, .2*n_features+1), sharey=False)
+    if figsize is None:
+        figsize = (n_datasets*3, .2*n_features+1)
+    fig, axes = plt.subplots(1, n_datasets, figsize=figsize, sharey=False)
     for i, (dataset) in enumerate(datasets):
         adata = retrieve_feature_data(dataset, cell_type, type, feature_type=feature_type)
         adata = adata[:, adata.var_names.isin(features)]
@@ -567,6 +569,153 @@ def wrapper_drug_aging_overlap(
     handles.append(hatch_patch)
     if legend:
         ax.legend(handles=handles, title='Trend', loc=(1.05, 0.5), frameon=False)
+def plot_gene_score_association_with_age(cell_type, datasets, type, features=None, feature_type='tf_activity', sizes=(50, 100), 
+                              top_features=20, min_degree=4, filter_meta_significant=False, race='european', width=3,
+                             margins_ax1={'x': 0.1, 'y': 0.1}, margins_ax2={'x': 0.1, 'y': 0.1}, show_size_legend = False, figsize=None):
+    from ciim.src.utils.plots import dotplot
+    from matplotlib.colors import TwoSlopeNorm
+    from ciim.src.common import cmap_trend, palette_trend_2, surrogate_names
+    from ciim.src.tf_activity.helper import retrieve_stats_features, retrieve_sig_stats, retrieve_net
+    import matplotlib.gridspec as gridspec
+    import pandas as pd
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    if feature_type == 'tf_activity':
+        feature_col = 'source'
+    elif feature_type == 'gene_expression':
+        feature_col = 'target'
+    elif feature_type == 'gene_score':
+        feature_col = 'pathway'
+    else:
+        raise ValueError(f"Unknown feature type: {feature_type}")
+
+    # - format the data
+    stats_t = retrieve_stats_features(type, feature_type, cell_type=cell_type, datasets=datasets, condition='healthy')
+    if features is None:
+        features = stats_t[feature_col].unique()
+    stats_t = stats_t[stats_t[feature_col].isin(features)]
+    if 'tf' in stats_t.columns:
+        stats_t = stats_t.rename(columns={'tf': 'source'})
+    if filter_meta_significant:
+        stats_sig = retrieve_sig_stats(type=type, race=race, feature_type=feature_type)
+        stats_sig = stats_sig[stats_sig['cell_type'] == cell_type]
+        sig_tfs = stats_sig[feature_col].unique()
+        stats_t = stats_t[stats_t[feature_col].isin(sig_tfs)]
+    
+    # - add the number of genes in each pathway
+    c_store = []
+    for dataset in datasets:
+        df = retrieve_feature_data(dataset, cell_type, type, feature_type='gene_score').var
+        df.index.name = 'pathway'
+        df = df.reset_index()
+        df['dataset'] = dataset
+        c_store.append(df)
+    c = pd.concat(c_store)
+    c_median = c.groupby([feature_col])['n_matching_genes'].median().reset_index()
+    c_std = c.groupby([feature_col])['n_matching_genes'].std().reset_index(name='n_matching_genes_std')
+    stats_t = stats_t.merge(c_median, left_on=feature_col, right_on=feature_col, how='left')
+    stats_t = stats_t.merge(c_std, left_on=feature_col, right_on=feature_col, how='left')
+    
+
+    stats_t['neg_log10_adj_pval'] = -np.log10(stats_t['p_value_adj'])
+    stats_t['dataset'] = pd.Categorical(stats_t['dataset'], categories=datasets, ordered=True)
+    stats_t['dataset'] = stats_t['dataset'].apply(lambda name: surrogate_names.get(name, name))
+
+    if stats_t.shape[0]==0:
+        print(f'No data for {cell_type} {feature_col}')
+        raise ValueError(f'No data for {cell_type} {feature_col}')
+    if True:
+        # - main plot
+        df = stats_t.copy()
+        
+        if figsize is None:
+            figsize = (width, .2*len(features)+1.5)
+        fig = plt.figure(figsize=figsize)
+        gs = gridspec.GridSpec(1, 3, width_ratios=[1, 0.5, .4])  # middle space reserved for legend
+        
+        ax = fig.add_subplot(gs[0])
+        ax_legend = fig.add_subplot(gs[-1])
+        ax_legend.set_axis_off()
+        
+        if len(features) < 7:
+            size_legend_loc = None
+            cbar_height='10%'
+            cbar_width = "50%"
+            bbox_to_anchor_cbar=(1.25, -.5, 1, 1)
+        elif len(features) < 15:
+            size_legend_loc = None
+            cbar_height='10%'
+            cbar_width = "50%"
+            bbox_to_anchor_cbar=(1.25, -.5, 1, 1)
+
+        else:
+            bbox_to_anchor_cbar=(1.2, -.2, 1, 1)
+            size_legend_loc=(.95, -.4, 1, 1)
+            cbar_height='5%'
+            cbar_width="50%"
+        
+        # Ensure feature_col is a categorical with the desired order
+        unique_features = df[feature_col].unique()
+        df[feature_col] = pd.Categorical(df[feature_col], categories=unique_features, ordered=True)
+        ordered_features = df[feature_col].cat.categories  
+        if df['dataset'].nunique() != len(datasets):
+            print( f"Only {df['dataset'].nunique()} datasets are available in the stats.")   
+        dotplot(df, 
+                x='dataset',
+                y = feature_col,
+                ax=ax, 
+                ax_legend=ax_legend,
+                color_col='slope', 
+                size_col='neg_log10_adj_pval', 
+                palette=cmap_trend, 
+                show_color_legend=True, 
+                show_size_legend=show_size_legend,
+                alpha=1,
+                size_legend_title='-Log10 p-value',
+                color_legend_title='Correlation \nwith aging',
+                size_legend_loc=size_legend_loc,
+                bbox_to_anchor_cbar=bbox_to_anchor_cbar,
+                cbar_height=cbar_height,
+                cbar_width=cbar_width,
+                linewidth=0.1,  
+                sizes=sizes,
+                size_legend_scale = 200/max(df['neg_log10_adj_pval']),
+                )
+        
+        ax.margins(**margins_ax1)
+        ax.set_ylabel('TF' if feature_col == 'source' else ('Gene' if feature_col == 'target' else 'Pathway'))
+        title = 'TF activity' if feature_col == 'source' else ('Gene expression' if feature_col == 'target' else 'Gene score')
+        ax.set_title(f'{title} - {cell_type}', pad=10, fontsize=10, fontweight='bold')
+
+    # ------------ centrality
+    c = c[c[feature_col].isin(features)]
+    c[feature_col] = pd.Categorical(c[feature_col], categories=ordered_features, ordered=True)
+    ax = fig.add_subplot(gs[1])
+    if True:
+        sns.barplot(
+            data=df,
+            x='n_matching_genes',
+            y=feature_col,
+            ax=ax,
+            color='#56B4E9',
+            alpha=0.7,
+            ci=None,  # turn off seaborn's built-in error estimation
+            errorbar=('sd', df['n_matching_genes_std']),  # pass your own std values
+            errwidth=1.2,
+            capsize=0.2
+        )
+    
+
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.margins(**margins_ax2)
+    ax.set_xlabel('Gene count')
+    ax.set_ylabel('')
+    ax.set_yticks([])
+    plt.subplots_adjust(wspace=0.1)
+
+    return fig
 def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_type='tf_activity', sizes=(50, 100), 
                               top_features=20, min_degree=4, filter_meta_significant=False, race='european', width=3,
                              margins_ax1={'x': 0.1, 'y': 0.1}, margins_ax2={'x': 0.1, 'y': 0.1}, show_size_legend = False):
@@ -580,15 +729,24 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     import matplotlib.pyplot as plt
     import seaborn as sns
 
-    feature_col = 'source' if feature_type == 'tf_activity' else 'target'
+    if feature_type == 'tf_activity':
+        feature_col = 'source'
+    elif feature_type == 'gene_expression':
+        feature_col = 'target'
+    else:
+        raise ValueError(f"Unknown feature type: {feature_type}")
+
     # - format the data
     stats_t = retrieve_stats_features(type, feature_type, cell_type=cell_type, datasets=datasets, condition='healthy')
+    
     if 'tf' in stats_t.columns:
         stats_t = stats_t.rename(columns={'tf': 'source'})
     if filter_meta_significant:
-        stats_sig = retrieve_sig_stats(type=type, race=race)
+        stats_sig = retrieve_sig_stats(type=type, race=race, feature_type=feature_type)
+        if 'tf' in stats_sig.columns:
+            stats_sig = stats_sig.rename(columns={'tf': 'source'})
         stats_sig = stats_sig[stats_sig['cell_type'] == cell_type]
-        sig_tfs = stats_sig['tf'].unique()
+        sig_tfs = stats_sig[feature_col].unique()
         stats_t = stats_t[stats_t[feature_col].isin(sig_tfs)]
     
     # - get centrality measure
@@ -1706,7 +1864,7 @@ def heamap_plot_minor_cell_types(stats_all, palette,
 def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets, ax=None, show_cbar=True, type='bulk', age_limit=[20, 80]):
     mean_expr_store = []
     for dataset in datasets:
-        adata = retrieve_feature_data(dataset, cell_type, type=type, feature_type=feature_type)
+        adata = retrieve_feature_data(dataset, cell_type, type=type, feature_type=feature_type) 
         adata = adata[(adata.obs['age'] > age_limit[0]) & (adata.obs['age'] < age_limit[1])]
         adata = adata[:, adata.var_names==feature]
         if adata.shape[1] == 0:
@@ -2046,86 +2204,86 @@ def plot_activation_vs_expression(df_combined,
                                   col_y = 'signed_-log10_pval', 
                                   y_label = "Activation\nsigned -log10(p adj)",
                                   x_label = "Expression\nsigned -log10(p adj)"):
-    from src.tf_activity.helper import add_centrality
     import matplotlib.patches as mpatches
     cell_types_local = df_combined["cell_type"].unique()
     n_cell_types = len(cell_types_local)
-    datasets = df_combined["dataset"].unique()
+    # datasets = df_combined["dataset"].unique()
     
     
     for i, cell_type in enumerate(cell_types_local):
         
         df_cell_type = df_combined[df_combined["cell_type"] == cell_type]
         
-        df_cell_type = add_centrality(df_cell_type) 
         
-        fig, axes = plt.subplots(1, 2, figsize=(6, 2.7), sharey=False, sharex=False)
-        for j, ax in enumerate(axes):
-            df_dataset = df_cell_type[df_cell_type["dataset"] == datasets[j]]
-            df_dataset['dataset'] = df_dataset['dataset'].map(surrogate_names)
-            assert df_dataset.shape[0]>0, f"No data for {cell_type} in {datasets[j]}"
-            # Plot scatter with correct color mapping
-            sns.scatterplot(
-                data=df_dataset,
-                x=col_x,
-                y=col_y,
-                palette=palette_datasets,  # Use the consistent color mapping
-                size="centrality",
-                hue="dataset",
-                # sizes=(20, 100),
-                edgecolor=None,
-                alpha=0.4,
-                ax=ax,
-            )
+        fig, ax = plt.subplots(1, 1, figsize=(4, 2.7), sharey=False, sharex=False)
+        # for j, ax in enumerate(axes):
+        # df_dataset = df_cell_type[df_cell_type["dataset"] == dataset]
+        df_dataset = df_cell_type
+        df_dataset['dataset'] = df_dataset['dataset'].map(surrogate_names)
+        assert df_dataset.shape[0]>0, f"No data for {cell_type} in {datasets[j]}"
+        # Plot scatter with correct color mapping
+        sns.scatterplot(
+            data=df_dataset,
+            x=col_x,
+            y=col_y,
+            palette=palette_datasets_pretty,  # Use the consistent color mapping
+            # size="centrality",
+            s=10,
+            hue="dataset",
+            # sizes=(20, 100),
+            edgecolor=None,
+            alpha=0.7,
+            ax=ax,
+        )
 
-            # Set the limits to be the same for both axes
-            xmin, xmax = df_dataset[col_x].min(), df_dataset[col_x].max()
-            ymin, ymax = df_dataset[col_y].min(), df_dataset[col_y].max()
+        # Set the limits to be the same for both axes
+        xmin, xmax = df_dataset[col_x].min(), df_dataset[col_x].max()
+        ymin, ymax = df_dataset[col_y].min(), df_dataset[col_y].max()
 
-            global_min = min(xmin, ymin)
-            global_max = max(xmax, ymax)
+        global_min = min(xmin, ymin)
+        global_max = max(xmax, ymax)
 
-            placed_positions = []
+        placed_positions = []
 
-            if j == 0:
-                
-                ax.set_ylabel(y_label)
-            else:
-                ax.set_ylabel("")
-            ax.set_xlabel(x_label, labelpad=15)
-            ax.get_legend().remove()  # Remove legend from individual plot
+        ax.set_ylabel(y_label)
+        ax.set_xlabel(x_label, labelpad=15)
+        # ax.get_legend().remove()  # Remove legend from individual plot
 
-            
-            ax.spines['right'].set_visible(False)
-            ax.spines['top'].set_visible(False)
-            
-            ax.set_aspect("equal", adjustable="datalim")
+        
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        
+        ax.set_aspect("equal", adjustable="datalim")
 
-            # Define padding as a percentage of the total range
-            padding = 0.15 * (global_max - global_min)
+        # Define padding as a percentage of the total range
+        padding = 0.15 * (global_max - global_min)
 
-            # Apply the same limits to both axes
-            # ax.set_xlim(global_min - padding, global_max + padding)
-            # ax.set_ylim(global_min - padding, global_max + padding)
-            # Add significance threshold lines
-            sig_threshold = 1.3
-            ax.margins(x=0.1, y=0.1)
-            ax.axvline(sig_threshold, linestyle="--", color="red", alpha=0.6, linewidth=1)  # Vertical
-            ax.axvline(-sig_threshold, linestyle="--", color="red", alpha=0.6, linewidth=1)  # Vertical
-            ax.axhline(sig_threshold, linestyle="--", color="red", alpha=0.6, linewidth=1)  # Horizontal
-            ax.axhline(-sig_threshold, linestyle="--", color="red", alpha=0.6, linewidth=1)  # Horizontal
+        # Apply the same limits to both axes
+        # ax.set_xlim(global_min - padding, global_max + padding)
+        # ax.set_ylim(global_min - padding, global_max + padding)
+        # Add significance threshold lines
+        sig_threshold = 1.4
+        ax.margins(x=0.01, y=0.05)
+        linewidth = .5
+        alpha = .4
+        ax.axvline(sig_threshold, linestyle="--", color="red", alpha=alpha, linewidth=linewidth)  # Vertical
+        ax.axvline(-sig_threshold, linestyle="--", color="red", alpha=alpha, linewidth=linewidth)  # Vertical
+        ax.axhline(sig_threshold, linestyle="--", color="red", alpha=alpha, linewidth=linewidth)  # Horizontal
+        ax.axhline(-sig_threshold, linestyle="--", color="red", alpha=alpha, linewidth=linewidth)  # Horizontal
         # plt.suptitle(cell_type, y=1.05)
-        handles, labels = ax.get_legend_handles_labels()
-        # Create color legend for trend
-        color_legend = [mpatches.Patch(color=value, label=name) for name, value in palette_datasets.items()]
-        color_legend_handle = plt.legend(handles=color_legend, title='Dataset', loc=(1.08, .75), frameon=False)
+        # handles, labels = ax.get_legend_handles_labels()
+        # # Create color legend for trend
+        # color_legend = [mpatches.Patch(color=value, label=name) for name, value in palette_datasets.items()]
+        # color_legend_handle = plt.legend(handles=color_legend, title='Dataset', loc=(1.08, .75), frameon=False)
 
         # Create size legend for TF centrality
-        size_legend_handle = plt.legend(handles=handles[-5:], labels=labels[-5:], title="TF centrality", 
-                                        loc=(1.1, -.2),  frameon=False)
+        # size_legend_handle = plt.legend(handles=handles[-5:], labels=labels[-5:], title="TF centrality", 
+        #                                 loc=(1.1, -.2),  frameon=False)
+        
 
-        # Add the color legend manually after the size legend
-        plt.gca().add_artist(color_legend_handle)
+        # # Add the color legend manually after the size legend
+        # plt.gca().add_artist(color_legend_handle)
+        ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1), frameon=False, fontsize=10, title='Dataset', title_fontsize=10)
 def compare_stats_across_datasets(df, y_label='TFs'):
     """Compare TFs for each cell type across multiple datasets.
 

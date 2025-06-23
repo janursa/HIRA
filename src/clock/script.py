@@ -14,7 +14,7 @@ arg.add_argument('--reg_type', type=str, default='ridge', help='Regularization t
 arg.add_argument('--tune_model', action='store_true', help='Whether to tune the model or not')
 arg.add_argument('--version', type=str, default='v1.0')
 arg.add_argument('--temp_dir', type=str, default='tmp/')
-
+arg.add_argument('--age_limit', type=int, default=20)
 
 
 par = vars(arg.parse_args())

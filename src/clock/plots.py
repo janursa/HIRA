@@ -6,7 +6,7 @@ from scipy.stats import ttest_ind
 import numpy as np
 from pandas.api.types import CategoricalDtype
 from statsmodels.stats.multitest import multipletests
-from ciim.src.common import surrogate_names
+from ciim.src.common import surrogate_names, cell_types
 
 palette_disease = {'Healthy': '#56B4E9', 'SLE': '#F0E442', 'Mild': '#2ca02c', 'Severe': '#e377c2'}
 def wrapper_age_acceleration_disease(obs, disease_dataset):
@@ -126,20 +126,20 @@ def wrapper_age_acceleration_disease(obs, disease_dataset):
 
     df_pivot = obs_disease.pivot_table(index=['age', 'cell_type'], columns='condition', values='predicted_age')
     df_pivot = df_pivot.reset_index()
-    df_pivot['diff'] = df_pivot[cond] - df_pivot[ctr]
-    df_pivot = df_pivot[~df_pivot['diff'].isna()]
+    df_pivot['age_shift'] = df_pivot[cond] - df_pivot[ctr]
+    df_pivot = df_pivot[~df_pivot['age_shift'].isna()]
     df_pivot['cell_type'] = pd.Categorical(df_pivot['cell_type'], categories=cell_types, ordered=True)
 
     fig, ax = plt.subplots(figsize=(4, 2.7))
 
     # Stripplot
     sns.stripplot(
-        ax=ax, data=df_pivot, y='diff', x='cell_type',
+        ax=ax, data=df_pivot, y='age_shift', x='cell_type',
         alpha=0.7, hue='age', palette='viridis', s=6
     )
 
     # Bar plot for medians (frame-only bars)
-    medians = df_pivot.groupby('cell_type')['diff'].median().reindex(cell_types)
+    medians = df_pivot.groupby('cell_type')['age_shift'].median().reindex(cell_types)
     bar_x = np.arange(len(cell_types))
     ax.bar(
         bar_x, medians, width=0.5, fill=False, edgecolor='black', linewidth=1.5,
@@ -170,7 +170,7 @@ def wrapper_age_acceleration_disease(obs, disease_dataset):
         
         star = '***' if pval_fdr < 0.001 else '**' if pval_fdr < 0.01 else '*' if pval_fdr < 0.05 else ''
         text = f"{star}"
-        y_max = df_pivot[df_pivot['cell_type'] == cell_types[i]]['diff'].max()
+        y_max = df_pivot[df_pivot['cell_type'] == cell_types[i]]['age_shift'].max()
         ax.text(i, y_max + 5, text, ha='center', va='bottom', fontsize=10, weight='bold', color='black')
 
     ax.set_ylabel("Age acceleration (years)")

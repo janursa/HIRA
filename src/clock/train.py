@@ -1,5 +1,30 @@
 
 
+import numpy as np
+from sklearn.model_selection import LeaveOneGroupOut, KFold, cross_val_score
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import Ridge
+from sklearn.preprocessing import StandardScaler
+
+from sklearn.linear_model import Ridge
+from sklearn.model_selection import cross_val_score, GroupKFold
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+import numpy as np
+import optuna
+from sklearn.metrics import r2_score, make_scorer, get_scorer
+import warnings
+warnings.filterwarnings('ignore')
+
+def spearman_corr(y_true, y_pred):
+    from scipy.stats import spearmanr
+    return spearmanr(y_true, y_pred).correlation
+
+
+
+loss_function = make_scorer(spearman_corr, greater_is_better=True)  # make_scorer(spearman_corr, greater_is_better=True) 
+
+
 def tune_params_gbm(model, X, y, cv_groups, scoring, n_trials=50, random_state=42):
     import optuna
     import lightgbm as lgb
@@ -16,8 +41,8 @@ def tune_params_gbm(model, X, y, cv_groups, scoring, n_trials=50, random_state=4
 
     def objective(trial):
         params = {
-            'num_leaves': trial.suggest_int('num_leaves', 7, 20),  # Must be int
-            'max_depth': trial.suggest_int('max_depth', 3, 10),    # Must be int
+            'num_leaves': trial.suggest_int('num_leaves', 4, 10),  # Must be int
+            'max_depth': trial.suggest_int('max_depth', 3, 7),    # Must be int
             # 'min_split_gain': trial.suggest_float('min_split_gain', 0.0, 1.0),
             # 'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),  # Add log for efficiency
             'subsample': trial.suggest_float('subsample', 0.6, 1.0),
@@ -27,12 +52,14 @@ def tune_params_gbm(model, X, y, cv_groups, scoring, n_trials=50, random_state=4
             # 'reg_lambda': trial.suggest_float('reg_lambda', 0.01, 10.0, log=True),
             # 'n_estimators': trial.suggest_int('n_estimators', 100, 1000, step=100),
             'random_state': random_state,
-            'n_jobs': -1,
-            'verbosity': -1 
+            'n_jobs': 4,
+            'verbosity': -2 
         }
 
         model.set_params(**params)
-        scores = cross_val_score(model, X, y, cv=cv_splits, scoring=scoring)
+        # Perform cross-validation
+        _, cv = get_custom_cv(cv_groups)
+        scores = cross_val_score(model, X, y, cv=cv, scoring=scoring)
         return np.mean(scores)
 
     study = optuna.create_study(direction='maximize')
@@ -49,36 +76,35 @@ def tune_params_gbm(model, X, y, cv_groups, scoring, n_trials=50, random_state=4
 
     
 
-import numpy as np
-from sklearn.model_selection import LeaveOneGroupOut, KFold, cross_val_score
-from sklearn.metrics import make_scorer
-from sklearn.pipeline import Pipeline
-from sklearn.linear_model import Ridge
-from sklearn.preprocessing import StandardScaler
 
-def cross_validation(X, y, model, scoring, groups=None, n_splits=10, n_repeats=10):
-    if groups is not None:
-        cv = LeaveOneGroupOut().split(X, y, groups=groups)
-        return list(cv)
-    else:
-        # Perform repeated KFold CV
-        splits = []
-        for _ in range(n_repeats):
-            kf = KFold(n_splits=n_splits, shuffle=True, random_state=None)
-            splits.extend(list(kf.split(X, y)))
-        return splits
+def get_custom_cv(groups, main_code=0):
+    """
+    Leave-one-group-out CV, where each fold leaves out one non-main group for testing,
+    and always includes the main_code group in training.
+    """
+    unique_groups = np.unique(groups)
+    ordered_test_groups = [g for g in unique_groups if g != main_code]
+
+    custom_splits = []
+    for test_group in ordered_test_groups:
+        test_mask = (groups == test_group)
+        train_mask = (groups != test_group)  # includes main_code and all others
+        custom_splits.append((np.where(train_mask)[0], np.where(test_mask)[0]))
+    return ordered_test_groups, custom_splits
 
 def tune_params_ridge(X, y, cv_groups=None, scoring='r2'):
-    import optuna
     optuna.logging.set_verbosity(optuna.logging.WARNING)
+
     def objective(trial):
         alpha = trial.suggest_float("alpha", 0.01, 1000.0, log=True)
         model = Pipeline([
             ('standardscaler', StandardScaler()),
             ('ridge', Ridge(alpha=alpha, random_state=42))
         ])
-        
-        cv = cross_validation(X, y, model, scoring, groups=cv_groups)
+        if cv_groups is not None:
+            _, cv = get_custom_cv(cv_groups)
+        else:
+            raise ValueError("cv_groups must be provided to ensure main dataset is always in training.")
         scores = cross_val_score(model, X, y, cv=cv, scoring=scoring)
         return np.mean(scores)
 
@@ -94,47 +120,12 @@ def tune_params_ridge(X, y, cv_groups=None, scoring='r2'):
         ('standardscaler', StandardScaler()),
         ('ridge', Ridge(alpha=best_alpha, random_state=42))
     ])
-    # , best_alpha, best_score
-    return best_model
 
-def tune_params_elasticnet(X, y, cv_groups=None, scoring='r2'):
-    import optuna
-    from sklearn.linear_model import ElasticNet
-    optuna.logging.set_verbosity(optuna.logging.WARNING)
-
-    def objective(trial):
-        alpha = trial.suggest_float("alpha", 0.01, 100.0, log=True)
-        l1_ratio = trial.suggest_float("l1_ratio", 0.0, 1.0)
-
-        model = Pipeline([
-            ('standardscaler', StandardScaler()),
-            ('elasticnet', ElasticNet(alpha=alpha, l1_ratio=l1_ratio, random_state=42, max_iter=10000))
-        ])
-
-        cv = cross_validation(X, y, model, scoring, groups=cv_groups)
-        scores = cross_val_score(model, X, y, cv=cv, scoring=scoring)
-        return np.mean(scores)
-
-    study = optuna.create_study(direction="maximize")
-    study.optimize(objective, n_trials=30, show_progress_bar=True)
-
-    best_alpha = study.best_params['alpha']
-    best_l1_ratio = study.best_params['l1_ratio']
-    best_score = study.best_value
-
-    print(f"\nBest alpha: {best_alpha:.4f}, Best l1_ratio: {best_l1_ratio:.2f}, Best CV performance: {best_score:.4f}")
-
-    best_model = Pipeline([
-        ('standardscaler', StandardScaler()),
-        ('elasticnet', ElasticNet(alpha=best_alpha, l1_ratio=best_l1_ratio, random_state=42, max_iter=10000))
-    ])
-    best_model.fit(X, y)
-    # , best_alpha, best_l1_ratio, best_score
     return best_model
 
 def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
     import anndata as ad
-    from sklearn.metrics import r2_score, make_scorer
+    
     print(X.shape, y.shape)
     # - choose the model
     if reg_type == 'tabpfn':
@@ -192,22 +183,20 @@ def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
     else:
         raise ValueError('Unknown reg_type')
     if reg_type != 'NN':
+        
         if tune_model:
             if reg_type == 'GBM':
-                model = tune_params_gbm(model, X, y, batch_labels, scoring=make_scorer(spearman_corr, greater_is_better=False))
+                model = tune_params_gbm(model, X, y, batch_labels, scoring=loss_function)
             elif reg_type == 'ridge':
-                model = tune_params_ridge(X, y, batch_labels, scoring=make_scorer(spearman_corr, greater_is_better=True))
+                model = tune_params_ridge(X, y, batch_labels, scoring=loss_function)
             elif reg_type == 'elasticnet':
-                model = tune_params_elasticnet(X, y, batch_labels, scoring=make_scorer(spearman_corr, greater_is_better=True))
+                model = tune_params_elasticnet(X, y, batch_labels, scoring=loss_function)
+
         # - fit the model
         model.fit(X, y)
         y_trained = model.predict(X)
         # - save
         return model, None, None, y_trained    
-def spearman_corr(y_true, y_pred):
-    from scipy.stats import spearmanr
-    return spearmanr(y_true, y_pred).correlation
-
 
 def wrapper_build_model_cell_type(cell_type, par):
     import anndata as ad
@@ -221,18 +210,36 @@ def wrapper_build_model_cell_type(cell_type, par):
     feature_type = par['feature_type']
     data_type = par['data_type']
     datasets_training = par['datasets_training']
+    age_limit = par['age_limit']
+    main_dataset = 'data1'
+
     adata_store = []
     for dataset in datasets_training:
         # adata = prepare_input(dataset, cell_type, feature_type=feature_type, data_type=data_type)
         adata = ad.read_h5ad(f"{save_dir}/{feature_type}_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
+        adata = adata[(adata.obs['age']>age_limit)].copy()
+        # print(adata.obs['age'].min())
         if 'SLE' in dataset:
             adata = adata[adata.obs['disease']=='normal'].copy()
         adata_store.append(adata)
     adata_all = ad.concat(adata_store, join='inner', axis=0)
+    
+    
+    # explicitly order categories with main_dataset first
+    all_datasets = adata_all.obs['dataset'].unique().tolist()
+    # Move main_dataset to the front
+    ordered_datasets = [main_dataset] + [d for d in all_datasets if d != main_dataset]
+    adata_all.obs['dataset'] = adata_all.obs['dataset'].astype(pd.CategoricalDtype(categories=ordered_datasets, ordered=True))
+
+    dataset_code_map = dict(zip(
+        range(len(adata_all.obs['dataset'].cat.categories)),
+        adata_all.obs['dataset'].cat.categories
+    ))
+    # Now this will give main_dataset code 0
+    batch_labels = adata_all.obs['dataset'].cat.codes.values
+
     adata_all.write(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_adata.h5ad")
     gene_names = adata_all.var_names.values
-
-    batch_labels = adata_all.obs['dataset'].astype('category').cat.codes.values # is used for NN training
     
     X = adata_all.X
     y = adata_all.obs['age']
@@ -244,6 +251,20 @@ def wrapper_build_model_cell_type(cell_type, par):
     else:
         batch_labels = None # random CV
     model, model_args, model_kwargs, y_trained = build_model(reg_type, X, y, batch_labels=batch_labels, tune_model=par['tune_model'], temp_dir=par['temp_dir'])
+
+    # Run CV again to get per-group scores
+    ordered_test_groups, cv = get_custom_cv(batch_labels)
+    scorer = get_scorer(loss_function)
+    group_scores = []
+
+    fold_scores = {}
+    for i, code in enumerate(ordered_test_groups):
+        train_idx, test_idx = cv[i]
+        model.fit(X[train_idx], y.iloc[train_idx])
+        score = scorer(model, X[test_idx], y.iloc[test_idx])
+        group_scores.append(score)
+        fold_scores[dataset_code_map[code]] = round(score, 2)
+    print(fold_scores)
     # - save the training performance
     adata_all.obs['predicted_age'] = y_trained.copy()
     adata_all.write(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_adata.h5ad")
