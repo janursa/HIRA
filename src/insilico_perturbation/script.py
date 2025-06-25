@@ -2,6 +2,8 @@ from ciim.src.insilico_perturbation.helper import wrapper_run_tf_screening
 from ciim.src.common import save_dir
 
 import argparse
+import warnings
+warnings.filterwarnings("ignore")
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run in silico simulation.')
@@ -40,4 +42,4 @@ if __name__ == '__main__':
                                     datasets=datasets 
                                     )
     save_file=f"{save_dir}/perturbation/tf_screen_results_{perturbation_mode}.csv"
-    df_all.to_csv(save_file, index=False)
+    df_all.to_csv(save_file)

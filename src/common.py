@@ -4,6 +4,9 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from collections import OrderedDict
+import warnings
+warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 
 if False: # running on the server
     base_dir = '/vol/projects/jnourisa/'

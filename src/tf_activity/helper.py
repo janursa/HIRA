@@ -47,7 +47,7 @@ def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datas
         stats = stats[stats['dataset'].isin(datasets)]
     return stats
 
-def retrieve_feature_data(dataset, cell_type, type, feature_type='tf_activity', condition='healthy'):
+def retrieve_feature_data(dataset, cell_type, type='bulk', feature_type='tf_activity', condition='healthy'):
     from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
 
     # cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)

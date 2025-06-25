@@ -9,8 +9,40 @@ from ciim.src.common import save_dir, surrogate_names, palette_datasets_pretty
 from ciim.src.tf_activity.helper import retrieve_sig_stats
 from ciim.src.tf_activity.helper import get_consensus_net
 from ciim.src.common import datasets_all
+from ciim.src.utils.util import get_genesets
 import warnings
+from ciim.src.utils.util import calculate_genes_scores
 warnings.filterwarnings('ignore')
+
+def compute_slopes(adata, feature_type='gene_expression'):
+    def get_linear_slope(ages, gene_values):
+        model = LinearRegression()
+        model.fit(ages, gene_values)
+        return model.coef_.item()
+    adata.X = adata.X.toarray() if hasattr(adata.X, 'toarray') else adata.X
+    X = pd.DataFrame(adata.X, columns=adata.var_names)
+    ages = adata.obs['age'].astype(float).values.reshape(-1, 1)
+    slopes = {}
+    if feature_type == 'gene_expression':
+        for gene in adata.var_names:
+            gene_values = X[gene].values.reshape(-1, 1)
+            if np.all(np.isnan(gene_values)) or np.all(gene_values == gene_values[0]):
+                continue
+            slopes[gene] = get_linear_slope(ages, gene_values)
+    elif feature_type == 'gene_score':
+        pathways = get_genesets()
+        for pathway, genes in pathways.items():
+            if len(genes) == 0:
+                continue
+            try:
+                adata = calculate_genes_scores(adata, genes, key='gene_score')
+            except ValueError as e:
+                continue
+            gene_values = adata.obs['gene_score'].values.reshape(-1, 1)
+            slopes[pathway] = get_linear_slope(ages, gene_values)
+    slope_df = pd.DataFrame.from_dict(slopes, orient='index', columns=['slope'])
+    
+    return slope_df
 
 def compute_tf_slopes(adata, tfs):
     '''
@@ -23,19 +55,7 @@ def compute_tf_slopes(adata, tfs):
     adata.var.index = adata.var.index.astype('category')
 
     adata_sig = adata[:, mask_genes].copy()
-    adata_sig.X = adata_sig.X.toarray() if hasattr(adata_sig.X, 'toarray') else adata_sig.X
-    X = pd.DataFrame(adata_sig.X, columns=adata_sig.var_names)
-    ages = adata_sig.obs['age'].astype(float).values.reshape(-1, 1)
-    slopes = {}
-    for tf in adata_sig.var_names:
-        tf_values = X[tf].values.reshape(-1, 1)
-        if np.all(np.isnan(tf_values)) or np.all(tf_values == tf_values[0]):
-            continue
-        model = LinearRegression()
-        model.fit(ages, tf_values)
-        slopes[tf] = model.coef_.item()
-
-    slope_df = pd.DataFrame.from_dict(slopes, orient='index', columns=['slope'])
+    slope_df = compute_slopes(adata_sig, feature_type='gene_expression')
     return slope_df
 def perturb_tf_simulation(adata, net, tfs, slope_df, simulation_iteration=10):
     '''
@@ -261,28 +281,32 @@ def compute_age_shift(adata_base, perturbed, **kwargs):
         return pivot
 def compute_gene_score_shift(adata_base, adata_perturbed, genes):
     import scanpy as sc
-    genes = [g for g in genes if g in adata_base.var_names]
     # Compute gene scores
-    sc.tl.score_genes(adata_base, gene_list=genes, score_name='gene_score_orig', use_raw=False)
-    sc.tl.score_genes(adata_perturbed, gene_list=genes, score_name='gene_score_perturbed', use_raw=False)
+    try:
+        adata_base = calculate_genes_scores(adata_base, genes, key='gene_score_orig')
+        adata_perturbed = calculate_genes_scores(adata_perturbed, genes, key='gene_score_perturbed')
+    except ValueError as e:
+        raise ValueError(f"Error calculating gene scores: {e}. Ensure that the genes are present in the dataset.")
 
     # Compute expression shift
     score_shift = adata_perturbed.obs['gene_score_perturbed'] - adata_base.obs['gene_score_orig']
+    assert adata_base.obs['gene_score_orig'].isna().any()==False, "Baseline gene scores contain only zeros, cannot compute shift."
+    score_shift_n = score_shift.abs()/adata_base.obs['gene_score_orig'].abs()
     
     adata_base.obs['donor_age'] = adata_base.obs['donor_id'].astype(str) + '_' + adata_base.obs['age'].astype(str)
     result_df = pd.DataFrame({
         'donor_age': adata_base.obs['donor_age'],
         'Baseline_gene_score': adata_base.obs['gene_score_orig'].values,
         'Perturbed_gene_score': adata_perturbed.obs['gene_score_perturbed'].values,
-        'gene_score_shift': score_shift.values
+        'gene_score_shift': score_shift.values,
+        'gene_score_shift_n': score_shift_n,
     }, index=adata_base.obs_names)
     result_df.set_index('donor_age', inplace=True)
     return result_df
 
-def run_tf_screen_all(
+def run_in_silico(
         dataset,
         cell_type,
-        genes=None,
         slope_df=None,
         tfs = None,
         data_type='bulk',
@@ -328,16 +352,25 @@ def run_tf_screen_all(
                                     version=version,
                                     reg_type=reg_type,
                                     feature_type=feature_type)
+        
+        result.columns = pd.MultiIndex.from_product([['age_shift'], result.columns])
+        if True:
+            pathways = get_genesets()
+            for key, genes in pathways.items():
+                try:
+                    result_2 = compute_gene_score_shift(adata, adata_perturb, genes)
+                except ValueError as e:
+                    print(f"Error calculating gene scores for {key}: {e}")
+                    continue
+                result_2.columns = pd.MultiIndex.from_product([[key], result_2.columns])
+                result = result.join(result_2, how='left')
+        
         result['tf'] = ','.join(tfs)
         result['cell_type'] = cell_type
         result['dataset'] = dataset
         result['perturbation'] = perturbation_mode
         result['perturbation_type'] = perturbation_type
-        if genes is not None:
-            result_2 = compute_gene_score_shift(adata, adata_perturb, genes)
-            result = result.merge(result_2, left_index=True, right_index=True, how='left')
-            # print(result)
-            # aaa
+
         return result
         
     else:
@@ -389,7 +422,7 @@ def plot_age_acceleration(df_all, x_col='cell_type', log_y=False, margins=(0.1, 
 
     return fig
 
-def wrapper_run_tf_screening(par, cell_types, datasets, n_jobs=10):
+def wrapper_in_silico_perturbation(par, cell_types, datasets, n_jobs=10):
     from ciim.src.common import save_dir
     # ---- Parallel Execution ----
     from joblib import Parallel, delayed
@@ -397,7 +430,7 @@ def wrapper_run_tf_screening(par, cell_types, datasets, n_jobs=10):
     os.makedirs(f"{save_dir}/perturbation", exist_ok=True)
     
     tasks = [
-        delayed(run_tf_screen_all)(
+        delayed(run_in_silico)(
             dataset, cell_type,
             **par
         )

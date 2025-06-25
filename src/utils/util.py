@@ -19,8 +19,6 @@ def get_opengenes_sets():
     reverse_map = defaultdict(list)
     for idx, row in df.iterrows():
         for cell in row:
-            # print(cell)
-            # aa
             if cell is None or pd.isna(cell) or cell == '':
                 continue
             try:
@@ -34,15 +32,29 @@ def get_opengenes_sets():
 
     # Convert to regular dict if needed
     reverse_map = dict(reverse_map)
-    return reverse_map
+    del reverse_map['Transcriptional alterations']
 
-def get_genesets(pathway):
+    return reverse_map
+def calculate_genes_scores(adata, genes, key='gene_score', min_genes=5):
+    genes = [g for g in genes if g in adata.var_names]
+    if len(genes) < min_genes:
+        raise ValueError("Privided genes list is empty.")
+    sc.tl.score_genes(adata, gene_list=genes, score_name=key, use_raw=False)
+    return adata
+def get_canonical():
+    geneset_file = f'{base_dir}/prior/h.all.v2024.1.Hs.symbols.gmt'
+    genesets_all = read_gmt(geneset_file) 
+    genesets_all = {' '.join(key.split('_')[1:]):gs['genes'] for key, gs in genesets_all.items()}
+    return genesets_all
+def get_genesets(pathway=None):
     if pathway == 'canonical':
-        geneset_file = f'{base_dir}/prior/h.all.v2024.1.Hs.symbols.gmt'
-        genesets_all = read_gmt(geneset_file) 
-        genesets_all = {' '.join(key.split('_')[1:]):gs['genes'] for key, gs in genesets_all.items()}
+        genesets_all = get_canonical()
     elif pathway == 'opengenes':
         genesets_all = get_opengenes_sets()
+    elif pathway is None:
+        genesets_1 = get_canonical()
+        genesets_2 = get_opengenes_sets()
+        genesets_all = {**genesets_1, **genesets_2}
     else:
         raise ValueError(f"Unsupported pathway type: {pathway}. Choose 'canonical' or 'opengenes'.")
     return genesets_all
