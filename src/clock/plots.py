@@ -6,9 +6,26 @@ from scipy.stats import ttest_ind
 import numpy as np
 from pandas.api.types import CategoricalDtype
 from statsmodels.stats.multitest import multipletests
-from ciim.src.common import surrogate_names, cell_types
+from ciim.src.common import surrogate_names, cell_types, palette_genders
 
 palette_disease = {'Healthy': '#56B4E9', 'SLE': '#F0E442', 'Mild': '#2ca02c', 'Severe': '#e377c2'}
+
+def plot_scatter_age_vs_predictedAge(df, dataset='', ax=None):
+    from ciim.src.clock.helper import evaluate_groupwise_median
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(4, 4))
+    sns.scatterplot(data=df, x='age', y='predicted_age', s=50, alpha=0.7, ax=ax, palette=palette_genders, hue='sex')
+    min_age, max_age = df['age'].min(), df['age'].max()
+    ax.plot([min_age, max_age], [min_age, max_age], color='gray', linestyle='--', label='Ideal')
+
+    ax.set_xlabel("Actual Age")
+    ax.set_ylabel("Predicted Age")
+    rr = evaluate_groupwise_median(df)
+    spearman = rr['Spearman']
+    R2 = rr['R2']
+    dataset = surrogate_names.get(dataset, dataset)
+    ax.set_title(f"{dataset} (S: {spearman:.2f}, R2:{R2:.2f})")
+
 def wrapper_age_acceleration_disease(obs, disease_dataset):
     import pandas as pd
     import seaborn as sns

@@ -5,6 +5,7 @@ import numpy as np
 import anndata as ad
 
 
+
 def save_function(model, gene_names, cell_type, data_type, feature_type, reg_type, version, model_args=None, model_kwargs=None):
     import os
     import joblib
@@ -52,10 +53,10 @@ def evaluate_groupwise_median(obs):
     import numpy as np
     df = obs.copy()
     df['age'] = df['age'].astype(float)
-    df['donor_id'] = df['donor_id'].astype(str)
+    df['donor_age'] = df['donor_age'].astype(str)
 
-    predicted_age = df.groupby(['donor_id', 'age'])['predicted_age'].median().values
-    actual_age = df.groupby(['donor_id', 'age'])['age'].median().values
+    predicted_age = df.groupby(['donor_age', 'age'])['predicted_age'].median().values
+    actual_age = df.groupby(['donor_age', 'age'])['age'].median().values
 
     # print(np.isnan(actual_age).sum(), np.isnan(predicted_age).sum())
     sp = spearmanr(actual_age, predicted_age)[0]
