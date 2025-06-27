@@ -1,45 +1,72 @@
-from ciim.src.insilico_perturbation.helper import wrapper_run_tf_screening
-from ciim.src.common import save_dir
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
-import argparse
+# --- Settings ---
 import warnings
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import anndata as ad
+import scanpy as sc
+from tqdm import tqdm
+from sklearn.metrics import r2_score
+from scipy.stats import linregress, pearsonr, spearmanr
+from pandas.api.types import CategoricalDtype
+from scipy.cluster.hierarchy import linkage
+from matplotlib.patches import Patch
+from statsmodels.stats.multitest import multipletests
+
 warnings.filterwarnings("ignore")
+plt.rcParams["figure.figsize"] = 4, 4
 
-def parse_args():
-    parser = argparse.ArgumentParser(description='Run in silico simulation.')
+# --- Directories and Imports ---
+from ciim.src.common import (
+    aging_clock_train_datasets, palette_genders, palette_treatment,
+    mapping_major_2_minor, mapping_minor_2_major, cell_types,
+    datasets_e, datasets_all, datasets_a, palette_datasets,
+    datasets_disease, datasets_drug_perturbation, save_dir,
+    palette_datasets_pretty, surrogate_names, colors_blind,
+    palette_trend, palette_trend_2, palette_regulation, palette_cell_types
+)
+from ciim.src.tf_activity.helper import retrieve_sig_stats
+from ciim.src.insilico_perturbation.helper import wrapper_in_silico_perturbation, plot_age_acceleration
 
-    parser.add_argument('--cell_types', nargs='+', required=True,
-                        help='List of cell types (e.g. CD8T MONO)')
-    parser.add_argument('--reg_type', type=str, required=True,
-                        help='Type of regularization or regression')
-    parser.add_argument('--simulation_iteration', type=int, default=0,
-                        help='Simulation iteration index')
-    parser.add_argument('--n_donors', type=int, default=None,
-                        help='Number of donors to sample')
+def run_single_aging_tf_perturbation():
+    print('Running single aging TF perturbation...')
+    # --- Single TF Perturbation ---
+    perturbation_mode = 'overexpression'
+    save_file = f"{save_dir}/perturbation/single_aging_tf_perturbation.csv"
 
-    return parser.parse_args()
+    par_single = {
+        'simulation_iteration': simulation_iteration,
+        'n_donors': n_donors,
+        'data_type': data_type,
+        'version': version,
+        'reg_type': reg_type,
+        'feature_type': 'gene_expression',
+        'perturbation_mode': perturbation_mode,
+        'perturbation_type': 'single',
+        'tfs': None,
+    }
+    perturb_rr = wrapper_in_silico_perturbation(par_single, n_jobs=n_jobs, cell_types=cell_types, datasets=datasets)
+    perturb_rr.to_csv(save_file)
+
+
 
 if __name__ == '__main__':
-    args = parse_args()
+   # --- Parameters ---
+    reg_type = 'ridge'
+    version = 'v1.0'
+    data_type = 'bulk'
+    simulation_iteration = 3
+    n_donors = 20
+    n_jobs = 1
+    cell_types = ['CD8T']
+    datasets = ['data12']
 
-    par = {
-        'simulation_iteration': args['simulation_iteration'],
-        'n_donors': par['n_donors'], # select only one donor for linear models
-        'data_type': 'bulk',
-        'version': 'v1.0',
-        'reg_type': par['reg_type'],
-        'feature_type': 'gene_expression',
-        'perturbation_mode': 'overexpression', # natural_aging, overexpression
-        'perturbation_type': 'single',
-        'tfs': None,  # None means all TFs
-        
-    }
-    datasets = ['data1', 'data7_allTPs_jalil', 'SLE_European', 'data13_Japanese']
-    cell_types = par['cell_types'] # ['CD4T', 'CD8T', 'MONO', 'B', 'NK']
-    df_all = wrapper_run_tf_screening(par, 
-                                    n_jobs=10,
-                                    cell_types=cell_types,
-                                    datasets=datasets 
-                                    )
-    save_file=f"{save_dir}/perturbation/tf_screen_results_{perturbation_mode}.csv"
-    df_all.to_csv(save_file)
+    run_single_aging_tf_perturbation()
+    # run_all_aging_tf_perturbation()
+    # run_sle_tf_perturbation()
+    # run_perturbation_tf_perturbation()
+

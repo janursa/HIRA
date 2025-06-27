@@ -95,6 +95,7 @@ def prepare_input(dataset, cell_type, feature_type='tf_activity', data_type='bul
         adata = adata[:, adata.var_names.isin(targets)].copy()
     else:
         raise ValueError('Unknown feature type')
+    adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + '_' + adata.obs['age'].astype(str)
     print(dataset, adata.X.shape)
     if 'minor' in data_type:
         adata = adata[adata.obs['Sub_CT'].isin(minor_cell_types)].copy()
@@ -155,6 +156,7 @@ def predict_age(X, cell_type, feature_type='tf_activity', data_type='bulk', reg_
         predicted_age = model.predict(X)
 
     adata.obs['predicted_age'] = predicted_age.copy()
+
     # - show the score
     if False:
         age = adata.obs['age']
