@@ -24,7 +24,7 @@ def plot_scatter_age_vs_predictedAge(df, dataset='', ax=None):
     spearman = rr['Spearman']
     R2 = rr['R2']
     dataset = surrogate_names.get(dataset, dataset)
-    ax.set_title(f"{dataset} (S: {spearman:.2f}, R2:{R2:.2f})")
+    ax.set_title(f"{dataset} \n (S: {spearman:.2f}, R2:{R2:.2f})", pad=15)
 
 def wrapper_age_acceleration_disease(obs, disease_dataset):
     import pandas as pd
@@ -45,7 +45,7 @@ def wrapper_age_acceleration_disease(obs, disease_dataset):
 
     obs_disease = obs[obs['dataset'] == disease_dataset].copy()
     obs_disease['age'] = obs_disease['age'].astype(float)
-    obs_disease['donor_id'] = obs_disease['donor_id'].astype(str)
+    # obs_disease['donor_id'] = obs_disease['donor_age'].astype(str)
     obs_disease['cell_type'] = obs_disease['cell_type'].astype(str)
     obs_disease['condition'] = obs_disease['condition'].astype(str)
 
@@ -137,7 +137,7 @@ def wrapper_age_acceleration_disease(obs, disease_dataset):
     obs_disease = obs[obs['dataset'] == disease_dataset].copy()
 
     obs_disease['age'] = obs_disease['age'].astype(float)
-    obs_disease['donor_id'] = obs_disease['donor_id'].astype(str)
+    # obs_disease['donor_id'] = obs_disease['donor_id'].astype(str)
     obs_disease['cell_type'] = obs_disease['cell_type'].astype(str)
     obs_disease['condition'] = obs_disease['condition'].astype(str)
 
@@ -214,7 +214,7 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset):
 
     obs_disease = obs[obs['dataset'] == disease_dataset].copy()
     obs_disease['age'] = obs_disease['age'].astype(float)
-    obs_disease['donor_id'] = obs_disease['donor_id'].astype(str)
+    obs_disease['donor_age'] = obs_disease['donor_age'].astype(str)
 
     cell_types = obs_disease['cell_type'].unique()
     n_cell_types = len(cell_types)
@@ -225,7 +225,7 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset):
         ax = axes[i] if len(cell_types) > 1 else axes
 
         obs_ct = obs_disease[obs_disease['cell_type'] == cell_type].copy()
-        obs_ct = obs_ct.groupby(['donor_id', 'age', 'condition'])['predicted_age'].median().reset_index()
+        obs_ct = obs_ct.groupby(['donor_age', 'age', 'condition'])['predicted_age'].median().reset_index()
 
         age_bins = [20, 50, 80]
         obs_ct['age_bin'] = pd.cut(obs_ct['age'], bins=age_bins, right=False)

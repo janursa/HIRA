@@ -115,13 +115,26 @@ def perturb_tf_simulation(adata, net, tfs, slope_df, simulation_iteration=10):
 
     return adata_perturb
 
-def run_simulation(N, X0, p, n_iter=10):
+# def run_simulation(N, X0, p, n_iter=10):
+#     X = X0.copy()
+#     X_store = [X0]
+#     for it in range(n_iter):
+#         X = X + np.dot(N, p)
+#         X_store.append(X)
+#     return np.array(X_store)
+
+def run_simulation(N, X0, p, n_iter=3, decay=.7):
     X = X0.copy()
     X_store = [X0]
-    for it in range(n_iter):
-        X = X + np.dot(N, p)
+    signal = p.copy()
+    for _ in range(n_iter):
+        delta = np.dot(N, signal)
+        X = X + np.tanh(delta)  # non-linear update
         X_store.append(X)
+        signal *= decay
     return np.array(X_store)
+
+
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 def run_simulation_nonlin(N, X0, p, n_iter=10):
@@ -173,58 +186,6 @@ def perform_stat_test(df_pivot, ctr='baseline', treatment='perturb'):
     slope = (df_pivot[treatment] - df_pivot[ctr]).mean()
     return p_value, slope
 
-def wrapper_plot_age_acceleration_for_tf_perturbation(df_cell, top_n=30, features=None, value_col='signed_neg_log10_pval'):
-    from ciim.src.common import save_dir, surrogate_names, palette_datasets_pretty
-    
-    # Median of absolute mean_diff per TF across datasets
-    median_abs = df_cell.groupby('tf')[value_col].apply(lambda x: x.abs().median())
-    top_tfs = median_abs.sort_values(ascending=False).head(top_n).index
-
-    # Keep only top TFs
-    df_cell = df_cell[df_cell['tf'].isin(top_tfs)].copy()
-
-    # Sort TFs by signed mean_diff for plotting
-    tf_order = df_cell.groupby('tf')[value_col].mean().sort_values().index
-    df_cell['tf'] = pd.Categorical(df_cell['tf'], categories=tf_order, ordered=True)
-
-    figsize = (3, 5)
-    fig, ax = plt.subplots(figsize=figsize)
-    df_cell['dataset'] = df_cell['dataset'].apply(lambda x: surrogate_names.get(x, x))
-    # Background bars
-    sns.barplot(
-        data=df_cell,
-        y='tf',
-        x=value_col,
-        color='lightgray',
-        edgecolor='black',
-        linewidth=0.1,  
-        ci=None,
-        ax=ax
-    )
-    
-
-    # Dataset-colored points
-    sns.stripplot(
-        data=df_cell,
-        y='tf',
-        x=value_col,
-        hue='dataset',
-        palette=palette_datasets_pretty,
-        dodge=True,
-        alpha=0.8,
-        size=5,
-        jitter=False,
-        orient='h',
-        ax=ax
-    )
-
-    ax.axvline(0, color='gray', linestyle='--')
-    ax.set_title(f'Top {top_n} TFs')
-    ax.set_xlabel('Age acceleration significance')
-    ax.set_ylabel('TF')
-    ax.margins(y=.05)
-    ax.legend(title='Dataset', bbox_to_anchor=(1.05, 1), loc='upper left', frameon=False)
-    return fig, top_tfs
 
 from joblib import Parallel, delayed
 import os
@@ -291,15 +252,21 @@ def compute_gene_score_shift(adata_base, adata_perturbed, genes):
     # Compute expression shift
     score_shift = adata_perturbed.obs['gene_score_perturbed'] - adata_base.obs['gene_score_orig']
     assert adata_base.obs['gene_score_orig'].isna().any()==False, "Baseline gene scores contain only zeros, cannot compute shift."
-    score_shift_n = score_shift.abs()/adata_base.obs['gene_score_orig'].abs()
+    # score_shift_n = score_shift.abs()/adata_base.obs['gene_score_orig'].abs()
+
+    # print(adata_base.shape)
+    # print(adata_base.obs['gene_score_orig'])
+    # print(adata_perturbed.obs['gene_score_perturbed'] )
+    # print(score_shift_n)
+    # aaa
     
     adata_base.obs['donor_age'] = adata_base.obs['donor_id'].astype(str) + '_' + adata_base.obs['age'].astype(str)
     result_df = pd.DataFrame({
         'donor_age': adata_base.obs['donor_age'],
-        'Baseline_gene_score': adata_base.obs['gene_score_orig'].values,
-        'Perturbed_gene_score': adata_perturbed.obs['gene_score_perturbed'].values,
+        'baseline_gene_score': adata_base.obs['gene_score_orig'].values,
+        'perturbed_gene_score': adata_perturbed.obs['gene_score_perturbed'].values,
         'gene_score_shift': score_shift.values,
-        'gene_score_shift_n': score_shift_n,
+        # 'gene_score_shift_n': score_shift_n,
     }, index=adata_base.obs_names)
     result_df.set_index('donor_age', inplace=True)
     return result_df
@@ -396,31 +363,6 @@ def run_in_silico(
         return rr
 
 
-def plot_age_acceleration(df_all, x_col='cell_type', log_y=False, margins=(0.1, 0.2)):
-    # If a specific order is given, enforce it
-    order = df_all[x_col].unique()
-    print(df_all['cell_type'].unique())
-    # Calculate median per category
-    df_median = df_all.groupby(x_col)['mean_diff'].median().reset_index()
-
-    # Plotting
-    fig, ax = plt.subplots(figsize=(3, 3))
-    df_all['dataset'] = df_all['dataset'].apply(lambda name: surrogate_names.get(name, name))
-    sns.stripplot(ax=ax, data=df_all, y='mean_diff', x=x_col, hue='dataset',
-                  palette=palette_datasets_pretty, alpha=0.7, order=order)
-    sns.barplot(ax=ax, data=df_median, y='mean_diff', x=x_col, alpha=0.5, color='gray', order=order)
-
-    # Axes and labels
-    ax.legend(loc=(1.05, .2), frameon=False, title='Dataset')
-    ax.margins(x=margins[0], y=margins[1])
-    ax.set_ylabel("Age shift (years)")
-    ax.set_xlabel("")
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
-
-    if log_y:
-        ax.set_yscale('symlog')
-
-    return fig
 
 def wrapper_in_silico_perturbation(par, cell_types, datasets, n_jobs=10):
     from ciim.src.common import save_dir
