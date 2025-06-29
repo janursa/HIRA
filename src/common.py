@@ -8,7 +8,7 @@ import warnings
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 
-if False: # running on the server
+if True: # running on the server
     base_dir = '/vol/projects/jnourisa/'
 else:
     base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'

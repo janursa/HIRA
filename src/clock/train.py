@@ -132,10 +132,8 @@ def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
         from tabpfn import TabPFNRegressor 
         model = TabPFNRegressor()  
     elif reg_type == 'NN':
-        from ciim.src.clock.NN import train, AgePredictionModel, seed_all, predict
+        from ciim.src.clock.NN.NN import VAEAgeModel, seed_all, predict
         import torch
-        import numpy as np
-        from torch.utils.data import DataLoader, TensorDataset
 
         # - format the inputs
         X = torch.tensor(X, dtype=torch.float32)
@@ -150,10 +148,10 @@ def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
         model_kwargs = {'latent_dim': 32, 'hidden_dim': 128, 'dropout': .2}
 
         seed_all(42)
-        model = AgePredictionModel(*model_args, **model_kwargs)
+        model = VAEAgeModel(*model_args, **model_kwargs)
 
-        model = train(model, X, y, batch_labels, epochs=100, lr=1e-3, batch_size=32, tmp_dir=temp_dir)
-
+        from ciim.src.clock.NN.train import train as train_NN
+        model = train_NN(model, X, y, batch_labels, epochs=100, lr=1e-3, batch_size=32, tmp_dir=temp_dir)
         y_trained = predict(model, X, batch_labels).detach().numpy()
 
         return model, model_args, model_kwargs, y_trained 
@@ -253,18 +251,19 @@ def wrapper_build_model_cell_type(cell_type, par):
     model, model_args, model_kwargs, y_trained = build_model(reg_type, X, y, batch_labels=batch_labels, tune_model=par['tune_model'], temp_dir=par['temp_dir'])
 
     # Run CV again to get per-group scores
-    ordered_test_groups, cv = get_custom_cv(batch_labels)
-    scorer = get_scorer(loss_function)
-    group_scores = []
+    if reg_type != 'NN':
+        ordered_test_groups, cv = get_custom_cv(batch_labels)
+        scorer = get_scorer(loss_function)
+        group_scores = []
 
-    fold_scores = {}
-    for i, code in enumerate(ordered_test_groups):
-        train_idx, test_idx = cv[i]
-        model.fit(X[train_idx], y.iloc[train_idx])
-        score = scorer(model, X[test_idx], y.iloc[test_idx])
-        group_scores.append(score)
-        fold_scores[dataset_code_map[code]] = round(score, 2)
-    print(fold_scores)
+        fold_scores = {}
+        for i, code in enumerate(ordered_test_groups):
+            train_idx, test_idx = cv[i]
+            model.fit(X[train_idx], y.iloc[train_idx])
+            score = scorer(model, X[test_idx], y.iloc[test_idx])
+            group_scores.append(score)
+            fold_scores[dataset_code_map[code]] = round(score, 2)
+        print(fold_scores)
     # - save the training performance
     adata_all.obs['predicted_age'] = y_trained.copy()
     adata_all.write(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_adata.h5ad")
