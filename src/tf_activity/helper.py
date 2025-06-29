@@ -47,7 +47,7 @@ def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datas
         stats = stats[stats['dataset'].isin(datasets)]
     return stats
 
-def retrieve_feature_data(dataset, cell_type, type='bulk', feature_type='tf_activity', condition='healthy'):
+def retrieve_feature_data(dataset, cell_type=None, type='bulk', feature_type='tf_activity', condition='healthy'):
     from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
 
     # cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
@@ -56,9 +56,13 @@ def retrieve_feature_data(dataset, cell_type, type='bulk', feature_type='tf_acti
         raise ValueError(f'File {file_path} does not exist')
 
     adata = ad.read_h5ad(file_path)
-    if 'SLE' in dataset:
+    if ('SLE' in dataset) & (condition == 'healthy'):
         adata = adata[adata.obs['disease'] == 'normal'].copy()
     # adata = adata[adata.obs['condition'] == condition].copy()
+    if cell_type is not None:
+        if cell_type not in adata.obs['cell_type'].unique():
+            raise ValueError(f'Given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
+        adata = adata[adata.obs['cell_type'] == cell_type]
     return adata
 
 def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activity'):
@@ -357,6 +361,7 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
         age_masks = {
             'Both age groups': adata.obs.index.notnull()
         }
+    
     for age_subset, mask in age_masks.items():
         adata_sub = adata[mask, :].copy()
         assert adata_sub.shape[0]!=0, f'shouldnt be empty'
@@ -455,7 +460,7 @@ def wrapper_meta_analysis(par):
     print('Saving results to ', par['stats_all'])
     stats_all.to_csv(par['stats_all'], index=False)
 
-def wrapper_association_with_age_condition(par, features=None, test_type='unpaired'):
+def wrapper_association_with_age_condition(par, features=None, test_type='unpaired', condition='healthy'):
     # - calculate tf activity for all datasets
     datasets = par['datasets']
     feature_type = par['feature_type']
@@ -471,7 +476,7 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
         # ----------- calculate tf activity for all datasets
         for dataset in datasets:
             try:
-                adata = retrieve_feature_data(dataset, cell_type, data_type, feature_type=feature_type)
+                adata = retrieve_feature_data(dataset, cell_type, data_type, feature_type=feature_type, condition=condition)
             except ValueError as e:
                 print(e)
                 continue

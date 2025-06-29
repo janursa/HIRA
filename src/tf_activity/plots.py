@@ -432,9 +432,9 @@ def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5)):
     # Overlay black stars
     aging_df = df[df['analysis'] == 'Aging TFs']
     assert aging_df.shape[0] > 0, "No Aging TFs found in the data"
-    ax0.scatter(aging_df['analysis'], aging_df['tf'], color='black', marker='*', s=20, zorder=10)
+    ax0.scatter(aging_df['analysis'], aging_df['tf'], color='black', marker='*', s=10, zorder=10)
     sig_df = df[df.get('p_value_adj', 1.0) < 0.05]
-    ax0.scatter(sig_df['analysis'], sig_df['tf'], color='black', marker='*', s=20, zorder=10)
+    ax0.scatter(sig_df['analysis'], sig_df['tf'], color='black', marker='*', s=10, zorder=10)
 
     # Fill in missing x-axis categories
     missing = set(all_groups) - set(df['analysis'].unique())
@@ -445,6 +445,8 @@ def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5)):
     ax0.set_xlabel('')
     ax0.set_ylabel('TFs')
     ax0.margins(x=.2, y=.05 if len(tfs) > 10 else 0.2)
+    for spine in ax0.spines.values():
+        spine.set_linewidth(0.5)
     ax0.get_legend().remove()
     # - Degree barplot
     ax1 = axes[1]
@@ -457,8 +459,18 @@ def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5)):
     ax1.spines[['top', 'right']].set_visible(False)
 
     # - Place legend on the outer right of both subplots
+    ordered_labels = ['Decrease in aging', 'Increase in aging', 'Decrease after treatment', 'Increase after treatment']
     handles, labels = ax0.get_legend_handles_labels()
-    fig.legend(handles, labels, loc='center left', bbox_to_anchor=(1.02, 0.7), frameon=False)
+
+    # Create a dictionary from labels to handles
+    label_handle_dict = dict(zip(labels, handles))
+
+    # Reorder handles and labels
+    ordered_handles = [label_handle_dict[label] for label in ordered_labels]
+    ordered_labels = [label for label in ordered_labels]
+
+    # Add legend
+    fig.legend(ordered_handles, ordered_labels, loc='center left', bbox_to_anchor=(1.02, 0.7), frameon=False)
 
     
 def wrapper_drug_aging_overlap(
@@ -468,7 +480,8 @@ def wrapper_drug_aging_overlap(
         col='cell_type',
         agreement='opposite',  # treatment effect should be 'opposite' to aging
         ax=None,
-        legend=True
+        legend=True,
+        figsize=(3, 2)
     ):
     from ciim.src.common import palette_trend_2, cell_types
     import matplotlib.pyplot as plt
@@ -477,11 +490,14 @@ def wrapper_drug_aging_overlap(
     import numpy as np
     import pandas as pd
 
+    included_celltypes = stats_drug_sig['cell_type'].cat.categories 
+
     merged = aging_stats_sig.merge(stats_drug_sig, on=['tf', col], how=how)
     merged['slope_sign'] = np.sign(merged['slope'])
     merged['slope_condition_sign'] = np.sign(merged['slope_condition'])
     merged = merged.drop_duplicates(subset=['tf', col, 'slope_sign', 'slope_condition_sign'])
     merged['trend'] = merged['slope_sign'].map({1: 'positive', -1: 'negative'})
+    merged = merged[merged['cell_type'].isin(included_celltypes)]
 
     def compute_agreement(group):
         total = len(group)
@@ -508,25 +524,28 @@ def wrapper_drug_aging_overlap(
     df = summary.copy()
 
     if ax is None:
-        fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5))
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
 
     # Background bars
-    sns.barplot(
-        data=df,
-        x=col,
-        y='n_total_tfs',
-        hue='trend',
-        dodge=True,
-        alpha=0.5,
-        palette=palette_trend_2,
-        edgecolor='black',
-        linewidth=0.1,
-        ax=ax,
-    )
-
-    offset = {'Decrease in aging': -0.2, 'Increase in aging': 0.2}
+    offset = {'Decrease in aging': -0.22, 'Increase in aging': 0.22}
+    width=0.35
     colors = {'Decrease in aging': 'tab:blue', 'Increase in aging': 'tab:red'}
     x_locs = {cat: i for i, cat in enumerate(summary[col].cat.categories)}
+    for trend, offset_val in offset.items():
+        df_trend = df[df['trend'] == trend]
+        xpos = [x_locs[val] + offset_val for val in df_trend[col]]
+        ax.bar(
+            xpos,
+            df_trend['n_total_tfs'],
+            width=width,
+            alpha=0.3,
+            color=palette_trend_2[trend],
+            edgecolor='black',
+            linewidth=0.1,
+            label=trend
+        )
+    
+    
 
     for i, row in df.iterrows():
         base_x = x_locs[row[col]]
@@ -534,17 +553,19 @@ def wrapper_drug_aging_overlap(
         ax.bar(
             xpos,
             row['n_agreeing_tfs'],
-            width=0.4,
+            width=width,
             edgecolor=colors[row['trend']],
             facecolor='none',
             hatch='///',
             linewidth=1,
             zorder=1
         )
+
+        y_pos = row['n_total_tfs']
         ax.text(
             xpos,
-            row['n_total_tfs'] + 1,
-            f"{round(row['n_agreeing_tfs']/row['n_total_tfs'], 2)}",
+            y_pos + 2 ,  # Random offset for better visibility,
+            f"{int(100*(row['n_agreeing_tfs']/y_pos))}%",
             ha='center',
             va='bottom',
             fontsize=8
@@ -558,17 +579,18 @@ def wrapper_drug_aging_overlap(
     ax.spines[['right', 'top']].set_visible(False)
 
     # Custom legend
-    ax.get_legend().remove()
     handles, labels = ax.get_legend_handles_labels()
     if agreement == 'opposite':
-        label = 'Counter-effect overlap'
+        label = 'Rejuvination effect'
     elif agreement == 'same':
-        label = 'Same-effect overlap'
+        label = 'Ageing effect'
     
     hatch_patch = mpatches.Patch(facecolor='white', edgecolor='black', hatch='///', label=label)
     handles.append(hatch_patch)
     if legend:
         ax.legend(handles=handles, title='Trend', loc=(1.05, 0.5), frameon=False)
+
+
 def plot_gene_score_association_with_age(cell_type, datasets, type, features=None, feature_type='tf_activity', sizes=(50, 100), 
                               top_features=20, min_degree=4, filter_meta_significant=False, race='european', width=3,
                              margins_ax1={'x': 0.1, 'y': 0.1}, margins_ax2={'x': 0.1, 'y': 0.1}, show_size_legend = False, figsize=None):
@@ -1750,9 +1772,10 @@ def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", 
 
 def heamap_plot_minor_cell_types(stats_all, palette, 
                                             map_names, 
-                                            slope_col = 'slope',
+                                            slope_col='slope',
                                             main_col='major_cell_type', 
-                                            minor_col='cell_type' ,figsize=(6, 8), sig_dots_y_offset = 0.5):
+                                            minor_col='cell_type' ,figsize=(6, 8), sig_dots_y_offset = 0.5, annotate_x_ticks=True):
+
     from ciim.src.common import palette_cell_types, surrogate_names
     from matplotlib.colors import ListedColormap, BoundaryNorm
     from scipy.cluster.hierarchy import linkage
@@ -1797,7 +1820,10 @@ def heamap_plot_minor_cell_types(stats_all, palette,
     g.ax_heatmap.set_yticks([])
     g.ax_heatmap.set_ylabel('', fontsize=10, labelpad=5)
     new_labels = [surrogate_names.get(label.get_text(), label.get_text()) for label in g.ax_heatmap.get_xticklabels()]
-    g.ax_heatmap.set_xticklabels(new_labels, rotation=90)  # or any angle you prefer
+    if annotate_x_ticks:
+        g.ax_heatmap.set_xticklabels(new_labels, rotation=90)  # or any angle you prefer
+    else:
+        g.ax_heatmap.set_xticks([])
 
     g.ax_heatmap.set_xlabel('', fontsize=12, labelpad=15)
 
