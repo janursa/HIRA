@@ -132,7 +132,7 @@ def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
         from tabpfn import TabPFNRegressor 
         model = TabPFNRegressor()  
     elif reg_type == 'NN':
-        from ciim.src.clock.NN.NN import VAEAgeModel, seed_all, predict
+        from ciim.src.clock.NN.NN import VAEAgeModel, seed_all
         import torch
 
         # - format the inputs
@@ -146,14 +146,18 @@ def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
 
         model_args = (n_genes, n_batches)
         model_kwargs = {'latent_dim': 32, 'hidden_dim': 128, 'dropout': .2}
+        train_kwargs = {'batch_size': 64, 'epochs': 200, 'lr': 1e-3, 
+                        'alpha':1, # reconstruction loss weight
+                        'beta': 1.0, # age prediction loss weight
+                        'gamma':0, # KL divergence weight
+                        }
 
         seed_all(42)
         model = VAEAgeModel(*model_args, **model_kwargs)
 
         from ciim.src.clock.NN.train import train as train_NN
-        model = train_NN(model, X, y, batch_labels, epochs=100, lr=1e-3, batch_size=32, tmp_dir=temp_dir)
-        y_trained = predict(model, X, batch_labels).detach().numpy()
-
+        model = train_NN(model, X, y, batch_labels, tmp_dir=temp_dir, **train_kwargs)
+        y_trained = model.predict(X, batch_labels)
         return model, model_args, model_kwargs, y_trained 
     elif reg_type == 'ridge':
         from sklearn.pipeline import make_pipeline

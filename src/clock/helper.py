@@ -3,7 +3,14 @@ from ciim.src.common import clock_save_dir
 import pandas as pd
 import numpy as np
 import anndata as ad
-
+import joblib
+import numpy as np
+from scipy import sparse
+import pandas as pd
+from scipy.stats import spearmanr
+from sklearn.metrics import r2_score
+from sklearn.preprocessing import StandardScaler
+from scipy.sparse import issparse
 
 
 def save_function(model, gene_names, cell_type, data_type, feature_type, reg_type, version, model_args=None, model_kwargs=None):
@@ -13,7 +20,6 @@ def save_function(model, gene_names, cell_type, data_type, feature_type, reg_typ
     if reg_type == 'NN':
         import torch
         model_path = os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_model.pt")
-    
         torch.save({
             'state_dict': model.state_dict(),
             'model_args': model_args,
@@ -27,13 +33,11 @@ def retrieve_function(reg_type, cell_type, data_type, feature_type, version):
     import os
     import joblib
     import numpy as np
-    
-    
     if reg_type == 'NN':
-        from ciim.src.clock.NN import AgePredictionModel
+        from ciim.src.clock.NN.NN import VAEAgeModel
         import torch
         model_path = os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_model.pt")
-        model_class = AgePredictionModel
+        model_class = VAEAgeModel
         checkpoint = torch.load(model_path, map_location=torch.device('cpu'))
         model_args = checkpoint['model_args']
         model_kwargs = checkpoint['model_kwargs']
@@ -102,70 +106,47 @@ def prepare_input(dataset, cell_type, feature_type='tf_activity', data_type='bul
         adata = pivot_adata_minor(adata)
         print('pivoted', adata.X.shape)
     return adata
+def align_feature_space(adata, gene_names):
+    var_names = np.array(adata.var_names)
+    var_index = {gene: i for i, gene in enumerate(var_names)}
 
-def predict_age(X, cell_type, feature_type='tf_activity', data_type='bulk', reg_type='ridge', version='v1.0'):
-    import joblib
-    import numpy as np
-    from scipy import sparse
-    import pandas as pd
-    from scipy.stats import spearmanr
-    from sklearn.metrics import r2_score
-    from sklearn.preprocessing import StandardScaler
-    from scipy.sparse import issparse
-    
+    # Collect indices or mark as -1 for missing
+    idxs = np.array([var_index.get(gene, -1) for gene in gene_names])
 
-    if isinstance(X, pd.DataFrame):
-        adata = _df_to_adata(X)
-    else:
-        adata = X
-    # - load the model
-    model, gene_names = retrieve_function(reg_type, cell_type, data_type, feature_type, version)
-        
-    if True:
-        var_names = np.array(adata.var_names)
-        var_index = {gene: i for i, gene in enumerate(var_names)}
+    # Create a matrix with correct shape
+    rows = adata.shape[0]
+    cols = len(gene_names)
+    X_aligned = sparse.lil_matrix((rows, cols))
 
-        # Collect indices or mark as -1 for missing
-        idxs = np.array([var_index.get(gene, -1) for gene in gene_names])
+    # Fill in available gene columns
+    present = idxs != -1
+    if present.sum() > 0:
+        X_aligned[:, present] = adata.X[:, idxs[present]]
 
-        # Create a matrix with correct shape
-        rows = adata.shape[0]
-        cols = len(gene_names)
-        X_aligned = sparse.lil_matrix((rows, cols))
-
-        # Fill in available gene columns
-        present = idxs != -1
-        if present.sum() > 0:
-            X_aligned[:, present] = adata.X[:, idxs[present]]
-
-        # Convert to CSR for efficient prediction
-        X = X_aligned.tocsr()
-    else:
-        X = adata.X
-    
+    # Convert to CSR for efficient prediction
+    X = X_aligned.tocsr()
     if issparse(X):
         X = X.toarray()  # convert sparse to dense
+    return X
+def predict_age(adata, cell_type, feature_type='tf_activity', data_type='bulk', reg_type='ridge', version='v1.0'):
     
-    if reg_type == 'NN':
-        import torch
-        from ciim.src.clock.NN import predict
-        X = torch.tensor(X, dtype=torch.float32)
-        predicted_age = predict(model, X)
-        predicted_age = predicted_age.detach().numpy()
-    else:
-        predicted_age = model.predict(X)
-
+    
+    # - load the model
+    model, gene_names = retrieve_function(reg_type, cell_type, data_type, feature_type, version)
+    
+    # - align the genes
+    X = align_feature_space(adata, gene_names)
+    predicted_age = model.predict(X)
     adata.obs['predicted_age'] = predicted_age.copy()
-
-    # - show the score
-    if False:
-        age = adata.obs['age']
-        predicted_age = adata.obs['predicted_age']
-        # print(predicted_age.shape, age.shape)
-        rr_dict = {'Spearman': spearmanr(age, predicted_age)[0], 'R2': r2_score(age, predicted_age)}
-        print(rr_dict)
-    else:
-        scores = evaluate_groupwise_median(adata.obs)
+    # # - show the score
+    # if False:
+    #     age = adata.obs['age']
+    #     predicted_age = adata.obs['predicted_age']
+    #     # print(predicted_age.shape, age.shape)
+    #     rr_dict = {'Spearman': spearmanr(age, predicted_age)[0], 'R2': r2_score(age, predicted_age)}
+    #     print(rr_dict)
+    # else:
+    #     scores = evaluate_groupwise_median(adata.obs)
     return adata
 
 # def stability_selection_shap(model, X, y,  top_q=80):

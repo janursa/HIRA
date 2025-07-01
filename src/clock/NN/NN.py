@@ -73,10 +73,14 @@ class Encoder(nn.Module):
             h =  h + self.batch_embed(batch_idx)
         h = self.dropout(h)
         mu = self.fc_mu(h)
-        logvar = self.fc_logvar(h)
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        z = mu + eps * std  # Reparameterization trick
+        if False:  # Use stochastic latent space
+            logvar = self.fc_logvar(h)
+            std = torch.exp(0.5 * logvar)
+            eps = torch.randn_like(std)
+            z = mu + eps * std  # Reparameterization trick
+        else:
+            z = mu
+            logvar = torch.zeros_like(mu)
         return z, mu, logvar
 
 class Decoder(nn.Module):
@@ -113,14 +117,36 @@ class VAEAgeModel(nn.Module):
         age_pred = self.age_head(z)
         return recon_x, age_pred.squeeze(), mu, logvar
 
+    def predict(self, X, batch_idx=None):
+        if not isinstance(X, torch.Tensor):
+            X = torch.tensor(X, dtype=torch.float32)
+        self.eval()
+        with torch.no_grad():
+            recon_x, age_pred, mu, logvar = self.forward(X, batch_idx=batch_idx)
+        age_pred = age_pred.detach().numpy()
+        return age_pred
 
+    def get_latent(self, X, batch_idx=None, batch_size=256):
+        if not isinstance(X, torch.Tensor):
+            X = torch.tensor(X, dtype=torch.float32)
 
-def predict(model, X, batch_idx=None):
-    model.eval()
-    with torch.no_grad():
-        _, preds, _, _ = model(X, batch_idx=batch_idx)
-    return preds
+        if batch_idx is not None and not isinstance(batch_idx, torch.Tensor):
+            batch_idx = torch.tensor(batch_idx, dtype=torch.long)
+        
+        self.eval()
+        latent_means = []
 
+        n = X.shape[0]
+        with torch.no_grad():
+            for i in range(0, n, batch_size):
+                xb = X[i:i+batch_size]
+                bb = batch_idx[i:i+batch_size] if batch_idx is not None else None
+                _, _, mu, _ = self.forward(xb, batch_idx=bb)
+                latent_means.append(mu.cpu().numpy())
+
+        latent_array = np.concatenate(latent_means, axis=0)
+        
+        return latent_array
 
 
 

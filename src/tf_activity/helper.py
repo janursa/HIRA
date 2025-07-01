@@ -193,11 +193,9 @@ def retrieve_adata_bulk(dataset, type='bulk', cell_type=None):
         type = 'bulk_minor'
         adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
         adata = adata[adata.obs['sex']==gender]
-
     else:
         adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
-    # if 'minor' in type:
-    #     adata.obs['cell_type'] = adata.obs['Sub_CT']
+
     adata.obs['dataset'] = dataset
     adata = adata[:, adata.var_names.isin(gene_names)]
 
