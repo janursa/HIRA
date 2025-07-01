@@ -18,6 +18,104 @@ from pandas.api.types import CategoricalDtype
 from ciim.src.common import base_dir, save_dir, colors_blind, datasets_all ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
 from ciim.src.tf_activity.helper import retrieve_adata_bulk, retrieve_net, calculate_tf_activity, bin_feature_values, retrieve_feature_data
 
+# - retrieve the feature data (donor level) for the case TF 
+def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_value_adj, ax=None):
+    perturbation_surrogate_names = {
+        '24 h LPS': 'LPS',
+        '24 h LPS + ruxolitinib': 'Ruxolitinib (LPS)',
+    }
+    def get_perturbation_raw_data(case_tf, cell_type, ctr, treatment):
+        adata = retrieve_feature_data(dataset='CXCL9', cell_type=cell_type, type='bulk', feature_type='tf_activity', condition=None)
+        adata = adata[adata.obs['treatment'].isin([ctr, treatment])]
+        adata = adata[:, adata.var_names == case_tf]
+
+        # Convert to dataframe
+        df = pd.DataFrame({
+            'expression': adata.X.flatten(),
+            'treatment': adata.obs['treatment'].values,
+            'donor_id': adata.obs['donor_id'].values
+        })
+        df['treatment'] = df['treatment'].map(perturbation_surrogate_names)
+        # # Pivot for plotting
+        df_pivot = df.pivot(index='donor_id', columns='treatment', values='expression').dropna()
+        dummy_donor_names = {donor: f"Donor {i+1}" for i, donor in enumerate(df_pivot.index)}
+        df_pivot_renamed = df_pivot.rename(index=dummy_donor_names)
+        return df_pivot_renamed
+    def plot_perturbation_effect_donors(data, figsize=(2, 2), ax=None):
+        from matplotlib.patches import ConnectionPatch
+        # Determine number of stars
+        if p_value_adj < 0.001:
+            stars = '***'
+        elif p_value_adj < 0.01:
+            stars = '**'
+        elif p_value_adj < 0.05:
+            stars = '*'
+        else:
+            stars = 'n.s.'
+
+        # Calculate y position for the bracket and text
+        columns = data.columns
+        y_max = data.max().max()
+        y_bracket = y_max * 1.05
+
+        # Plot
+        if ax is None:
+            fig, ax = plt.subplots(figsize=figsize)
+        for donor_id, row in data.iterrows():
+            ax.plot([0, 1], row.values, marker='o', label=donor_id, alpha=0.5)
+
+        # Axis setup
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(columns)
+        ax.set_ylabel(f"TF activity")
+        ax.set_yticks([])
+        
+        x1, x2 = 0, 1  # x positions of the two bars
+
+        # Larger gap above y_max
+        vertical_gap = abs(y_max) * 0.8  # increase this for more distance from data
+        bracket_height = abs(y_max) * 0.12
+        edge_height = bracket_height * 0.7
+        text_offset = bracket_height * 0.6
+
+        # Bracket vertical placement
+        y_bracket_top = y_max + vertical_gap + bracket_height
+        y_bracket_mid = y_bracket_top - edge_height
+
+        # Draw bracket
+        ax.plot(
+            [x1, x1, x2, x2],
+            [y_bracket_mid, y_bracket_top, y_bracket_top, y_bracket_mid],
+            lw=1.5, color='black'
+        )
+
+        # Draw stars
+        ax.text(
+            (x1 + x2) * 0.5,
+            y_bracket_top + text_offset,
+            stars,
+            ha='center',
+            va='bottom',
+            fontsize=13
+        )
+        sns.despine()
+        ax.margins(x=0.2, y=0.2)
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+        ax.legend(
+            title='',
+            bbox_to_anchor=(1.02, 1.1),
+            loc='upper left',
+            frameon=False,
+            labelspacing=0.2,       # Reduce vertical space between labels
+            handletextpad=0.5,      # Space between handle and text
+            borderaxespad=0.2       # Space between legend and axis
+        )
+    # - retrieve the data
+    df_pivot_renamed = get_perturbation_raw_data(case_tf, cell_type, ctr, treatment)
+    
+    # - plot the perturbation effect
+    plot_perturbation_effect_donors(df_pivot_renamed, figsize=(1.8, 1.7), ax=ax)
+    ax.set_title(f"{case_tf} ", fontsize=10,  pad=15)
 
 def plot_term_genes(pathway_scores, cell_type, term):
     pathway_scores_t = pathway_scores[
@@ -368,10 +466,8 @@ def dotplot_category_color(df, ax,
 def plot_feature_values_per_datasets(cell_type, features, type, datasets, feature_type='gene_expression', age_limit=[20, 75], cluster=False, figsize=None):
     import matplotlib.pyplot as plt
     import seaborn as sns
-    # from ciim.src.utils.plots import heatplot_age_trend
     from ciim.src.common import surrogate_names
     from ciim.src.tf_activity.helper import retrieve_feature_data, bin_feature_values
-    # from matplotlib.colors import TwoSlopeNorm
 
     n_datasets = len(datasets)
     n_features = len(features)
@@ -414,19 +510,23 @@ def plot_feature_values_per_datasets(cell_type, features, type, datasets, featur
             # ax.set_yticklabels([])
             ax.set_ylabel('')
         ax.set_title(surrogate_names[dataset], pad=10, fontsize=10, fontweight='bold')
-    plt.tight_layout()
-    plt.suptitle(cell_type, fontsize=12, fontweight='bold', y=1.05)
+    # plt.tight_layout()
+    # plt.suptitle(cell_type, fontsize=12, fontweight='bold', y=1.05)
     return fig
 
-def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5)):
+def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5), plot_centrality=True,
+                                ax2_margins={'y': 0.1, 'x': 0.1}, hide_ylabels=False):
     
     # stats_d_sig = stats_d[stats_d['p_value_adj'] < 0.05]
     # --- Plot ---
     tfs = df['tf'].unique()
-    fig, axes = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': [1.2, .8]})
+    if plot_centrality:
+        fig, axes = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': [1.2, .5]})
+    else:
+        fig, axes = plt.subplots(1, 1, figsize=figsize)
 
     # - Scatter plot
-    ax0 = axes[0]
+    ax0 = axes[0] if plot_centrality else axes
     sns.scatterplot(data=df, x='analysis', y='tf', hue='trend', ax=ax0, palette=palette_all, s=100)
 
     # Overlay black stars
@@ -445,21 +545,27 @@ def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5)):
     ax0.set_xlabel('')
     ax0.set_ylabel('TFs')
     ax0.margins(x=.2, y=.05 if len(tfs) > 10 else 0.2)
+    if hide_ylabels:
+        ax0.set_yticklabels([])
+        ax0.set_ylabel('')
     for spine in ax0.spines.values():
         spine.set_linewidth(0.5)
     ax0.get_legend().remove()
     # - Degree barplot
-    ax1 = axes[1]
-    bar_data = df.drop_duplicates(subset='tf')
-    sns.barplot(data=bar_data, x='degree', y='tf', ax=ax1, color='#56B4E9', alpha=0.7, ci=None)
-    ax1.set_xlabel('Centrality')
-    ax1.set_ylabel('')
-    ax1.set_yticks([])
-    ax1.margins(y=.05)
-    ax1.spines[['top', 'right']].set_visible(False)
+    if plot_centrality:
+        ax1 = axes[1]
+        bar_data = df.drop_duplicates(subset='tf')
+        sns.barplot(data=bar_data, x='degree', y='tf', ax=ax1, color='#56B4E9', alpha=0.7, ci=None)
+        ax1.set_xlabel('Centrality')
+        ax1.set_ylabel('')
+        ax1.set_yticks([])
+        ax1.margins(**ax2_margins)
+        ax1.spines[['top', 'right']].set_visible(False)
+        
 
     # - Place legend on the outer right of both subplots
-    ordered_labels = ['Decrease in aging', 'Increase in aging', 'Decrease after treatment', 'Increase after treatment']
+    ordered_labels = ['Decrease in aging', 'Increase in aging', 'Decrease after treatment', 'Increase after treatment', 'Decrease in disease', 'Increase in disease']
+    ordered_labels = [label for label in ordered_labels if label in palette_all.keys()]
     handles, labels = ax0.get_legend_handles_labels()
 
     # Create a dictionary from labels to handles
@@ -470,7 +576,7 @@ def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5)):
     ordered_labels = [label for label in ordered_labels]
 
     # Add legend
-    fig.legend(ordered_handles, ordered_labels, loc='center left', bbox_to_anchor=(1.02, 0.7), frameon=False)
+    fig.legend(ordered_handles, ordered_labels, loc='center left', bbox_to_anchor=(1.02, 0.8), frameon=False)
 
     
 def wrapper_drug_aging_overlap(
@@ -481,7 +587,8 @@ def wrapper_drug_aging_overlap(
         agreement='opposite',  # treatment effect should be 'opposite' to aging
         ax=None,
         legend=True,
-        figsize=(3, 2)
+        figsize=(2.5, 2),
+        legend_loc=(1.05, 0.5)
     ):
     from ciim.src.common import palette_trend_2, cell_types
     import matplotlib.pyplot as plt
@@ -544,8 +651,6 @@ def wrapper_drug_aging_overlap(
             linewidth=0.1,
             label=trend
         )
-    
-    
 
     for i, row in df.iterrows():
         base_x = x_locs[row[col]]
@@ -564,7 +669,7 @@ def wrapper_drug_aging_overlap(
         y_pos = row['n_total_tfs']
         ax.text(
             xpos,
-            y_pos + 2 ,  # Random offset for better visibility,
+            y_pos + 2 + y_pos*.1*np.random.rand(),  # Random offset for better visibility,
             f"{int(100*(row['n_agreeing_tfs']/y_pos))}%",
             ha='center',
             va='bottom',
@@ -583,12 +688,12 @@ def wrapper_drug_aging_overlap(
     if agreement == 'opposite':
         label = 'Rejuvination effect'
     elif agreement == 'same':
-        label = 'Ageing effect'
+        label = 'Age acceleration effect'
     
     hatch_patch = mpatches.Patch(facecolor='white', edgecolor='black', hatch='///', label=label)
     handles.append(hatch_patch)
     if legend:
-        ax.legend(handles=handles, title='Trend', loc=(1.05, 0.5), frameon=False)
+        ax.legend(handles=handles, title='', loc=legend_loc, frameon=False)
 
 
 def plot_gene_score_association_with_age(cell_type, datasets, type, features=None, feature_type='tf_activity', sizes=(50, 100), 
@@ -1248,6 +1353,7 @@ def plot_overall_heatmap(stats_all,
                         bbox_to_anchor_col1=(1.1, 0.4),
                         trend_colors = ['#B0BF1A', '#E52B50'],
                         trend_names = ['Decrease in aging', 'Increase in aging'],
+                        dendrogram_visible=True
                         ):
     from ciim.src.common import palette_trend_2
     from matplotlib.colors import ListedColormap, BoundaryNorm
@@ -1297,6 +1403,10 @@ def plot_overall_heatmap(stats_all,
         linecolor=None,
         figsize=figsize,
     )
+    g.ax_row_dendrogram.set_visible(dendrogram_visible)
+    # if True: # tick labels
+    #     g.ax_heatmap.set_xticklabels([])
+
 
     g.cax.set_visible(False)
     g.ax_heatmap.set_yticks([])
@@ -1743,7 +1853,12 @@ def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net
         plt.title(f"{cell_type_major} - CollecTRI", fontsize=14, pad=20, weight='bold')
     return fig
 
-def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", y_label="Genes", figsize=(2.5, 3), ax=None, show_cbar=True, shrink=.7):
+def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", y_label="Genes", figsize=(2.5, 3), 
+                ax=None, show_cbar=True, cbar_kws={
+                                        "shrink": 1,
+                                        "aspect": 10,       # Lower values = thicker colorbar (default is ~20)
+                                        "fraction": 0.1    # Controls the width space the cbar takes in the figure
+                                    }):
     import seaborn as sns
     import matplotlib.pyplot as plt
     import numpy as np
@@ -1751,30 +1866,30 @@ def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", 
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
     sns.heatmap(mean_expr, cmap=cmap, cbar=show_cbar, 
-                cbar_kws={
-                    "shrink": shrink,
-                    "aspect": 10,       # Lower values = thicker colorbar (default is ~20)
-                    "fraction": 0.1    # Controls the width space the cbar takes in the figure
-                },
+                cbar_kws=cbar_kws,
                  ax=ax)
     ax.set_yticks(np.arange(mean_expr.shape[0]) + 0.5)
     ax.set_yticklabels(mean_expr.index, rotation=0)
 
-    # Adjust colorbar
+    # Modify the colorbar
     if show_cbar:
         cbar = ax.collections[0].colorbar
         cbar.ax.set_ylabel(cbar_title, rotation=90, labelpad=5)
 
+        # Set ticks at the min and max values of the colorbar
+        vmin, vmax = cbar.vmin, cbar.vmax
+        cbar.set_ticks([vmin, vmax])
+        cbar.set_ticklabels(['0', '1'], rotation=0, fontsize=7)
+
     # Labels and formatting
     ax.set_xlabel("Age")
-    # ax.set_ylabel(y_label)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
 
 def heamap_plot_minor_cell_types(stats_all, palette, 
                                             map_names, 
                                             slope_col='slope',
                                             main_col='major_cell_type', 
-                                            minor_col='cell_type' ,figsize=(6, 8), sig_dots_y_offset = 0.5, annotate_x_ticks=True):
+                                            minor_col='cell_type' ,figsize=(6, 8), sig_dots_y_offset = 0.5, annotate_x_ticks=True, dendrogram_visible=True):
 
     from ciim.src.common import palette_cell_types, surrogate_names
     from matplotlib.colors import ListedColormap, BoundaryNorm
@@ -1815,6 +1930,7 @@ def heamap_plot_minor_cell_types(stats_all, palette,
         linecolor=None,
         figsize=figsize,
     )
+    g.ax_row_dendrogram.set_visible(dendrogram_visible)
 
     g.cax.set_visible(False)
     g.ax_heatmap.set_yticks([])
@@ -1910,7 +2026,7 @@ def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets,
         fig, ax = plt.subplots(figsize=(3, 2))
 
     heatplot_age_trend(mean_expr[ages], cmap='magma' if feature_type=='tf_activity' else 'viridis', 
-                        cbar_title="Gene \n expression" if feature_type=='gene_expression' else "TF \n activity", 
+                        cbar_title="Gene \n expression" if feature_type=='gene_expression' else "TF activity (normalized)", 
                         ax=ax, 
                         show_cbar=show_cbar, 
                         shrink=1)

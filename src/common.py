@@ -8,7 +8,7 @@ import warnings
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 
-if True: # running on the server
+if False: # running on the server
     base_dir = '/vol/projects/jnourisa/'
 else:
     base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
@@ -88,21 +88,19 @@ cmap_trend = LinearSegmentedColormap.from_list(
         )
 
 palette_trend_2 = OrderedDict([
-    ('Decrease in aging', '#B0BF1A'),
     ('Increase in aging', '#E52B50'),
+    ('Decrease in aging', '#B0BF1A'),
 ])
-from collections import OrderedDict
 
 palette_disease_effect = OrderedDict([
-    ('Decrease in disease', '#0072B2'),
-    ('Increase in disease', 'Orange'),
+    ('Increase in disease', '#A83279'),   # magenta-rose (reddish, but cooler tone)
+    ('Decrease in disease', '#4CAF50'),   # leafy green (darker and more saturated)
 ])
 
 palette_treatment = OrderedDict([
-    ('Decrease after treatment', '#0072B2'),
-    ('Increase after treatment', 'Orange'),
+    ('Increase after treatment', '#FF7F0E'),   # bright orange (stays on warm side, but clearly distinct)
+    ('Decrease after treatment', '#1E8449'),   # forest green (darker and more neutral)
 ])
-
 cell_types = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
 palette_cell_types = {name: color for name, color in zip(cell_types, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}
 
