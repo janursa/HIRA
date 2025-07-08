@@ -485,7 +485,7 @@ def calculate_coexp_all(adata_dir='input/adata.h5ad', normalize='sla', corr_meth
     coexp_adata = ad.AnnData(X=coexp_all.values, obs=obs, var=var)
     coexp_adata.write(write_file)
 
-def calculate_coexp(adata, layer=None, group='age_donor', corr_method='pearson', denoise=False, normalize='sla'):
+def calculate_coexp(adata, layer=None, group='donor_age', corr_method='pearson', denoise=False, normalize='sla'):
 
         for i_donor, age_donor in enumerate(tqdm(adata.obs[group].unique())):
             adata_age = adata[adata.obs[group].eq(age_donor), :]
@@ -528,8 +528,8 @@ def calculate_coexp(adata, layer=None, group='age_donor', corr_method='pearson',
             net['link'] = ['_'.join(sorted([str(src), str(tgt)])) for src, tgt in zip(net.source, net.target)]
 
             # Create a MultiIndex from the specified columns in adata_age_donor
-            index_df = pd.DataFrame({'age_group':adata_age.obs.age_group.unique(), 'batch_group':adata_age.obs.batch_group.unique(), 'age_donor':adata_age.obs.age_donor.unique(), 'age':adata_age.obs.age.unique(), 'cell_count': [len(adata_age)]})
-            index = pd.MultiIndex.from_frame(index_df, names=['age_group', 'batch_group', 'age_donor', 'age', 'cell_count'])
+            index_df = pd.DataFrame({'age_group':adata_age.obs.age_group.unique(), 'batch_group':adata_age.obs.batch_group.unique(), 'donor_age':adata_age.obs.age_donor.unique(), 'age':adata_age.obs.age.unique(), 'cell_count': [len(adata_age)]})
+            index = pd.MultiIndex.from_frame(index_df, names=['age_group', 'batch_group', 'donor_age', 'age', 'cell_count'])
 
             # Create a DataFrame with weights using the new 'link' and the MultiIndex
             coexp_df = pd.DataFrame([net.weight.values], 
@@ -589,7 +589,7 @@ def sig_test_all(coexp_adata_file='output/coexp_adata_apr_spearman.h5ad', ctr_gr
     # - make a df 
     coexp_df = pd.DataFrame(coexp_adata.X, columns=coexp_adata.var_names, index=pd.MultiIndex.from_frame(coexp_adata.obs, names=coexp_adata.obs.columns))
 
-    coexp_long_df = coexp_df.reset_index(level=['batch_group', 'age_group', 'age_donor']).melt(id_vars=['batch_group', 'age_group', 'age_donor'], var_name='link', value_name='weight')
+    coexp_long_df = coexp_df.reset_index(level=['batch_group', 'age_group', 'donor_age']).melt(id_vars=['batch_group', 'age_group', 'donor_age'], var_name='link', value_name='weight')
     coexp_long_df.head()
 
     links = coexp_long_df[col_link].unique()
@@ -766,7 +766,7 @@ def pca_analysis_across_ages():
         # - make a df 
         coexp_df = pd.DataFrame(coexp_adata.X, columns=coexp_adata.var_names, index=pd.MultiIndex.from_frame(coexp_adata.obs, names=coexp_adata.obs.columns))
 
-        coexp_long_df = coexp_df.reset_index(level=['batch_group', 'age_group', 'age_donor']).melt(id_vars=['batch_group', 'age_group', 'age_donor'], var_name='link', value_name='weight')
+        coexp_long_df = coexp_df.reset_index(level=['batch_group', 'age_group', 'donor_age']).melt(id_vars=['batch_group', 'age_group', 'donor_age'], var_name='link', value_name='weight')
         coexp_long_df.head()
 
         if True: # testing group difference for different pcs

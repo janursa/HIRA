@@ -1301,7 +1301,7 @@ def wrapper_heatmap_tf_validation(cell_type, tfs, ax, cut_off=50, dataset = 'dat
     ax.set_title(cell_type, pad=15)
 def binarize_age(obs):
     obs = obs.copy()
-    obs['age_donor'] = obs['age'].astype(str) + '_' + obs['donor_id'].astype(str)
+    obs['donor_age'] = obs['age'].astype(str) + '_' + obs['donor_id'].astype(str)
     # obs = obs[obs.age<=75]
     obs['age'] = pd.to_numeric(obs['age'], errors='coerce')
     min_age = obs.age.min()
@@ -1332,7 +1332,7 @@ def plot_trend_targets_binarized(cell_type, genes, dataset='data1', ax=None):
     adata = adata[:, adata.var_names.isin(genes)]
     from ciim.src.process_dataset.preprocess.helper import binarize_age
     adata.obs = binarize_age(adata.obs)
-    # print(adata.obs.groupby(['age_group'])['age_donor'].nunique())
+    # print(adata.obs.groupby(['age_group'])['donor_age'].nunique())
 
     mean_expr = cluster_trends(adata)
 
