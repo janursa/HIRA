@@ -383,12 +383,5 @@ def wrapper_in_silico_perturbation(par, cell_types, datasets, n_jobs=10):
     results = Parallel(n_jobs=n_jobs)(tasks)
     results = [res for res in results if res is not None and not res.empty]
     df_all = pd.concat(results, axis=0)
-    from scipy.stats import norm
-
-    # df_all['z_score'] = df_all.groupby('cell_type')['mean_diff'].transform(
-    #     lambda x: (x - x.mean()) / x.std()
-    # )
-
-    # df_all['empirical_pval_two_sided'] = 2 * norm.sf(np.abs(df_all['z_score']))
-    # df_all['signed_neg_log10_pval'] = -np.sign(df_all['mean_diff']) * np.log10(df_all['empirical_pval_two_sided'])
+    
     return df_all

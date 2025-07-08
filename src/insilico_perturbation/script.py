@@ -30,7 +30,7 @@ from ciim.src.common import (
     palette_trend, palette_trend_2, palette_regulation, palette_cell_types
 )
 from ciim.src.tf_activity.helper import retrieve_sig_stats
-from ciim.src.insilico_perturbation.helper import wrapper_in_silico_perturbation, plot_age_acceleration
+from ciim.src.insilico_perturbation.helper import wrapper_in_silico_perturbation
 
 def run_single_aging_tf_perturbation():
     print('Running single aging TF perturbation...')

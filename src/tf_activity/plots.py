@@ -259,7 +259,7 @@ def plot_sig_tfs_stats(df, figsize=(3.5, 2), palette=None, ax=None):
     ax.spines['top'].set_visible(False)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
     # plt.suptitle('TFs significantly associated with age', fontsize=12)
-    plt.tight_layout()
+    # plt.tight_layout()
 class ModularizedNetPlot:
     @staticmethod
     def prepare_net_only_tfs(cell_type, race, type, min_degree=3):
@@ -698,7 +698,8 @@ def wrapper_drug_aging_overlap(
 
 def plot_gene_score_association_with_age(cell_type, datasets, type, features=None, feature_type='tf_activity', sizes=(50, 100), 
                               top_features=20, min_degree=4, filter_meta_significant=False, race='european', width=3,
-                             margins_ax1={'x': 0.1, 'y': 0.1}, margins_ax2={'x': 0.1, 'y': 0.1}, show_size_legend = False, figsize=None):
+                             margins_ax1={'x': 0.1, 'y': 0.1}, margins_ax2={'x': 0.1, 'y': 0.1}, show_size_legend = False, figsize=None,
+                             n_top_terms=20):
     from ciim.src.utils.plots import dotplot
     from matplotlib.colors import TwoSlopeNorm
     from ciim.src.common import cmap_trend, palette_trend_2, surrogate_names
@@ -720,9 +721,7 @@ def plot_gene_score_association_with_age(cell_type, datasets, type, features=Non
 
     # - format the data
     stats_t = retrieve_stats_features(type, feature_type, cell_type=cell_type, datasets=datasets, condition='healthy')
-    if features is None:
-        features = stats_t[feature_col].unique()
-    stats_t = stats_t[stats_t[feature_col].isin(features)]
+    
     if 'tf' in stats_t.columns:
         stats_t = stats_t.rename(columns={'tf': 'source'})
     if filter_meta_significant:
@@ -730,6 +729,9 @@ def plot_gene_score_association_with_age(cell_type, datasets, type, features=Non
         stats_sig = stats_sig[stats_sig['cell_type'] == cell_type]
         sig_tfs = stats_sig[feature_col].unique()
         stats_t = stats_t[stats_t[feature_col].isin(sig_tfs)]
+    if features is None:
+        features = stats_t[feature_col].unique()
+    stats_t = stats_t[stats_t[feature_col].isin(features)]
     
     # - add the number of genes in each pathway
     c_store = []
@@ -741,9 +743,13 @@ def plot_gene_score_association_with_age(cell_type, datasets, type, features=Non
         c_store.append(df)
     c = pd.concat(c_store)
     c_median = c.groupby([feature_col])['n_matching_genes'].median().reset_index()
+    c_median = c_median[c_median[feature_col].isin(features)]
+    # print(c_median.sort_values(by='n_matching_genes', ascending=False))
+    # aa
+    c_median = c_median.sort_values(by='n_matching_genes', ascending=False).head(n_top_terms)
     c_std = c.groupby([feature_col])['n_matching_genes'].std().reset_index(name='n_matching_genes_std')
-    stats_t = stats_t.merge(c_median, left_on=feature_col, right_on=feature_col, how='left')
-    stats_t = stats_t.merge(c_std, left_on=feature_col, right_on=feature_col, how='left')
+    stats_t = stats_t.merge(c_median, left_on=feature_col, right_on=feature_col, how='inner')
+    stats_t = stats_t.merge(c_std, left_on=feature_col, right_on=feature_col, how='inner')
     
 
     stats_t['neg_log10_adj_pval'] = -np.log10(stats_t['p_value_adj'])
@@ -977,7 +983,7 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
             sizes=sizes,
             size_legend_scale = 200/max(df['neg_log10_adj_pval']),
             )
-    
+    ax.spines[['top', 'right']].set_visible(False)
     ax.margins(**margins_ax1)
     ax.set_ylabel('TFs' if feature_col=='source' else 'Genes')
     title = 'TF activity' if feature_col=='source' else 'Gene expression'
@@ -1033,7 +1039,7 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
         ax.set_yticks(range(len(y_labels)))
         ax.set_yticklabels(y_labels)
 
-    ax.spines[['top', 'right']].set_visible(False)
+    ax.spines[['top', 'right', 'left']].set_visible(False)
     ax.margins(**margins_ax2)
     ax.set_xlabel('Centrality\n(out-degree)' if feature_col=='source' else 'Centrality\n(in-degree)')
     ax.set_ylabel('')
@@ -1353,7 +1359,9 @@ def plot_overall_heatmap(stats_all,
                         bbox_to_anchor_col1=(1.1, 0.4),
                         trend_colors = ['#B0BF1A', '#E52B50'],
                         trend_names = ['Decrease in aging', 'Increase in aging'],
-                        dendrogram_visible=True
+                        dendrogram_visible=True,
+                        draw_legend=True
+
                         ):
     from ciim.src.common import palette_trend_2
     from matplotlib.colors import ListedColormap, BoundaryNorm
@@ -1440,7 +1448,7 @@ def plot_overall_heatmap(stats_all,
                         color='black', ha='center', va='center', fontsize=8, fontweight='bold'
                     )
     # Legends
-    if True:
+    if draw_legend:
         datasets_legend = [Patch(color=second_col_palette[label], label=map_names.get(label, label)) for label in second_col_unique_values]
         celltype_legend = [Patch(color=first_col_palette[label], label=map_names.get(label, label)) for label in first_col_unique_values]
         trend_legend = [Patch(color=color, label=label, alpha=.8) for label, color in zip(trend_names, trend_colors)]
@@ -2003,7 +2011,8 @@ def heamap_plot_minor_cell_types(stats_all, palette,
 
 
 
-def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets, ax=None, show_cbar=True, type='bulk', age_limit=[20, 80]):
+def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets, ax=None, show_cbar=True, type='bulk', 
+                                    age_limit=[20, 80], show_ylabels=True):
     mean_expr_store = []
     for dataset in datasets:
         adata = retrieve_feature_data(dataset, cell_type, type=type, feature_type=feature_type) 
@@ -2026,13 +2035,21 @@ def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets,
         fig, ax = plt.subplots(figsize=(3, 2))
 
     heatplot_age_trend(mean_expr[ages], cmap='magma' if feature_type=='tf_activity' else 'viridis', 
-                        cbar_title="Gene \n expression" if feature_type=='gene_expression' else "TF activity (normalized)", 
+                        cbar_title = "Gene \n expression" if feature_type == 'gene_expression' else (
+                                    "TF \n activity" if feature_type == 'tf_activity' else "Gene score"
+                                ),
                         ax=ax, 
-                        show_cbar=show_cbar, 
-                        shrink=1)
+                        show_cbar=show_cbar,
+                        cbar_kws={
+                            "shrink": 1,
+                            "aspect": 5,       # Lower values = thicker colorbar (default is ~20)
+                            "fraction": 0.1    # Controls the width space the cbar takes in the figure
+                        })
+    if not show_ylabels:
+        ax.set_yticklabels([])
     ax.set_ylabel('')
     ax.set_xlabel('Age')
-    ax.set_title(f'{cell_type}: {feature}', pad=20)
+    # ax.set_title(f'{cell_type}: {feature}', pad=20)
 
 def plot_net_degrees(net, top_n=10):
     plt.rcParams.update({'font.size': 10})

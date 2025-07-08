@@ -22,6 +22,44 @@ from ciim.src.common import cell_types,base_dir, save_dir, mapping_major_2_minor
 from scipy.sparse import issparse
 import warnings
 warnings.filterwarnings("ignore")
+
+
+def retrieve_adata_bulk(dataset, type='bulk', cell_type=None): 
+    base_path = f"{base_dir}/datasets/"
+    if 'bulk' in type:
+        base_path = f"{base_path}/bulk/"
+       
+    gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
+
+    assert type in ['bulk', 'bulk_minor', 'bulk_M', 'bulk_F', 'bulk_minor_M', 'bulk_minor_F', 'metacell'], f'Unknown type {type}'
+    
+    if (type == 'bulk_M') | (type == 'bulk_F'):
+        gender = type.split('_')[1]
+        type = 'bulk'
+        adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
+        adata = adata[adata.obs['sex']==gender]
+    elif (type == 'bulk_minor_M') | (type == 'bulk_minor_F'):
+        gender = type.split('_')[-1]
+        type = 'bulk_minor'
+        adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
+        adata = adata[adata.obs['sex']==gender]
+    else:
+        adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
+
+    adata.obs['dataset'] = dataset
+    adata = adata[:, adata.var_names.isin(gene_names)]
+
+    if cell_type is not None:
+        if cell_type not in adata.obs['cell_type'].unique():
+            raise ValueError(f'Given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
+        adata = adata[adata.obs['cell_type'] == cell_type]
+    adata = adata[~adata.obs['age'].isna()].copy()
+    adata.obs['age'] = adata.obs['age'].astype(int)
+    adata = adata[adata.obs['age'] >= 20].copy()  
+    adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
+
+    return adata
+
 def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datasets=None, condition=None):
     from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
     
@@ -67,7 +105,6 @@ def retrieve_feature_data(dataset, cell_type=None, type='bulk', feature_type='tf
 
 def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activity'):
     adata.write_h5ad(f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
-
 
 def retrieve_sig_stats(type='bulk', feature_type='tf_activity', race='both', filter_inconsistent=True, cell_type=None):
     from ciim.src.common import save_dir
@@ -174,43 +211,6 @@ def determine_sig_network(type, race='both', min_degree=3):
     nets_stats.to_csv(f'{save_dir}/sig_nets/sig_nets_{type}_{race}.csv')
 
 
-def retrieve_adata_bulk(dataset, type='bulk', cell_type=None): 
-    base_path = f"{base_dir}/datasets/"
-    if 'bulk' in type:
-        base_path = f"{base_path}/bulk/"
-       
-    gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
-
-    assert type in ['bulk', 'bulk_minor', 'bulk_M', 'bulk_F', 'bulk_minor_M', 'bulk_minor_F', 'metacell'], f'Unknown type {type}'
-    
-    if (type == 'bulk_M') | (type == 'bulk_F'):
-        gender = type.split('_')[1]
-        type = 'bulk'
-        adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
-        adata = adata[adata.obs['sex']==gender]
-    elif (type == 'bulk_minor_M') | (type == 'bulk_minor_F'):
-        gender = type.split('_')[-1]
-        type = 'bulk_minor'
-        adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
-        adata = adata[adata.obs['sex']==gender]
-    else:
-        adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
-
-    adata.obs['dataset'] = dataset
-    adata = adata[:, adata.var_names.isin(gene_names)]
-
-    if cell_type is not None:
-        if cell_type not in adata.obs['cell_type'].unique():
-            raise ValueError(f'Given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
-        adata = adata[adata.obs['cell_type'] == cell_type]
-    adata = adata[~adata.obs['age'].isna()].copy()
-    adata.obs['age'] = adata.obs['age'].astype(int)
-    adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
-
-    return adata
-
-
-    
 def bin_feature_values(adata):
     # - bin 
     expr = adata.to_df()
