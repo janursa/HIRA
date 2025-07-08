@@ -14,16 +14,14 @@ import numpy as np
 import optuna
 from sklearn.metrics import r2_score, make_scorer, get_scorer
 import warnings
+from scipy.stats import spearmanr
 warnings.filterwarnings('ignore')
 
 def spearman_corr(y_true, y_pred):
-    from scipy.stats import spearmanr
+    
     return spearmanr(y_true, y_pred).correlation
 
-
-
-loss_function = make_scorer(spearman_corr, greater_is_better=True)  # make_scorer(spearman_corr, greater_is_better=True) 
-
+loss_function = make_scorer(r2_score, greater_is_better=True)  # make_scorer(spearman_corr, greater_is_better=True) 
 
 def tune_params_gbm(model, X, y, cv_groups, scoring, n_trials=50, random_state=42):
     import optuna
@@ -74,9 +72,6 @@ def tune_params_gbm(model, X, y, cv_groups, scoring, n_trials=50, random_state=4
     model.set_params(**study.best_params)
     return model
 
-    
-
-
 def get_custom_cv(groups, main_code=0):
     """
     Leave-one-group-out CV, where each fold leaves out one non-main group for testing,
@@ -114,7 +109,7 @@ def tune_params_ridge(X, y, cv_groups=None, scoring='r2'):
     best_alpha = study.best_params['alpha']
     best_score = study.best_value
 
-    print(f"\nBest alpha: {best_alpha:.4f}, Best CV performance: {best_score:.4f}")
+    print(f"\n Best alpha: {best_alpha:.4f}, Best CV performance: {best_score:.4f}")
 
     best_model = Pipeline([
         ('standardscaler', StandardScaler()),
@@ -185,7 +180,6 @@ def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
     else:
         raise ValueError('Unknown reg_type')
     if reg_type != 'NN':
-        
         if tune_model:
             if reg_type == 'GBM':
                 model = tune_params_gbm(model, X, y, batch_labels, scoring=loss_function)
@@ -193,7 +187,6 @@ def build_model(reg_type, X, y, batch_labels, tune_model, temp_dir):
                 model = tune_params_ridge(X, y, batch_labels, scoring=loss_function)
             elif reg_type == 'elasticnet':
                 model = tune_params_elasticnet(X, y, batch_labels, scoring=loss_function)
-
         # - fit the model
         model.fit(X, y)
         y_trained = model.predict(X)
@@ -226,7 +219,6 @@ def wrapper_build_model_cell_type(cell_type, par):
         adata_store.append(adata)
     adata_all = ad.concat(adata_store, join='inner', axis=0)
     
-    
     # explicitly order categories with main_dataset first
     all_datasets = adata_all.obs['dataset'].unique().tolist()
     # Move main_dataset to the front
@@ -255,19 +247,49 @@ def wrapper_build_model_cell_type(cell_type, par):
     model, model_args, model_kwargs, y_trained = build_model(reg_type, X, y, batch_labels=batch_labels, tune_model=par['tune_model'], temp_dir=par['temp_dir'])
 
     # Run CV again to get per-group scores
+    from scipy.stats import spearmanr
+
     if reg_type != 'NN':
         ordered_test_groups, cv = get_custom_cv(batch_labels)
-        scorer = get_scorer(loss_function)
-        group_scores = []
-
         fold_scores = {}
+        all_preds = []  # Store predictions here
+
         for i, code in enumerate(ordered_test_groups):
             train_idx, test_idx = cv[i]
+
             model.fit(X[train_idx], y.iloc[train_idx])
-            score = scorer(model, X[test_idx], y.iloc[test_idx])
-            group_scores.append(score)
-            fold_scores[dataset_code_map[code]] = round(score, 2)
-        print(fold_scores)
+            y_true = y.iloc[test_idx]
+            y_pred = model.predict(X[test_idx])
+
+            # Calculate scores
+            spearman_corr = spearmanr(y_true, y_pred).correlation
+            r2 = r2_score(y_true, y_pred)
+
+            # Store rounded scores
+            dataset_name = dataset_code_map[code]
+            fold_scores[dataset_name] = {
+                'spearman': round(spearman_corr, 3),
+                'r2': round(r2, 3)
+            }
+
+            # Store predictions
+            pred_df = pd.DataFrame({
+                'age': y_true.values,
+                'predicted_age': y_pred,
+                'dataset': dataset_name,
+                'fold': i,
+                'cell_type': cell_type
+            }, index=y_true.index)  # Preserve original indices if useful
+            all_preds.append(pred_df)
+
+        # Save scores
+        scores_df = pd.DataFrame.from_dict(fold_scores, orient='index')
+        scores_df.to_csv(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_cv_scores.csv")
+
+        # Save predictions
+        predictions_df = pd.concat(all_preds)
+        predictions_df.to_csv(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_cv_predictions.csv")
+        
     # - save the training performance
     adata_all.obs['predicted_age'] = y_trained.copy()
     adata_all.write(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_adata.h5ad")

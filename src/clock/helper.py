@@ -17,16 +17,17 @@ def save_function(model, gene_names, cell_type, data_type, feature_type, reg_typ
     import os
     import joblib
     import numpy as np
+    os.makedirs(clock_save_dir, exist_ok=True)
     if reg_type == 'NN':
         import torch
-        model_path = os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_model.pt")
+        model_path = os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}_model.pt")
         torch.save({
             'state_dict': model.state_dict(),
             'model_args': model_args,
             'model_kwargs': model_kwargs
         }, model_path)
     else:
-        joblib.dump(model, os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_model.pkl"))
+        joblib.dump(model, os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}_model.pkl"))
     np.savetxt(f'{clock_save_dir}/feature_names_{cell_type}_{data_type}_{feature_type}_{version}.txt', gene_names, fmt='%s')
 
 def retrieve_function(reg_type, cell_type, data_type, feature_type, version):
@@ -36,7 +37,7 @@ def retrieve_function(reg_type, cell_type, data_type, feature_type, version):
     if reg_type == 'NN':
         from ciim.src.clock.NN.NN import VAEAgeModel
         import torch
-        model_path = os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_model.pt")
+        model_path = os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}_model.pt")
         model_class = VAEAgeModel
         checkpoint = torch.load(model_path, map_location=torch.device('cpu'))
         model_args = checkpoint['model_args']
@@ -46,7 +47,7 @@ def retrieve_function(reg_type, cell_type, data_type, feature_type, version):
         model.load_state_dict(checkpoint['state_dict'])
         model.eval()
     else:
-        model = joblib.load(os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_model.pkl"))
+        model = joblib.load(os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}_model.pkl"))
     gene_names = np.loadtxt(f'{clock_save_dir}/feature_names_{cell_type}_{data_type}_{feature_type}_{version}.txt', dtype=str)
     return model, gene_names
 
@@ -58,9 +59,9 @@ def evaluate_groupwise_median(obs):
     df = obs.copy()
     df['age'] = df['age'].astype(float)
     df['donor_age'] = df['donor_age'].astype(str)
-
-    predicted_age = df.groupby(['donor_age', 'age'])['predicted_age'].median().values
-    actual_age = df.groupby(['donor_age', 'age'])['age'].median().values
+    grouping_cols = ['donor_age', 'age']
+    predicted_age = df.groupby(grouping_cols)['predicted_age'].median().values
+    actual_age = df.groupby(grouping_cols)['age'].median().values
 
     # print(np.isnan(actual_age).sum(), np.isnan(predicted_age).sum())
     sp = spearmanr(actual_age, predicted_age)[0]
@@ -129,7 +130,6 @@ def align_feature_space(adata, gene_names):
         X = X.toarray()  # convert sparse to dense
     return X
 def predict_age(adata, cell_type, feature_type='tf_activity', data_type='bulk', reg_type='ridge', version='v1.0'):
-    
     
     # - load the model
     model, gene_names = retrieve_function(reg_type, cell_type, data_type, feature_type, version)
@@ -234,60 +234,3 @@ def stability_selection_shap(features, model, X, y, top_q=80, top_features=50):
     rr = {'importance': feature_importances, 'feature': features}
      
     return pd.DataFrame(rr)
-
-def pivot_adata_minor(adata):
-    from scipy.sparse import issparse
-    import pandas as pd
-    import anndata as ad
-    adata.obs['Major_CT'] = adata.obs['Major_CT'].astype('str')
-    adata.obs['Sub_CT'] = adata.obs['Sub_CT'].astype('str')
-    adata.obs['donor_age'] = adata.obs['donor_id'].astype('str') + '_' + adata.obs['age'].astype('str')
-    X = adata.X.toarray() if issparse(adata.X) else adata.X
-    expr_df = pd.DataFrame(X, index=adata.obs_names, columns=adata.var_names)
-
-    # Attach metadata
-    cols = ['Major_CT', 'Sub_CT', 'donor_id', 'age']
-    if 'disease' in adata.obs.columns:
-        cols.append('disease')
-    if 'treatment' in adata.obs.columns:
-        cols.append('treatment')
-
-    for col in cols:
-        expr_df[col] = adata.obs[col].values
-
-    # Melt into long format
-    
-    melted = expr_df.melt(id_vars=cols, var_name='gene', value_name='expression')
-
-    # Create gene_Sub_CT column
-    melted['gene_sub'] = melted['gene'] + '//' + melted['Sub_CT']
-
-    # - pivot and reformat
-    unique_samples = [col for col in cols if col not in ['Sub_CT']]
-    pivot = melted.pivot_table(index=unique_samples, columns='gene_sub', values='expression').fillna(0)
-    
-    obs = pd.DataFrame(pivot.index.tolist(), columns=pivot.index.names)
-    adata_pivot = ad.AnnData(X=pivot.values, obs=obs, var=pd.DataFrame(index=pivot.columns))
-
-    
-    adata_pivot.obs = adata_pivot.obs.merge(adata.obs.drop_duplicates(subset=unique_samples), on=unique_samples, how='left')
-    return adata_pivot
-
-
-    def remove_collinear_features(X, threshold=0.9):
-        """
-        Remove collinear features from X using a correlation threshold.
-        Returns reduced X and list of retained feature names.
-        How to use: X, gene_names = remove_collinear_features(pd.DataFrame(X, columns=gene_names), threshold=0.99)
-        """
-        corr_matrix = X.corr().abs()
-        upper = np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
-        to_drop = set()
-
-        for i in range(corr_matrix.shape[0]):
-            for j in range(i+1, corr_matrix.shape[1]):
-                if corr_matrix.iloc[i, j] > threshold:
-                    to_drop.add(corr_matrix.columns[j])  # drop the second TF
-
-        retained_features = [f for f in X.columns if f not in to_drop]
-        return X[retained_features], retained_features

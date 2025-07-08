@@ -61,7 +61,7 @@ datasets_a = ['data13_Korean' , 'data13_Japanese']
 datasets_all = datasets_e + datasets_a
 
 # aging_clock_train_datasets = ['data1', 'data7_allTPs_jalil', 'SLE_European', 'data13_Japanese', 'data12', 'data13_Korean']
-aging_clock_train_datasets = ['data1', 'data7_allTPs_jalil', 'SLE_European', 'data13_Japanese']
+aging_clock_train_datasets = ['data1', 'data7_allTPs_jalil', 'data12', 'data13_Japanese']
 datasets_disease = ['SLE_European', 'Covid_50MHH']
 datasets_drug_perturbation = ['CXCL9']
 

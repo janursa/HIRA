@@ -10,114 +10,119 @@ from ciim.src.common import surrogate_names, cell_types, palette_genders
 
 palette_disease = {'Healthy': '#56B4E9', 'SLE': '#F0E442', 'Mild': '#2ca02c', 'Severe': '#e377c2'}
 
-def plot_scatter_age_vs_predictedAge(df, dataset='', ax=None):
+def plot_scatter_age_vs_predictedAge(df, dataset='', ax=None, hue='sex', palette={},  s=50, alpha=0.5):
     from ciim.src.clock.helper import evaluate_groupwise_median
     if ax is None:
         fig, ax = plt.subplots(figsize=(4, 4))
-    sns.scatterplot(data=df, x='age', y='predicted_age', s=50, alpha=0.7, ax=ax, palette=palette_genders, hue='sex')
+    sns.scatterplot(data=df, x='age', y='predicted_age', s=s, alpha=alpha, ax=ax, palette=palette, hue=hue)
     min_age, max_age = df['age'].min(), df['age'].max()
     ax.plot([min_age, max_age], [min_age, max_age], color='gray', linestyle='--', label='Ideal')
 
     ax.set_xlabel("Actual Age")
     ax.set_ylabel("Predicted Age")
-    rr = evaluate_groupwise_median(df)
-    spearman = rr['Spearman']
-    R2 = rr['R2']
-    dataset = surrogate_names.get(dataset, dataset)
-    ax.set_title(f"{dataset} \n (S: {spearman:.2f}, R2:{R2:.2f})", pad=15)
-
-def wrapper_age_acceleration_disease(obs, disease_dataset):
-    import pandas as pd
-    import seaborn as sns
-    import matplotlib.pyplot as plt
-    from scipy.stats import ttest_ind
-    from statsmodels.stats.multitest import multipletests
-    import numpy as np
-
-    if disease_dataset == 'Covid_50MHH':
-        disease_name = 'COVID-19'
-        ctr = 'mild'
-        cond = 'severe'
-    elif disease_dataset == 'SLE_European':
-        disease_name = 'SLE'
-        ctr = 'normal'
-        cond = 'systemic lupus erythematosus'
-
-    obs_disease = obs[obs['dataset'] == disease_dataset].copy()
-    obs_disease['age'] = obs_disease['age'].astype(float)
-    # obs_disease['donor_id'] = obs_disease['donor_age'].astype(str)
-    obs_disease['cell_type'] = obs_disease['cell_type'].astype(str)
-    obs_disease['condition'] = obs_disease['condition'].astype(str)
-
-    # Only keep relevant conditions
-    obs_disease = obs_disease[obs_disease['condition'].isin([ctr, cond])]
-    obs_disease['cell_type'] = pd.Categorical(obs_disease['cell_type'], categories=cell_types, ordered=True)
-
-    fig, ax = plt.subplots(figsize=(4, 2.5))
-
-    # Prepare a grouping variable for (cell_type, condition)
-    obs_disease['group'] = obs_disease['cell_type'].astype(str) + ' | ' + obs_disease['condition']
-
-    obs_disease_c = obs_disease.copy()
-    obs_disease_c['condition'] = obs_disease_c['condition'].apply(lambda x: surrogate_names.get(x, x))
-    if disease_dataset == 'Covid_50MHH':
-        obs_disease_c['condition'] = obs_disease_c['condition'].astype(CategoricalDtype(categories=['Mild', 'Severe'], ordered=True))
-    elif disease_dataset == 'SLE_European':
-        obs_disease_c['condition'] = obs_disease_c['condition'].astype(CategoricalDtype(categories=['Healthy', 'SLE'], ordered=True))
-    # Plot stripplot
-    sns.stripplot(
-        data=obs_disease_c,
-        x='cell_type', y='predicted_age', hue='condition',
-        dodge=True, jitter=True, alpha=0.7, ax=ax, palette='Set2', size=5
-    )
-
-    # Statistical test and brackets
-    pvals = []
-    brackets = []
-    for i, cell_type in enumerate(cell_types):
-        data_ctr = obs_disease[(obs_disease['cell_type'] == cell_type) & (obs_disease['condition'] == ctr)]['predicted_age']
-        data_cond = obs_disease[(obs_disease['cell_type'] == cell_type) & (obs_disease['condition'] == cond)]['predicted_age']
-
-        if len(data_ctr) > 1 and len(data_cond) > 1:
-            _, pval = ttest_ind(data_ctr, data_cond, equal_var=False)
-        else:
-            pval = 1.0
-
-        pvals.append(pval)
-
-        # Save bracket info: x positions, height, and p-value
-        if len(data_ctr) > 0 and len(data_cond) > 0:
-            x1, x2 = i - 0.2, i + 0.2
-            y_max = max(data_ctr.max(), data_cond.max())
-            brackets.append((x1, x2, y_max + 3, pval))
-
-    # FDR correction
-    _, pvals_fdr, _, _ = multipletests(pvals, method='fdr_bh')
-
-    # Add brackets and stars
-    for i, (x1, x2, y, pval_fdr) in enumerate(zip([b[0] for b in brackets], [b[1] for b in brackets], [b[2] for b in brackets], pvals_fdr)):
-        star = '***' if pval_fdr < 0.001 else '**' if pval_fdr < 0.01 else '*' if pval_fdr < 0.05 else ''
-        bracket_height = 2.5  # You can adjust this value as needed
-        y_bracket = y + 4
-        if star:
-            ax.plot([x1, x1, x2, x2],
-                    [y_bracket, y_bracket + bracket_height, y_bracket + bracket_height, y_bracket],
-                    lw=1.5, color='black')
-            ax.text((x1 + x2) / 2,
-                    y_bracket + bracket_height + 1,
-                    star,
-                    ha='center', va='bottom', fontsize=10)
-
-    ax.set_ylabel("Predicted age")
-    ax.set_xlabel("")
-    ax.set_xticklabels(cell_types, rotation=45)
-    ax.spines[['top', 'right']].set_visible(False)
     ax.margins(x=0.1, y=0.1)
-    ax.legend(title='Condition', bbox_to_anchor=(1.01, 1), loc='upper left', frameon=False)
-    ax.set_title(f"{disease_name}", fontsize=12, weight='bold', pad=15)
-    plt.tight_layout()
+    ax.spines[['top', 'right']].set_visible(False)
+    dataset = surrogate_names.get(dataset, dataset)
+    if False:
+        rr = evaluate_groupwise_median(df)
+        spearman = rr['Spearman']
+        R2 = rr['R2']
+        ax.set_title(f"{dataset} \n (S: {spearman:.2f}, R2:{R2:.2f})", pad=15)
+    else:
+        ax.set_title(f"{dataset}", pad=15)
 
-def wrapper_age_acceleration_disease(obs, disease_dataset):
+# def wrapper_age_acceleration_disease(obs, disease_dataset, figsize=(4, 2.5)):
+#     import pandas as pd
+#     import seaborn as sns
+#     import matplotlib.pyplot as plt
+#     from scipy.stats import ttest_ind
+#     from statsmodels.stats.multitest import multipletests
+#     import numpy as np
+
+#     if disease_dataset == 'Covid_50MHH':
+#         disease_name = 'COVID-19'
+#         ctr = 'mild'
+#         cond = 'severe'
+#     elif disease_dataset == 'SLE_European':
+#         disease_name = 'SLE'
+#         ctr = 'normal'
+#         cond = 'systemic lupus erythematosus'
+
+#     obs_disease = obs[obs['dataset'] == disease_dataset].copy()
+#     obs_disease['age'] = obs_disease['age'].astype(float)
+#     # obs_disease['donor_id'] = obs_disease['donor_age'].astype(str)
+#     obs_disease['cell_type'] = obs_disease['cell_type'].astype(str)
+#     obs_disease['condition'] = obs_disease['condition'].astype(str)
+
+#     # Only keep relevant conditions
+#     obs_disease = obs_disease[obs_disease['condition'].isin([ctr, cond])]
+#     obs_disease['cell_type'] = pd.Categorical(obs_disease['cell_type'], categories=cell_types, ordered=True)
+
+#     fig, ax = plt.subplots(figsize=figsize)
+
+#     # Prepare a grouping variable for (cell_type, condition)
+#     obs_disease['group'] = obs_disease['cell_type'].astype(str) + ' | ' + obs_disease['condition']
+
+#     obs_disease_c = obs_disease.copy()
+#     obs_disease_c['condition'] = obs_disease_c['condition'].apply(lambda x: surrogate_names.get(x, x))
+#     if disease_dataset == 'Covid_50MHH':
+#         obs_disease_c['condition'] = obs_disease_c['condition'].astype(CategoricalDtype(categories=['Mild', 'Severe'], ordered=True))
+#     elif disease_dataset == 'SLE_European':
+#         obs_disease_c['condition'] = obs_disease_c['condition'].astype(CategoricalDtype(categories=['Healthy', 'SLE'], ordered=True))
+#     # Plot stripplot
+#     sns.stripplot(
+#         data=obs_disease_c,
+#         x='cell_type', y='predicted_age', hue='condition',
+#         dodge=True, jitter=True, alpha=0.7, ax=ax, palette='Set2', size=5
+#     )
+
+#     # Statistical test and brackets
+#     pvals = []
+#     brackets = []
+#     for i, cell_type in enumerate(cell_types):
+#         data_ctr = obs_disease[(obs_disease['cell_type'] == cell_type) & (obs_disease['condition'] == ctr)]['predicted_age']
+#         data_cond = obs_disease[(obs_disease['cell_type'] == cell_type) & (obs_disease['condition'] == cond)]['predicted_age']
+
+#         if len(data_ctr) > 1 and len(data_cond) > 1:
+#             _, pval = ttest_ind(data_ctr, data_cond, equal_var=False)
+#         else:
+#             pval = 1.0
+
+#         pvals.append(pval)
+
+#         # Save bracket info: x positions, height, and p-value
+#         if len(data_ctr) > 0 and len(data_cond) > 0:
+#             x1, x2 = i - 0.2, i + 0.2
+#             y_max = max(data_ctr.max(), data_cond.max())
+#             brackets.append((x1, x2, y_max + 3, pval))
+
+#     # FDR correction
+#     _, pvals_fdr, _, _ = multipletests(pvals, method='fdr_bh')
+
+#     # Add brackets and stars
+#     for i, (x1, x2, y, pval_fdr) in enumerate(zip([b[0] for b in brackets], [b[1] for b in brackets], [b[2] for b in brackets], pvals_fdr)):
+#         star = '***' if pval_fdr < 0.001 else '**' if pval_fdr < 0.01 else '*' if pval_fdr < 0.05 else ''
+#         bracket_height = 2.5  # You can adjust this value as needed
+#         y_bracket = y + 4
+#         if star:
+#             ax.plot([x1, x1, x2, x2],
+#                     [y_bracket, y_bracket + bracket_height, y_bracket + bracket_height, y_bracket],
+#                     lw=1.5, color='black')
+#             ax.text((x1 + x2) / 2,
+#                     y_bracket + bracket_height + 1,
+#                     star,
+#                     ha='center', va='bottom', fontsize=10)
+
+#     ax.set_ylabel("Predicted age")
+#     ax.set_xlabel("")
+#     ax.set_xticklabels(cell_types, rotation=45)
+#     ax.spines[['top', 'right']].set_visible(False)
+#     ax.margins(x=0.1, y=0.1)
+#     ax.legend(title='Condition', bbox_to_anchor=(1.01, 1), loc='upper left', frameon=False)
+#     ax.set_title(f"{disease_name}", fontsize=12, weight='bold', pad=15)
+#     plt.tight_layout()
+
+def wrapper_age_acceleration_disease(obs, disease_dataset, figsize=(4, 2.7)):
     import pandas as pd
     import seaborn as sns
     import matplotlib.pyplot as plt
@@ -127,12 +132,12 @@ def wrapper_age_acceleration_disease(obs, disease_dataset):
 
     if disease_dataset == 'Covid_50MHH':
         disease_name = 'COVID-19'
-        ctr = 'mild'
-        cond = 'severe'
+        ctr = 'Mild'
+        cond = 'Severe'
     elif disease_dataset == 'SLE_European':
         disease_name = 'SLE'
-        ctr = 'normal'
-        cond = 'systemic lupus erythematosus'
+        ctr = 'Healthy'
+        cond = 'SLE'
 
     obs_disease = obs[obs['dataset'] == disease_dataset].copy()
 
@@ -147,7 +152,7 @@ def wrapper_age_acceleration_disease(obs, disease_dataset):
     df_pivot = df_pivot[~df_pivot['age_shift'].isna()]
     df_pivot['cell_type'] = pd.Categorical(df_pivot['cell_type'], categories=cell_types, ordered=True)
 
-    fig, ax = plt.subplots(figsize=(4, 2.7))
+    fig, ax = plt.subplots(figsize=figsize)
 
     # Stripplot
     sns.stripplot(
@@ -203,12 +208,12 @@ def wrapper_age_acceleration_disease(obs, disease_dataset):
 def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset):
     if disease_dataset == 'Covid_50MHH':
         disease_name = 'COVID-19'
-        ctr = 'mild'
-        cond = 'severe'
+        ctr = 'Mild'
+        cond = 'Severe'
     elif disease_dataset == 'SLE_European':
         disease_name = 'SLE'
-        ctr = 'normal'
-        cond = 'systemic lupus erythematosus'
+        ctr = 'Healthy'
+        cond = 'SLE'
     else:
         raise ValueError("Unknown dataset")
 
@@ -305,6 +310,6 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset):
         ax.margins(x=0.2, y=0.1)
 
     ax.legend(loc='upper left', bbox_to_anchor=(1, 1), title='Condition', frameon=False)
-    plt.suptitle(f"Age shift in {disease_name}", fontsize=13, y=1.05, weight='bold')
+    # plt.suptitle(f"Age shift in {disease_name}", fontsize=13, y=1.05, weight='bold')
     plt.tight_layout()
-    plt.show()
+    # plt.show()
