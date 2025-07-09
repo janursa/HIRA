@@ -39,7 +39,18 @@ def qc_check(adata):
     sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
     sc.pp.filter_cells(adata, min_genes=100)
     sc.pp.filter_cells(adata, max_genes=5000)
-    sc.pp.filter_genes(adata, min_cells=10)
+    # - in filtering, consider the number of donors
+    n_donors = adata.obs['donor_id'].nunique()
+
+    # E.g., require gene to be expressed in at least 20% of donors, ~1 cell per donor
+    min_cells_per_donor = 1
+    min_cells = int(n_donors * min_cells_per_donor)
+
+    # Add a lower bound to avoid being too permissive
+    min_cells = max(min_cells, 10)
+
+    # Apply filters
+    sc.pp.filter_genes(adata, min_cells=min_cells)
     sc.pp.filter_genes(adata, min_counts=1)
     print('Shape after filtering:', adata.shape)
     return adata
@@ -63,11 +74,14 @@ def annotate_celltypes(adata):
     # Please note that the adata.X should be log-normalized data!
     adata_for_celltypist = adata.copy()
     # Annotate cell types using CellTypist
+    print('Annotating cell types using CellTypist...')
+    print(adata_for_celltypist.shape)
     predictions = celltypist.annotate(
         adata_for_celltypist,
         model=model,
         majority_voting=True
     )
+    print('Cell types annotated successfully!')
     # Update the AnnData object with predictions
     adata_for_celltypist = predictions.to_adata()
 

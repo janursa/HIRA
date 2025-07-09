@@ -33,7 +33,7 @@ data_type='sc'
 
 
 # datasets to include -> preprocessing 
-datasets="data12 " #data12_CMtx data7_allTPs_jalil_CMtx data1_CMtx data13_CMtx  SLE data13_Korean_CMtx  data13_Japanese_CMtx 
+datasets="data7_allTPs_jalil data1 data13 SLE CXCL9" #data12 data7_allTPs_jalil data1 data13 SLE   CXCL9
 
 for dataset in $datasets; do
         RAW_FILES_DIR="/vol/projects/CIIM/Healthy_Single_Cell_Data/count_matrix/"
@@ -49,16 +49,15 @@ for dataset in $datasets; do
         
 done
 
-datasets=" data12" #CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_Asian  SLE_European
+datasets=" CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_European" #CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_European
 
 
 for dataset in $datasets; do
-        BULK_ALL="/vol/projects/jnourisa/datasets/${dataset}_bulk.h5ad"
-        BULK_MINOR_CELLTYPE="/vol/projects/jnourisa/datasets/${dataset}_bulk_minor.h5ad"
-        BULK_M="/vol/projects/jnourisa/datasets/${dataset}_bulk_M.h5ad"
-        BULK_F="/vol/projects/jnourisa/datasets/${dataset}_bulk_F.h5ad"
-
-        
+        PROCESSED_DATASET_FILE="${MAIN_DIR}/datasets/${dataset}_sc.h5ad"
+        BULK_ALL="${MAIN_DIR}/datasets/${dataset}_bulk.h5ad"
+        BULK_MINOR_CELLTYPE="${MAIN_DIR}/datasets/${dataset}_bulk_minor.h5ad"
+        BULK_M="${MAIN_DIR}/datasets/${dataset}_bulk_M.h5ad"
+        BULK_F="${MAIN_DIR}/datasets/${dataset}_bulk_F.h5ad"
         
         if [ "$RUN_PSEUDOBULK" = true ]; then
                 # set the flags
