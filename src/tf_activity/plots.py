@@ -467,7 +467,7 @@ def plot_feature_values_per_datasets(cell_type, features, type, datasets, featur
     import matplotlib.pyplot as plt
     import seaborn as sns
     from ciim.src.common import surrogate_names
-    from ciim.src.tf_activity.helper import retrieve_feature_data, bin_feature_values
+    from ciim.src.utils.util.helper import retrieve_feature_data, bin_feature_values
 
     n_datasets = len(datasets)
     n_features = len(features)
