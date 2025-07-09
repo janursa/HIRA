@@ -11,7 +11,7 @@ from ciim.src.tf_activity.helper import get_consensus_net
 from ciim.src.common import datasets_all
 from ciim.src.utils.util import get_genesets
 import warnings
-from ciim.src.utils.util import calculate_genes_scores
+from ciim.src.utils.util import calculate_genes_scores, retrieve_feature_data
 warnings.filterwarnings('ignore')
 
 def compute_slopes(adata, feature_type='gene_expression'):
@@ -274,33 +274,25 @@ def compute_gene_score_shift(adata_base, adata_perturbed, genes):
 def run_in_silico(
         dataset,
         cell_type,
+        tfs,
+        adata_dict, 
+        net_dict,
+        pathways, 
         slope_df=None,
-        tfs = None,
         data_type='bulk',
-        simulation_iteration=10,
+        simulation_iteration=3,
         version='v1',
         reg_type='ridge',
         feature_type='gene_expression',
         n_donors=20,
         perturbation_mode='natural_aging', # None, 'overexpression'
-        perturbation_type='single'  # either 'single' or 'multi'
+        verbose=-1
     ):
-    print(f"Processing: {cell_type} - {dataset} ({perturbation_mode} | {perturbation_type})")
-    
-    net = get_consensus_net(datasets=datasets_all, cell_type=cell_type)
-    # net = retrieve_net(dataset=dataset, cell_type=cell_type)
-    if tfs is None:
-        tfs = net['source'].unique()
-    elif tfs=='aging':
-        stats_aging = retrieve_sig_stats(type='bulk', race='both', filter_inconsistent=True)
-        stats_aging = stats_aging[stats_aging['cell_type'] == cell_type]
-        tfs = stats_aging['tf'].unique()
-    else:
-        pass
-
-    adata = ad.read_h5ad(f"{save_dir}/gene_expression_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
-    if 'disease' in adata.obs.columns:
-        adata = adata[adata.obs['disease'] == 'normal'].copy()
+    if verbose == 0:
+        print(f"Processing: {cell_type} - {dataset} ({perturbation_mode})")
+    # - prepare inputs
+    adata = adata_dict[(dataset, cell_type)].copy()
+    net = net_dict[cell_type]
     if slope_df is None:
         slope_df = get_perturbation_slopes(adata, tfs, mode=perturbation_mode)
     if 'cell_type' in slope_df.columns:
@@ -308,61 +300,34 @@ def run_in_silico(
         slope_df = slope_df[['slope']]
     tfs = slope_df.index.tolist()
 
-   
-    if perturbation_type == 'multi':
-        slope_df = slope_df.loc[tfs]
-
-        adata_perturb = perturb_tf_simulation(adata.copy(), net, list(tfs), slope_df, simulation_iteration=simulation_iteration)
-        result = compute_age_shift(adata, adata_perturb, 
-                                    cell_type=cell_type, 
-                                    data_type=data_type,
-                                    version=version,
-                                    reg_type=reg_type,
-                                    feature_type=feature_type)
-        
-        result.columns = pd.MultiIndex.from_product([['age_shift'], result.columns])
-        if True:
-            pathways = get_genesets()
-            for key, genes in pathways.items():
-                try:
-                    result_2 = compute_gene_score_shift(adata, adata_perturb, genes)
-                except ValueError as e:
+    adata_perturb = perturb_tf_simulation(adata.copy(), net, list(tfs), slope_df, simulation_iteration=simulation_iteration)
+    result = compute_age_shift(adata, adata_perturb, 
+                                cell_type=cell_type, 
+                                data_type=data_type,
+                                version=version,
+                                reg_type=reg_type,
+                                feature_type=feature_type)
+    
+    result.columns = pd.MultiIndex.from_product([['age_shift'], result.columns])
+    if True:
+        result_list = [result]
+        for key, genes in pathways.items():
+            try:
+                result_2 = compute_gene_score_shift(adata, adata_perturb, genes)
+            except ValueError as e:
+                if verbose > 0:
                     print(f"Error calculating gene scores for {key}: {e}")
-                    continue
-                result_2.columns = pd.MultiIndex.from_product([[key], result_2.columns])
-                result = result.join(result_2, how='left')
-        
-        result['tf'] = ','.join(tfs)
-        result['cell_type'] = cell_type
-        result['dataset'] = dataset
-        result['perturbation'] = perturbation_mode
-        result['perturbation_type'] = perturbation_type
+                continue
+            result_2.columns = pd.MultiIndex.from_product([[key], result_2.columns])
+            result_list.append(result_2)
+        result = pd.concat(result_list, axis=1)
+    
+    result['tf'] = ','.join(tfs)
+    result['cell_type'] = cell_type
+    result['dataset'] = dataset
+    result['perturbation'] = perturbation_mode
 
-        return result
-        
-    else:
-        slope_df = slope_df.abs()  # take absolute values
-        tf_results = []
-        for tf in tfs:
-            slope_tf = slope_df.loc[[tf]]
-            adata_perturb = perturb_tf_simulation(adata.copy(), net, [tf], slope_tf, simulation_iteration=simulation_iteration)
-            result = compute_age_shift(adata, adata_perturb, 
-                                    cell_type=cell_type, 
-                                    data_type=data_type,
-                                    version=version,
-                                    reg_type=reg_type,
-                                    feature_type=feature_type)
-            result['tf'] = ','.join([tf])
-            result['cell_type'] = cell_type
-            result['dataset'] = dataset
-            result['perturbation'] = perturbation_mode
-            result['perturbation_type'] = perturbation_type
-            tf_results.append(result)
-        rr = pd.concat(tf_results).reset_index()
-        
-        return rr
-
-
+    return result
 
 def wrapper_in_silico_perturbation(par, cell_types, datasets, n_jobs=10):
     from ciim.src.common import save_dir
@@ -371,13 +336,55 @@ def wrapper_in_silico_perturbation(par, cell_types, datasets, n_jobs=10):
 
     os.makedirs(f"{save_dir}/perturbation", exist_ok=True)
     
+    adata_dict = {
+        (ds, ct): retrieve_feature_data(dataset=ds, cell_type=ct, smoothened=True, feature_type='gene_expression')
+        for ct in cell_types
+        for ds in datasets
+    }
+    net_dict = {
+        ct: get_consensus_net(datasets=datasets_all, cell_type=ct)
+        for ct in cell_types
+    }
+    pathways = get_genesets()
+
     tasks = [
         delayed(run_in_silico)(
-            dataset, cell_type,
+            dataset=dataset, cell_type=cell_type, adata_dict=adata_dict, net_dict=net_dict, pathways=pathways,
             **par
         )
         for cell_type in cell_types
         for dataset in datasets
+    ]
+
+    results = Parallel(n_jobs=n_jobs)(tasks)
+    results = [res for res in results if res is not None and not res.empty]
+    df_all = pd.concat(results, axis=0)
+    
+    return df_all
+def wrapper_in_silico_single_perturbation(tfs, par, cell_types, datasets, n_jobs=10):
+    from ciim.src.common import save_dir
+    # ---- Parallel Execution ----
+    from joblib import Parallel, delayed
+
+    os.makedirs(f"{save_dir}/perturbation", exist_ok=True)
+    adata_dict = {
+        (ds, ct): retrieve_feature_data(dataset=ds, cell_type=ct, smoothened=True, feature_type='gene_expression')
+        for ct in cell_types
+        for ds in datasets
+    }
+    net_dict = {
+        ct: get_consensus_net(datasets=datasets_all, cell_type=ct)
+        for ct in cell_types
+    }
+    pathways = get_genesets()
+
+    tasks = [
+        delayed(run_in_silico)(
+            dataset=dataset, cell_type=cell_type, adata_dict=adata_dict, net_dict=net_dict, tfs=[tf], pathways=pathways,
+            **par
+        )
+        for cell_type in cell_types
+        for dataset in datasets for tf in tfs
     ]
 
     results = Parallel(n_jobs=n_jobs)(tasks)

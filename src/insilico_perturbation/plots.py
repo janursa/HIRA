@@ -82,7 +82,7 @@ def wrapper_plot_age_acceleration_for_tf_perturbation(
     ax.set_xticklabels(ax.get_xticklabels(), rotation=90, ha='right')
     ax.margins(y=.1, x=.05)
     
-    return fig, top_tfs
+    return fig, tf_order
 
 def plot_age_acceleration(df_all, 
                             x_col='cell_type', 
