@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
 #SBATCH --time=10:00:00
-#SBATCH --mem=1000GB
+#SBATCH --mem=800GB
 #SBATCH --partition=cpu
 #SBATCH --mail-type=END,FAIL      
 #SBATCH --mail-user=jalil.nourisa@gmail.com   
@@ -30,7 +30,6 @@ RUN_ASSOCIATION=false
 
 MAX_WORKERS=10
 data_type='sc'
-
 
 # datasets to include -> preprocessing 
 datasets="data7_allTPs_jalil data1 data13 SLE CXCL9" #data12 data7_allTPs_jalil data1 data13 SLE   CXCL9

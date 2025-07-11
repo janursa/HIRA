@@ -43,7 +43,7 @@ def qc_check(adata):
     n_donors = adata.obs['donor_id'].nunique()
 
     # E.g., require gene to be expressed in at least 20% of donors, ~1 cell per donor
-    min_cells_per_donor = 1
+    min_cells_per_donor = 5
     min_cells = int(n_donors * min_cells_per_donor)
 
     # Add a lower bound to avoid being too permissive
@@ -79,7 +79,8 @@ def annotate_celltypes(adata):
     predictions = celltypist.annotate(
         adata_for_celltypist,
         model=model,
-        majority_voting=True
+        majority_voting=True,
+        use_GPU=False
     )
     print('Cell types annotated successfully!')
     # Update the AnnData object with predictions

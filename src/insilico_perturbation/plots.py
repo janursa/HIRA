@@ -10,7 +10,64 @@ from ciim.src.tf_activity.helper import retrieve_sig_stats
 from ciim.src.tf_activity.helper import get_consensus_net
 from ciim.src.common import datasets_all, colors_blind
 
+def plot_pathway_score_shift(mean_scores_s):
+    terms = mean_scores_s['pathway'].unique()
 
+    # Generate a color palette with distinct colors
+    terms_palette = dict(zip(
+        terms,
+        sns.color_palette('tab20', n_colors=len(terms))
+    ))
+    fig, ax = plt.subplots(figsize=(4, 2.5))
+    # Plot each pathway separately to maintain color consistency
+    for pathway, df in mean_scores_s.groupby('pathway'):
+        color = terms_palette[pathway]
+        
+        ordered_tfs = df['added_tf'].cat.categories.tolist()
+        df = df.set_index('added_tf').reindex(ordered_tfs).reset_index()
+        sns.scatterplot(
+            data=df,
+            x='added_tf',
+            y='gene_score_shift_log2fc',
+            label=pathway,
+            color=color,
+            s=50,
+            ax=ax
+        )
+        ax.plot(
+            df['added_tf'],
+            df['gene_score_shift_log2fc'],
+            marker='s',
+            linestyle='--',
+            color=color
+        )
+
+    ax.legend(loc=[1.1, 0.1], title='Pathway', frameon=False, markerscale=1.2)
+    ax.set_xlabel('TFs added')
+    ax.set_ylabel('Gene score shift \n (log2FC)')
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.margins(x=0.1, y=0.1)
+    
+def heatplot_perturbation_effect(pivot_df, ax, gene_score_shift_col):
+    from matplotlib.colors import LinearSegmentedColormap
+    from ciim.src.common import palette_trend_2, surrogate_names
+
+    custom_cmap = LinearSegmentedColormap.from_list(
+        'aging_effect_cmap',
+        [palette_trend_2['Decrease in aging'], 'white', palette_trend_2['Increase in aging']]
+    )
+    cbar_label = 'Gene score shift \n (log2FC)' if 'log2fc' in gene_score_shift_col else 'Gene score shift'
+    sns.heatmap(pivot_df, 
+                cmap=custom_cmap, 
+                center=0, 
+                linewidths=0.1, 
+                linecolor=None,
+                ax=ax,
+                cbar_kws={'label': cbar_label, 'shrink': 0.6})
+    ax.set_ylabel('')
+    ax.set_xlabel('Number of top TFs perturbed')
+    ax.set_title('')
+    # plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
 def wrapper_plot_age_acceleration_for_tf_perturbation(
                     df_cell, 
                     top_n=30, 
@@ -79,7 +136,7 @@ def wrapper_plot_age_acceleration_for_tf_perturbation(
     ax.set_title(f'Top {top_n} TFs')
     ax.set_ylabel('Significance of age shift \n (z-score)')
     ax.set_xlabel('TF')
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=90, ha='right')
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=90, ha='center')
     ax.margins(y=.1, x=.05)
     
     return fig, tf_order

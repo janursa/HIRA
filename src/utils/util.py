@@ -60,20 +60,39 @@ def calculate_genes_scores(adata, genes, key='gene_score', min_genes=5):
         raise ValueError("Privided genes list is empty.")
     sc.tl.score_genes(adata, gene_list=genes, score_name=key, use_raw=False)
     return adata
-def get_canonical():
-    geneset_file = f'{base_dir}/prior/h.all.v2024.1.Hs.symbols.gmt'
-    genesets_all = read_gmt(geneset_file) 
-    genesets_all = {' '.join(key.split('_')[1:]):gs['genes'] for key, gs in genesets_all.items()}
+def get_hallmark():
+    if False:
+        geneset_file = f'{base_dir}/prior/h.all.v2024.1.Hs.symbols.gmt'
+        genesets_all = read_gmt(geneset_file) 
+        genesets_all = {' '.join(key.split('_')[1:]):gs['genes'] for key, gs in genesets_all.items()}
+    else:
+        from gseapy import get_library_name, get_library
+        genesets_all = get_library(name='MSigDB_Hallmark_2020')
     return genesets_all
+def get_essential_hallmark():
+    hallmark_sets = get_hallmark()
+    essential_keywords = ['DNA repair', 'Apoptosis', 'MTORC1', 'G2M', 'E2F', 
+                        'Oxidative phosphorylation', 'MYC', 'P53']
+    essential_pathways = {k: v for k, v in hallmark_sets.items() if any(keyword.lower() in k.lower() for keyword in essential_keywords)}
+    return essential_pathways
+def get_essential_genes():
+    df = pd.read_csv(f'{base_dir}/prior/CRISPRInferredCommonEssentials.csv')
+    essential_genes = df['Essentials'].str.extract(r'^(\S+)')[0].tolist()
+    essential_gene_set = set(essential_genes)
+    return  {'DepMap': list(essential_gene_set)}
 def get_genesets(pathway=None):
-    if pathway == 'canonical':
-        genesets_all = get_canonical()
+    if pathway == 'hallmark':
+        genesets_all = get_hallmark()
     elif pathway == 'opengenes':
         genesets_all = get_opengenes_sets()
+    elif pathway == 'essential':
+        genesets_all = get_essential_genes()
     elif pathway is None:
-        genesets_1 = get_canonical()
-        genesets_2 = get_opengenes_sets()
-        genesets_all = {**genesets_1, **genesets_2}
+        halmark_sets = get_hallmark()
+        opengenes = get_opengenes_sets()
+        essential = get_essential_genes()
+
+        genesets_all = {**halmark_sets,  **opengenes, **essential}
     else:
         raise ValueError(f"Unsupported pathway type: {pathway}. Choose 'canonical' or 'opengenes'.")
     return genesets_all
