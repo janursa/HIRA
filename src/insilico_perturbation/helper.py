@@ -392,28 +392,10 @@ def wrapper_in_silico_single_perturbation(tfs, par, cell_types, datasets, n_jobs
     df_all = pd.concat(results, axis=0)
     
     return df_all
-
-
-def summarize_pathway_scores(raw_rr, cols=['cell_type', 'dataset', 'n']):
-    terms = list(get_genesets().keys())
-    df_store = []
-    for term in terms:
-        if term not in raw_rr.columns:
-            continue
-        df_sub_store = []
-        for i, col in enumerate(['baseline_gene_score', 'perturbed_gene_score' ,'gene_score_shift']):
-            df = raw_rr.groupby(cols)[term].mean()[term][col].reset_index()
-            if i == 0:
-                df_sub_store.append(df)
-            else:
-                df_sub_store.append(df[[col]])
-        df = pd.concat(df_sub_store, axis=1)
-        df['pathway'] = term
-        df_store.append(df)
-    score_shift_summary = pd.concat(df_store).reset_index(drop=True)
-    baseline_adj = score_shift_summary['baseline_gene_score'].abs().quantile(.25)
-    score_shift_summary['gene_score_shift_n'] = score_shift_summary['gene_score_shift'].abs() / (score_shift_summary['baseline_gene_score'] )
-
-    score_shift_summary['gene_score_shift_log2fc'] = np.log2((score_shift_summary['gene_score_shift'].abs() + baseline_adj) / (score_shift_summary['baseline_gene_score'].abs() + baseline_adj))
-    
-    return score_shift_summary
+def identify_top_tfs(age_shift_mean_t, value_col='signed_neg_log10_pval', top_n=20):
+    # Median of absolute mean_diff per TF across datasets
+    median_abs = age_shift_mean_t.groupby('tf')[value_col].apply(lambda x: x.abs().median())
+    top_tfs = median_abs.sort_values(ascending=False).head(top_n).index
+    age_shift_mean_t = age_shift_mean_t[age_shift_mean_t['tf'].isin(top_tfs)]
+    tf_order = age_shift_mean_t.groupby('tf')[value_col].mean().sort_values().index
+    return tf_order

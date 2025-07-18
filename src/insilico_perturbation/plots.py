@@ -48,50 +48,23 @@ def plot_pathway_score_shift(mean_scores_s):
     ax.spines[['top', 'right']].set_visible(False)
     ax.margins(x=0.1, y=0.1)
     
-def heatplot_perturbation_effect(pivot_df, ax, gene_score_shift_col):
-    from matplotlib.colors import LinearSegmentedColormap
-    from ciim.src.common import palette_trend_2, surrogate_names
-
-    custom_cmap = LinearSegmentedColormap.from_list(
-        'aging_effect_cmap',
-        [palette_trend_2['Decrease in aging'], 'white', palette_trend_2['Increase in aging']]
-    )
-    cbar_label = 'Gene score shift \n (log2FC)' if 'log2fc' in gene_score_shift_col else 'Gene score shift'
-    sns.heatmap(pivot_df, 
-                cmap=custom_cmap, 
-                center=0, 
-                linewidths=0.1, 
-                linecolor=None,
-                ax=ax,
-                cbar_kws={'label': cbar_label, 'shrink': 0.6})
-    ax.set_ylabel('')
-    ax.set_xlabel('Number of top TFs perturbed')
-    ax.set_title('')
-    # plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
 def wrapper_plot_age_acceleration_for_tf_perturbation(
-                    df_cell, 
+                    age_shift_mean_t, 
                     top_n=30, 
                     features=None, 
                     value_col='signed_neg_log10_pval',
                     figsize = (3, 5)):
     from ciim.src.common import save_dir, surrogate_names, palette_datasets_pretty, colors_blind, palette_trend_2
     
-    # Median of absolute mean_diff per TF across datasets
-    median_abs = df_cell.groupby('tf')[value_col].apply(lambda x: x.abs().median())
-    top_tfs = median_abs.sort_values(ascending=False).head(top_n).index
-
-    # Keep only top TFs
-    df_cell = df_cell[df_cell['tf'].isin(top_tfs)].copy()
 
     # Sort TFs by signed mean_diff for plotting
-    tf_order = df_cell.groupby('tf')[value_col].mean().sort_values().index
-    df_cell['tf'] = pd.Categorical(df_cell['tf'], categories=tf_order, ordered=True)
+
 
     fig, ax = plt.subplots(figsize=figsize)
-    df_cell['dataset'] = df_cell['dataset'].apply(lambda x: surrogate_names.get(x, x))
+    age_shift_mean_t['dataset'] = age_shift_mean_t['dataset'].apply(lambda x: surrogate_names.get(x, x))
     # Background bars
     sns.barplot(
-        data=df_cell,
+        data=age_shift_mean_t,
         x='tf',
         y=value_col,
         hue='trend',
@@ -107,7 +80,7 @@ def wrapper_plot_age_acceleration_for_tf_perturbation(
     if False:
         # Dataset-colored points
         sns.stripplot(
-            data=df_cell,
+            data=age_shift_mean_t,
             x='tf',
             y=value_col,
             hue='dataset',
@@ -127,7 +100,7 @@ def wrapper_plot_age_acceleration_for_tf_perturbation(
             Line2D([0], [0], marker='o', color='w',
                 markerfacecolor=palette_datasets_pretty[ds],
                 markersize=12, label=ds, linestyle='None')
-            for ds in df_cell['dataset'].unique()
+            for ds in age_shift_mean_t['dataset'].unique()
         ]
 
         ax.legend(handles=legend_handles, title='Dataset', bbox_to_anchor=(1.05, 1), loc='upper left', frameon=False)
@@ -139,7 +112,7 @@ def wrapper_plot_age_acceleration_for_tf_perturbation(
     ax.set_xticklabels(ax.get_xticklabels(), rotation=90, ha='center')
     ax.margins(y=.1, x=.05)
     
-    return fig, tf_order
+    return fig
 
 def plot_age_acceleration(df_all, 
                             x_col='cell_type', 

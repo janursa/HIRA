@@ -83,6 +83,8 @@ def get_essential_genes():
 def get_genesets(pathway=None):
     if pathway == 'hallmark':
         genesets_all = get_hallmark()
+    elif pathway == 'essential_hallmark':
+        genesets_all = get_essential_hallmark()
     elif pathway == 'opengenes':
         genesets_all = get_opengenes_sets()
     elif pathway == 'essential':
@@ -94,7 +96,7 @@ def get_genesets(pathway=None):
 
         genesets_all = {**halmark_sets,  **opengenes, **essential}
     else:
-        raise ValueError(f"Unsupported pathway type: {pathway}. Choose 'canonical' or 'opengenes'.")
+        raise ValueError(f"Unsupported pathway type: {pathway}. Choose 'hallmark' or 'opengenes' or 'essential' or 'essential_hallmark'.")
     return genesets_all
 def get_gene2pathway():
     genesets_dict = get_genesets()
