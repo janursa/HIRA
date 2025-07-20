@@ -4,7 +4,7 @@
 #SBATCH --error=logs/%j.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
-#SBATCH --time=20:00:00
+#SBATCH --time=1-00:00:00
 #SBATCH --mem=800GB
 #SBATCH --partition=cpu
 #SBATCH --mail-type=END,FAIL      
@@ -32,7 +32,7 @@ MAX_WORKERS=10
 data_type='sc'
 
 # datasets to include -> preprocessing 
-datasets="data7_allTPs_jalil data1 data13 SLE CXCL9" #data12 data7_allTPs_jalil data1 data13 SLE   CXCL9
+datasets=" data1 data13 SLE CXCL9" #data12 data7_allTPs_jalil data1 data13 SLE   CXCL9
 
 for dataset in $datasets; do
         RAW_FILES_DIR="/vol/projects/CIIM/Healthy_Single_Cell_Data/count_matrix/"
