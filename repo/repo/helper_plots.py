@@ -395,7 +395,7 @@ def exp_plots(groups, cell_type=True):
     cellcount_dist = groups.size().reset_index(name='cell_count')
     donor_dist = groups['donor_id'].nunique().reset_index(name='donor_n')
 
-    age_donor_dist = groups['age_donor'].nunique().reset_index(name='age_donor')
+    age_donor_dist = groups['donor_age'].nunique().reset_index(name='donor_age')
 
     age2donor_dist = groups.apply(lambda df: df.groupby('donor_id')['age'].nunique()).reset_index(name='count')
 
@@ -406,7 +406,7 @@ def exp_plots(groups, cell_type=True):
     cell_type_ratio = groups['cell_type'].apply(norm_size).reset_index(name='ratio')
     cell_type_ratio = cell_type_ratio.rename(columns={'index':'cell_type'})
 
-    cell_count_donors = groups.apply(lambda df: df.groupby('age_donor').size()).reset_index(name='count')
+    cell_count_donors = groups.apply(lambda df: df.groupby('donor_age').size()).reset_index(name='count')
     
 
     # Create subplots
@@ -439,7 +439,7 @@ def exp_plots(groups, cell_type=True):
 
     # distribution of age donor
     ax = axes[0][2]
-    sns.barplot(data=age_donor_dist, x='age_group', y='age_donor', ax=ax)
+    sns.barplot(data=age_donor_dist, x='age_group', y='donor_age', ax=ax)
     ax.set_title('Age donor count')
     ax.set_xlabel('Age Group')
     ax.set_ylabel('Count')

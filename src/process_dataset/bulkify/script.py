@@ -38,7 +38,6 @@ args = parser.parse_args()
 ## VIASH END
 from helper import bulkify_main
 
-def main_gender():
 
 if __name__ == '__main__':
     adata = ad.read_h5ad(args.sc_dataset_file)

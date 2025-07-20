@@ -70,7 +70,7 @@ par = {
         'max_genes_per_cell': 5000, 
         'min_cells_per_gene': 1000,
         'data_type': args.data_type,
-        'max_workers': args.max_workers, #TODO: reset this
+        'max_workers': args.max_workers,
         'force': args.force,
         'save_grns_dir': args.save_grns_dir,
         'temp_dir': 'output/grns/temp/'

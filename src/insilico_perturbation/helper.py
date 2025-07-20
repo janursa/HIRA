@@ -392,3 +392,10 @@ def wrapper_in_silico_single_perturbation(tfs, par, cell_types, datasets, n_jobs
     df_all = pd.concat(results, axis=0)
     
     return df_all
+def identify_top_tfs(age_shift_mean_t, value_col='signed_neg_log10_pval', top_n=20):
+    # Median of absolute mean_diff per TF across datasets
+    median_abs = age_shift_mean_t.groupby('tf')[value_col].apply(lambda x: x.abs().median())
+    top_tfs = median_abs.sort_values(ascending=False).head(top_n).index
+    age_shift_mean_t = age_shift_mean_t[age_shift_mean_t['tf'].isin(top_tfs)]
+    tf_order = age_shift_mean_t.groupby('tf')[value_col].mean().sort_values().index
+    return tf_order
