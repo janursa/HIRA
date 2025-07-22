@@ -4,15 +4,19 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-def plot_greedy_tf_selection(df_results):
-    fig, ax1 = plt.subplots(figsize=(3, 2))
-    margins = dict(x=0.1, y=0.1)
+from ciim.src.common import colors_blind
+
+def plot_greedy_tf_selection(df_results, figsize=(3, 2)):
+    fig, ax1 = plt.subplots(figsize=figsize)
+    color1 = colors_blind[1]
+    color2 = colors_blind[0]
+    margins = dict(x=0.2, y=0.1)
 
     # Plot age_shift
-    ax1.plot(df_results['step'], df_results['age_shift'], marker='o', color='tab:blue', label='Age Shift')
-    ax1.set_xlabel('Step (TFs added)')
-    ax1.set_ylabel('Age Shift \n (pseudo-years)', color='tab:blue')
-    ax1.tick_params(axis='y', labelcolor='tab:blue')
+    ax1.plot(df_results['step'], df_results['age_shift'], marker='o', color=color1, label='Age Shift')
+    # ax1.set_xlabel('Step (TFs added)')
+    ax1.set_ylabel('Age Shift \n (pseudo-years)', color=color1)
+    ax1.tick_params(axis='y', labelcolor=color1)
 
     # Show TFs on x-axis
     ax1.set_xticks(df_results['step'])
@@ -21,19 +25,23 @@ def plot_greedy_tf_selection(df_results):
 
     # Plot detr_score on secondary y-axis
     ax2 = ax1.twinx()
-    ax2.plot(df_results['step'], df_results['best_genescore_shift'], marker='s', linestyle='--', color='tab:red', label='Detrimental Score')
-    ax2.set_ylabel('Detrimental Score', color='tab:red')
-    ax2.tick_params(axis='y', labelcolor='tab:red')
+    ax2.plot(df_results['step'], df_results['best_genescore_shift'], marker='s', linestyle='--', color=color2, label='Risk score')
+    ax2.set_ylabel('Risk score', color=color2)
+    ax2.tick_params(axis='y', labelcolor=color2)
 
     # Legends
     lines_1, labels_1 = ax1.get_legend_handles_labels()
     lines_2, labels_2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc=[1.3, .2], frameon=False)
+    ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc=[.4, .7], frameon=False)
 
-    ax1.spines[['top', 'right']].set_visible(False)  # Hide top and right spines
-    ax2.spines[['top', 'right']].set_visible(False)  # Hide top and right spines
+    # ax1.spines[['top', 'right']].set_visible(False)  # Hide top and right spines
+    # ax2.spines[['top']].set_visible(False)  # Hide top and right spines
     ax1.margins(**margins)
     ax2.margins(**margins)
+    for spine in ax1.spines.values():
+        spine.set_linewidth(0.2)
+    for spine in ax2.spines.values():
+        spine.set_linewidth(0.2)
     
     # Add a title
     # plt.title('Greedy TF Selection: Age Shift vs Detrimental Score', pad=15)

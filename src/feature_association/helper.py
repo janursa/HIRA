@@ -168,7 +168,7 @@ def retrieve_sig_net(type='bulk', race='both', cell_type=None):
 
 def determine_sig_network(type, race='both', min_degree=3):
     os.makedirs(f'{save_dir}/sig_nets', exist_ok=True)
-    from ciim.src.tf_activity.helper import retrieve_nets
+    from ciim.src.feature_association.helper import retrieve_nets
     stats_tfs = retrieve_sig_stats(type, feature_type='tf_activity')
     stats_targets = retrieve_sig_stats(type, feature_type='gene_expression')
     if race == 'european':
@@ -380,7 +380,7 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
     return stats_df
 
 def wrapper_meta_analysis(par):
-    from ciim.src.tf_activity.meta_analysis.helper import run_meta_analysis
+    from ciim.src.feature_association.meta_analysis.helper import run_meta_analysis
     stats_features = pd.read_csv(par['stats_features'])    
     if 'tf' in stats_features.columns:
         feature_col = 'tf'
@@ -561,7 +561,7 @@ def wrapper_gene_score(par):
     print('Loading data...')
     adata_dict = {dataset: retrieve_adata_bulk(dataset, type) for dataset in datasets}
 
-    pathways = get_genesets(pathway=par['pathway'])
+    pathways = get_genesets()
     
     print('Calculating gene scores...')
     stats_store = []

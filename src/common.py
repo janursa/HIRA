@@ -9,7 +9,7 @@ import os
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 
-if True: # running on the server
+if False: # running on the server
     base_dir = '/vol/projects/jnourisa/'
 else:
     base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
@@ -21,6 +21,7 @@ prior_dir = f"{base_dir}/prior/"
 os.makedirs(save_dir, exist_ok=True)
 os.makedirs(clock_save_dir, exist_ok=True)
 os.makedirs(plots_dir, exist_ok=True)
+os.makedirs(f"{plots_dir}/insilico_perturbation/", exist_ok=True)
 
 surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All batches', 
                     '34-':'35 below', '35_44':'35-45', '45_54':'45-55', '55_64':'55-65', '65_75':'65-75',
@@ -57,7 +58,9 @@ surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All 
                     'Naive_B': 'Naive B',
                     'Memory_B': 'Memory B',
                     'CD16_NK': 'CD16+ NK',
-                    'NK': 'NK',}
+                    'NK': 'NK',
+                    'Myc Targets V1': 'MYC',
+                    'mTORC1 Signaling': 'mTORC1'}
 surrogate_names_reverse = {v: k for k, v in surrogate_names.items()}
 
 # - datasets

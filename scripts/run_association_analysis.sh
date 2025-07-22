@@ -13,4 +13,4 @@
 
 set -e
 
-python src/tf_activity/script.py
+python src/feature_association/script.py

@@ -85,7 +85,7 @@ def _df_to_adata(df):
 def prepare_input(dataset, cell_type, feature_type='tf_activity', data_type='bulk'):
     '''
     For tf_activity, it gets the consensus net and calculates the tf activity'''
-    from ciim.src.tf_activity.helper import retrieve_adata_bulk, get_consensus_net, calculate_tf_activity
+    from ciim.src.feature_association.helper import retrieve_adata_bulk, get_consensus_net, calculate_tf_activity
     from ciim.src.common import mapping_minor_2_major, datasets_all, minor_cell_types
     from scipy.sparse import issparse
 
