@@ -13,7 +13,7 @@ from tqdm import tqdm
 from scipy.stats import mannwhitneyu
 from statsmodels.stats.multitest import multipletests
 from pandas.api.types import CategoricalDtype
-from ciim.src.tf_activity.helper import  wrapper_association_with_age_condition, wrapper_meta_analysis, \
+from ciim.src.feature_association.helper import  wrapper_association_with_age_condition, wrapper_meta_analysis, \
         wrapper_tf_activity, wrapper_gene_expression, wrapper_meta_analysis, wrapper_gene_score
 
 from ciim.src.common import cell_types, datasets_e, datasets_a, datasets_all, mapping_minor_2_major, save_dir
@@ -88,7 +88,7 @@ if __name__ == '__main__':
                     'stats_features': f'{save_dir}/{feature_type}/stats_features_{data_type}.csv',
                     'stats_all': f'{save_dir}/{feature_type}/stats_all_{data_type}.csv', 
                     'temp_dir': f'{save_dir}/tmp/',
-                    'pathway': 'canonical' if feature_type == 'gene_score' else None, #'canonical' #opengenes
+                    # 'pathway': 'canonical' if feature_type == 'gene_score' else None, #'canonical' #opengenes
                     'gene_coverage': 'target_genes' if feature_type == 'gene_score' else None, # 'target_genes' all_genes
                 }
                 if feature_type == 'tf_activity':

@@ -29,7 +29,7 @@ from ciim.src.common import (
     palette_datasets_pretty, surrogate_names, colors_blind,
     palette_trend, palette_trend_2, palette_regulation, palette_cell_types
 )
-from ciim.src.tf_activity.helper import retrieve_sig_stats
+from ciim.src.feature_association.helper import retrieve_sig_stats
 from ciim.src.insilico_perturbation.helper import wrapper_in_silico_perturbation
 
 def run_single_aging_tf_perturbation():

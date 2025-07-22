@@ -17,7 +17,8 @@ import scipy
 import networkx as nx
 from scipy.stats import spearmanr, linregress
 from ciim.src.common import surrogate_names, palette_datasets, palette_regulation
-from ciim.src.tf_activity.helper import retrieve_adata_bulk, retrieve_net, calculate_tf_activity
+from ciim.src.feature_association.helper import retrieve_adata_bulk, retrieve_net, calculate_tf_activity
+
 
 
 def plot_umap(adata, color='', palette=None, ax=None, X_label='X_umap', on_data=False, sort_colors=True,

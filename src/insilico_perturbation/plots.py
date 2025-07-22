@@ -6,47 +6,10 @@ from sklearn.linear_model import LinearRegression
 from scipy import stats
 
 from ciim.src.common import save_dir, surrogate_names, palette_datasets_pretty
-from ciim.src.tf_activity.helper import retrieve_sig_stats
-from ciim.src.tf_activity.helper import get_consensus_net
+from ciim.src.feature_association.helper import retrieve_sig_stats
+from ciim.src.feature_association.helper import get_consensus_net
 from ciim.src.common import datasets_all, colors_blind
 
-def plot_pathway_score_shift(mean_scores_s):
-    terms = mean_scores_s['pathway'].unique()
-
-    # Generate a color palette with distinct colors
-    terms_palette = dict(zip(
-        terms,
-        sns.color_palette('tab20', n_colors=len(terms))
-    ))
-    fig, ax = plt.subplots(figsize=(4, 2.5))
-    # Plot each pathway separately to maintain color consistency
-    for pathway, df in mean_scores_s.groupby('pathway'):
-        color = terms_palette[pathway]
-        
-        ordered_tfs = df['added_tf'].cat.categories.tolist()
-        df = df.set_index('added_tf').reindex(ordered_tfs).reset_index()
-        sns.scatterplot(
-            data=df,
-            x='added_tf',
-            y='gene_score_shift_log2fc',
-            label=pathway,
-            color=color,
-            s=50,
-            ax=ax
-        )
-        ax.plot(
-            df['added_tf'],
-            df['gene_score_shift_log2fc'],
-            marker='s',
-            linestyle='--',
-            color=color
-        )
-
-    ax.legend(loc=[1.1, 0.1], title='Pathway', frameon=False, markerscale=1.2)
-    ax.set_xlabel('TFs added')
-    ax.set_ylabel('Gene score shift \n (log2FC)')
-    ax.spines[['top', 'right']].set_visible(False)
-    ax.margins(x=0.1, y=0.1)
     
 def wrapper_plot_age_acceleration_for_tf_perturbation(
                     age_shift_mean_t, 

@@ -16,7 +16,7 @@ from scipy.stats import spearmanr, linregress
 from pandas.api.types import CategoricalDtype
 
 from ciim.src.common import base_dir, save_dir, colors_blind, datasets_all ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
-from ciim.src.tf_activity.helper import retrieve_adata_bulk, retrieve_net, calculate_tf_activity, bin_feature_values, retrieve_feature_data
+from ciim.src.feature_association.helper import retrieve_adata_bulk, retrieve_net, calculate_tf_activity, bin_feature_values, retrieve_feature_data
 
 # - retrieve the feature data (donor level) for the case TF 
 def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_value_adj, ax=None):
@@ -263,7 +263,7 @@ def plot_sig_tfs_stats(df, figsize=(3.5, 2), palette=None, ax=None):
 class ModularizedNetPlot:
     @staticmethod
     def prepare_net_only_tfs(cell_type, race, type, min_degree=3):
-        from ciim.src.tf_activity.helper import retrieve_nets, retrieve_sig_stats
+        from ciim.src.feature_association.helper import retrieve_nets, retrieve_sig_stats
         from ciim.src.common import datasets_e, datasets_a, datasets_all
 
         stats_sig = retrieve_sig_stats(race=race, type=type).drop_duplicates(subset=['cell_type', 'tf'])
@@ -351,7 +351,7 @@ class ModularizedNetPlot:
         return collapsed_net
     @staticmethod
     def add_trend_to_collapsed_net_only_tfs(collapsed_net, type, race, cell_type):
-        from ciim.src.tf_activity.helper import retrieve_sig_stats
+        from ciim.src.feature_association.helper import retrieve_sig_stats
         # - sumarize the trends for the collapsed net
         stats_sig = retrieve_sig_stats(race=race, type=type).drop_duplicates(subset=['cell_type', 'tf'])
         stats_sig_t = stats_sig[stats_sig['cell_type'] == cell_type].set_index(['tf'])
@@ -463,11 +463,11 @@ def dotplot_category_color(df, ax,
             frameon=False
         )
         ax.add_artist(size_legend_handle)
+
 def plot_feature_values_per_datasets(cell_type, features, type, datasets, feature_type='gene_expression', age_limit=[20, 75], cluster=False, figsize=None):
     import matplotlib.pyplot as plt
     import seaborn as sns
     from ciim.src.common import surrogate_names
-    from ciim.src.utils.util.helper import retrieve_feature_data, bin_feature_values
 
     n_datasets = len(datasets)
     n_features = len(features)
@@ -513,9 +513,105 @@ def plot_feature_values_per_datasets(cell_type, features, type, datasets, featur
     # plt.tight_layout()
     # plt.suptitle(cell_type, fontsize=12, fontweight='bold', y=1.05)
     return fig
+def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets, ax=None, show_cbar=True, type='bulk', 
+                                    age_limit=[20, 80], show_ylabels=True):
+    from ciim.src.feature_association.helper import retrieve_feature_data, bin_feature_values
+    
+    mean_expr_store = []
+    for dataset in datasets:
+        adata = retrieve_feature_data(dataset, cell_type, type=type, feature_type=feature_type) 
+        adata = adata[(adata.obs['age'] > age_limit[0]) & (adata.obs['age'] < age_limit[1])]
+        adata = adata[:, adata.var_names==feature]
+        assert adata.shape[1] == 1, f"Feature {feature} not found in dataset {dataset} for cell type {cell_type}"
+        if adata.shape[1] == 0:
+            continue
+        expr = bin_feature_values(adata)
+        expr.index = [dataset]
+        mean_expr_store.append(expr)
+    
+    if len(mean_expr_store) == 0:
+        return
+    mean_expr = pd.concat(mean_expr_store)
+
+    mean_expr.index = mean_expr.index.map(surrogate_names)
+    ages = sorted(mean_expr.columns)
+    # print(mean_expr)
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(3, 2))
+
+    heatplot_age_trend(mean_expr[ages], cmap='magma' if feature_type=='tf_activity' else 'viridis', 
+                        cbar_title = "Gene \n expression" if feature_type == 'gene_expression' else (
+                                    "TF \n activity" if feature_type == 'tf_activity' else "Gene score"
+                                ),
+                        ax=ax, 
+                        show_cbar=show_cbar,
+                        cbar_kws={
+                            "shrink": 1,
+                            "aspect": 5,       # Lower values = thicker colorbar (default is ~20)
+                            "fraction": 0.1    # Controls the width space the cbar takes in the figure
+                        })
+    if not show_ylabels:
+        ax.set_yticklabels([])
+    ax.set_ylabel('')
+    ax.set_xlabel('Age')
+    # ax.set_title(f'{cell_type}: {feature}', pad=20)
+
+def plot_trend_sle_case(adata, tf='LEF1', cell_type='CD8T'):
+    from scipy.stats import linregress
+
+    adata = retrieve_feature_data(dataset='SLE_European', cell_type=cell_type, feature_type='tf_activity', condition=None)
+    adata = adata[:, adata.var_names == tf]
+    # Extract feature values (flattened, assuming dense matrix)
+    feature = adata.X.flatten()  # use .toarray().flatten() if sparse
+    age = adata.obs['age'].values
+
+    data = pd.DataFrame({
+        'feature': feature,
+        'age': age
+    })
+
+    # Define masks
+    young_mask = data['age'] < 50
+    old_mask = data['age'] >= 50
+
+    fig, axes = plt.subplots(1, 2, figsize=(3, 2.2))
+
+    i = 0
+    for ax, (mask, color, title) in zip(
+        axes,
+        [(young_mask, 'royalblue', 'age < 50'), (old_mask, 'darkorange', 'age > 50')]
+    ):
+        subdata = data[mask]
+        ax.scatter(
+            subdata['age'],
+            subdata['feature'],
+            color=color,
+            alpha=0.7,
+            s=15
+        )
+        slope, intercept, r_value, p_value, std_err = linregress(subdata['age'], subdata['feature'])
+        x_vals = np.linspace(subdata['age'].min(), subdata['age'].max(), 100)
+        y_vals = slope * x_vals + intercept
+        ax.plot(x_vals, y_vals, color='black', linestyle='--', linewidth=2)
+        ax.set_yticks([])
+        ax.margins(x=0.1, y=0.2)
+        sig = '***' if p_value < 0.001 else '**' if p_value < 0.01 else '*' if p_value < 0.05 else ''
+        text = f'p = {p_value:.3g}{sig}' if p_value < 0.05 else f'p = {p_value:.3g}'
+        # ax.text(0.5, 1.05, text, transform=ax.transAxes,
+        #         ha='center', va='top', fontsize=10, color='black')
+        if i == 0:
+            ax.spines[['top', 'right']].set_visible(False)
+            ax.set_xlabel('Age')
+        else:
+            ax.spines[['top', 'right', 'left']].set_visible(False)
+        ax.set_title(f'{title}\n{text}', pad=15, fontsize=10)
+        i+=1
+    axes[0].set_ylabel('TF activity')
+    plt.suptitle(f'{tf}', fontsize=10, fontweight='bold', y=.9)
+    plt.tight_layout()
 
 def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5), plot_centrality=True,
-                                ax2_margins={'y': 0.1, 'x': 0.1}, hide_ylabels=False):
+                                ax2_margins={'y': 0.1, 'x': 0.1}, hide_ylabels=False, show_legend=True):
     
     # stats_d_sig = stats_d[stats_d['p_value_adj'] < 0.05]
     # --- Plot ---
@@ -527,14 +623,14 @@ def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5), 
 
     # - Scatter plot
     ax0 = axes[0] if plot_centrality else axes
-    sns.scatterplot(data=df, x='analysis', y='tf', hue='trend', ax=ax0, palette=palette_all, s=100)
+    sns.scatterplot(data=df, x='analysis', y='tf', hue='trend', ax=ax0, palette=palette_all, s=100, alpha=.8)
 
     # Overlay black stars
-    aging_df = df[df['analysis'] == 'Aging TFs']
+    aging_df = df[df['analysis'] == 'Age-associated TFs']
     assert aging_df.shape[0] > 0, "No Aging TFs found in the data"
     ax0.scatter(aging_df['analysis'], aging_df['tf'], color='black', marker='*', s=10, zorder=10)
     sig_df = df[df.get('p_value_adj', 1.0) < 0.05]
-    ax0.scatter(sig_df['analysis'], sig_df['tf'], color='black', marker='*', s=10, zorder=10)
+    ax0.scatter(sig_df['analysis'], sig_df['tf'], color='black', marker='*', s=10, zorder=10, alpha=.8)
 
     # Fill in missing x-axis categories
     missing = set(all_groups) - set(df['analysis'].unique())
@@ -545,6 +641,7 @@ def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5), 
     ax0.set_xlabel('')
     ax0.set_ylabel('TFs')
     ax0.margins(x=.2, y=.05 if len(tfs) > 10 else 0.2)
+    ax0.spines[['top', 'right']].set_visible(False)
     if hide_ylabels:
         ax0.set_yticklabels([])
         ax0.set_ylabel('')
@@ -562,21 +659,21 @@ def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5), 
         ax1.margins(**ax2_margins)
         ax1.spines[['top', 'right']].set_visible(False)
         
+    if show_legend:
+        # - Place legend on the outer right of both subplots
+        ordered_labels = ['Decrease in aging', 'Increase in aging', 'Decrease after treatment', 'Increase after treatment', 'Decrease in disease', 'Increase in disease']
+        ordered_labels = [label for label in ordered_labels if label in palette_all.keys()]
+        handles, labels = ax0.get_legend_handles_labels()
 
-    # - Place legend on the outer right of both subplots
-    ordered_labels = ['Decrease in aging', 'Increase in aging', 'Decrease after treatment', 'Increase after treatment', 'Decrease in disease', 'Increase in disease']
-    ordered_labels = [label for label in ordered_labels if label in palette_all.keys()]
-    handles, labels = ax0.get_legend_handles_labels()
+        # Create a dictionary from labels to handles
+        label_handle_dict = dict(zip(labels, handles))
 
-    # Create a dictionary from labels to handles
-    label_handle_dict = dict(zip(labels, handles))
+        # Reorder handles and labels
+        ordered_handles = [label_handle_dict[label] for label in ordered_labels]
+        ordered_labels = [label for label in ordered_labels]
 
-    # Reorder handles and labels
-    ordered_handles = [label_handle_dict[label] for label in ordered_labels]
-    ordered_labels = [label for label in ordered_labels]
-
-    # Add legend
-    fig.legend(ordered_handles, ordered_labels, loc='center left', bbox_to_anchor=(1.02, 0.8), frameon=False)
+        # Add legend
+        fig.legend(ordered_handles, ordered_labels, loc='center left', bbox_to_anchor=(1.02, 0.8), frameon=False)
 
     
 def wrapper_drug_aging_overlap(
@@ -703,7 +800,7 @@ def plot_gene_score_association_with_age(cell_type, datasets, type, features=Non
     from ciim.src.utils.plots import dotplot
     from matplotlib.colors import TwoSlopeNorm
     from ciim.src.common import cmap_trend, palette_trend_2, surrogate_names
-    from ciim.src.tf_activity.helper import retrieve_stats_features, retrieve_sig_stats, retrieve_net
+    from ciim.src.feature_association.helper import retrieve_stats_features, retrieve_sig_stats, retrieve_net
     import matplotlib.gridspec as gridspec
     import pandas as pd
     import numpy as np
@@ -855,7 +952,7 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     from ciim.src.utils.plots import dotplot
     from matplotlib.colors import TwoSlopeNorm
     from ciim.src.common import cmap_trend, palette_trend_2, surrogate_names
-    from ciim.src.tf_activity.helper import retrieve_stats_features, retrieve_sig_stats, retrieve_net
+    from ciim.src.feature_association.helper import retrieve_stats_features, retrieve_sig_stats, retrieve_net
     import matplotlib.gridspec as gridspec
     import pandas as pd
     import numpy as np
@@ -1218,8 +1315,8 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
 
 
 def wrapper_flesh_out_tf_interactions(datasets, cell_type, tf, type='bulk', n_top=10, keep_sig_only=False, sizes=(20, 100), ax=None, show_legend=True):
-    from ciim.src.tf_activity.helper import retrieve_stats_features
-    from ciim.src.tf_activity.plots import plot_tf_interactions_plus_target_stats
+    from ciim.src.feature_association.helper import retrieve_stats_features
+    from ciim.src.feature_association.plots import plot_tf_interactions_plus_target_stats
     # - get the net for different datasets
     top_targets = []
     net_store = []
@@ -1897,7 +1994,9 @@ def heamap_plot_minor_cell_types(stats_all, palette,
                                             map_names, 
                                             slope_col='slope',
                                             main_col='major_cell_type', 
-                                            minor_col='cell_type' ,figsize=(6, 8), sig_dots_y_offset = 0.5, annotate_x_ticks=True, dendrogram_visible=True):
+                                            minor_col='cell_type' ,figsize=(6, 8), sig_dots_y_offset = 0.5, 
+                                            annotate_x_ticks=True, dendrogram_visible=True,
+                                            show_legend=True):
 
     from ciim.src.common import palette_cell_types, surrogate_names
     from matplotlib.colors import ListedColormap, BoundaryNorm
@@ -1980,7 +2079,7 @@ def heamap_plot_minor_cell_types(stats_all, palette,
                             '.',
                             color='black', ha='center', va='center', fontsize=8, fontweight='bold'
                         )
-    if True:
+    if show_legend:
         celltype_legend = [Patch(color=palette_cell_types[label], label=map_names.get(label, label)) for label in major_cell_types]
         trend_legend = [Patch(color=color, label=label, alpha=.8) for label, color in palette.items()]
 
@@ -2009,47 +2108,6 @@ def heamap_plot_minor_cell_types(stats_all, palette,
 
         g.ax_heatmap.add_artist(legend_celltypes)
 
-
-
-def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets, ax=None, show_cbar=True, type='bulk', 
-                                    age_limit=[20, 80], show_ylabels=True):
-    mean_expr_store = []
-    for dataset in datasets:
-        adata = retrieve_feature_data(dataset, cell_type, type=type, feature_type=feature_type) 
-        adata = adata[(adata.obs['age'] > age_limit[0]) & (adata.obs['age'] < age_limit[1])]
-        adata = adata[:, adata.var_names==feature]
-        if adata.shape[1] == 0:
-            continue
-        expr = bin_feature_values(adata)
-        expr.index = [dataset]
-        mean_expr_store.append(expr)
-    
-    if len(mean_expr_store) == 0:
-        return
-    mean_expr = pd.concat(mean_expr_store)
-
-    mean_expr.index = mean_expr.index.map(surrogate_names)
-    ages = sorted(mean_expr.columns)
-    # print(mean_expr)
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(3, 2))
-
-    heatplot_age_trend(mean_expr[ages], cmap='magma' if feature_type=='tf_activity' else 'viridis', 
-                        cbar_title = "Gene \n expression" if feature_type == 'gene_expression' else (
-                                    "TF \n activity" if feature_type == 'tf_activity' else "Gene score"
-                                ),
-                        ax=ax, 
-                        show_cbar=show_cbar,
-                        cbar_kws={
-                            "shrink": 1,
-                            "aspect": 5,       # Lower values = thicker colorbar (default is ~20)
-                            "fraction": 0.1    # Controls the width space the cbar takes in the figure
-                        })
-    if not show_ylabels:
-        ax.set_yticklabels([])
-    ax.set_ylabel('')
-    ax.set_xlabel('Age')
-    # ax.set_title(f'{cell_type}: {feature}', pad=20)
 
 def plot_net_degrees(net, top_n=10):
     plt.rcParams.update({'font.size': 10})
@@ -2205,7 +2263,7 @@ class DotPlotTFtarget:
         tf_gene_interaction_legend()
 
     def combine_data(self, stats_source, stats_target, net):
-        from ciim.src.tf_activity.helper import compute_trend
+        from ciim.src.feature_association.helper import compute_trend
         from ciim.src.helper import determine_centrality
 
         stats_source = compute_trend(stats_source, pval_col='meta_p_adj', slope_col='slope', col='source')

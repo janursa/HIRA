@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 import scipy.sparse as sp
 import sys
 import os
+import json
 import scanpy as sc
 import matplotlib.pyplot as plt
 from collections import defaultdict
@@ -66,8 +67,15 @@ def get_hallmark():
         genesets_all = read_gmt(geneset_file) 
         genesets_all = {' '.join(key.split('_')[1:]):gs['genes'] for key, gs in genesets_all.items()}
     else:
-        from gseapy import get_library_name, get_library
-        genesets_all = get_library(name='MSigDB_Hallmark_2020')
+        geneset_file = f'{prior_dir}/MSigDB_Hallmark_2020.json'
+        if os.path.exists(geneset_file):
+            with open(geneset_file, 'r') as f:
+                genesets_all = json.load(f)
+        else:
+            from gseapy import get_library_name, get_library
+            genesets_all = get_library(name='MSigDB_Hallmark_2020')
+            with open(geneset_file, 'w') as f:
+                json.dump(genesets_all, f, indent=4)
     return genesets_all
 def get_essential_hallmark():
     hallmark_sets = get_hallmark()

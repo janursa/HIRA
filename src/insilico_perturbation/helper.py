@@ -6,8 +6,8 @@ from sklearn.linear_model import LinearRegression
 from scipy import stats
 
 from ciim.src.common import save_dir, surrogate_names, palette_datasets_pretty
-from ciim.src.tf_activity.helper import retrieve_sig_stats
-from ciim.src.tf_activity.helper import get_consensus_net
+from ciim.src.feature_association.helper import retrieve_sig_stats
+from ciim.src.feature_association.helper import get_consensus_net
 from ciim.src.common import datasets_all
 from ciim.src.utils.util import get_genesets
 import warnings
@@ -194,7 +194,7 @@ import pandas as pd
 import numpy as np
 
 # from ciim.src.insilico_perturbation.helper import compute_tf_slopes, perturb_tf_simulation
-from ciim.src.tf_activity.helper import retrieve_sig_stats, retrieve_net
+from ciim.src.feature_association.helper import retrieve_sig_stats, retrieve_net
 from ciim.src.clock.helper import predict_age
 from ciim.src.common import save_dir
 

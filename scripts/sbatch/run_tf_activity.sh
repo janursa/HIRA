@@ -12,4 +12,4 @@
 #SBATCH --mail-user=jalil.nourisa@gmail.com  
 
 
-python src/tf_activity/script.py
+python src/feature_association/script.py

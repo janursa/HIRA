@@ -6,8 +6,8 @@ from sklearn.linear_model import LinearRegression
 from scipy import stats
 
 from ciim.src.common import save_dir, surrogate_names, palette_datasets_pretty
-from ciim.src.tf_activity.helper import retrieve_sig_stats
-from ciim.src.tf_activity.helper import get_consensus_net
+from ciim.src.feature_association.helper import retrieve_sig_stats
+from ciim.src.feature_association.helper import get_consensus_net
 from ciim.src.common import datasets_all, colors_blind
 from ciim.src.utils.util import get_genesets
 import warnings
@@ -15,7 +15,7 @@ from matplotlib.patches import Patch
 warnings.filterwarnings('ignore')
 
 
-def barplot_yvalue_tfs(pivot_df, ax=None, color=colors_blind[1], x='tf', y='value', figsize=(4, 2)):
+def barplot_yvalue_tfs(pivot_df, ax=None, color=colors_blind[1], x='tf', y='value', figsize=(4, 2), temp_dir=None):
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
     barplot = sns.barplot(
@@ -28,7 +28,7 @@ def barplot_yvalue_tfs(pivot_df, ax=None, color=colors_blind[1], x='tf', y='valu
             color=color,
         )
     ax.spines[['top', 'right']].set_visible(False)  # Hide top and right spines
-    ax.set_ylabel('Gene score shift \n (log2FC)')
+    ax.set_ylabel('Gene score shift \n (pseudo-log2FC)')
     ax.set_xlabel('TFs')
     ax.margins(x=0.05, y=0.05)
     bb = ax.set_xticklabels(ax.get_xticklabels(), rotation=90, ha='center')
@@ -42,7 +42,7 @@ def heatplot_perturbation_effect(pivot_df, ax, gene_score_shift_col):
         'aging_effect_cmap',
         [palette_trend_2['Decrease in aging'], 'white', palette_trend_2['Increase in aging']]
     )
-    cbar_label = 'Gene score shift \n (log2FC)' if 'log2fc' in gene_score_shift_col else 'Gene score shift'
+    cbar_label = 'Gene score shift \n (pseudo-log2FC)' if 'log2fc' in gene_score_shift_col else 'Gene score shift'
     sns.heatmap(pivot_df, 
                 cmap=custom_cmap, 
                 center=0, 
@@ -53,7 +53,7 @@ def heatplot_perturbation_effect(pivot_df, ax, gene_score_shift_col):
     ax.set_ylabel('')
     ax.set_xlabel('Number of top TFs perturbed')
     ax.set_title('')
-    bb = ax.set_xticklabels(ax.get_xticklabels(), rotation=90, ha='center')
+    bb = ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='center')
 
 def disease_tfs():
     pass
@@ -185,23 +185,28 @@ def determine_overlap_with_risk_genes(cell_type):
     df_risk_full = pd.concat([df.set_index('tf'), df_per_pathway], axis=1).reset_index()
     return df_risk_full
 
-def plot_pathway_set(score_shift_summary, geneset, gene_score_shift_col, cell_type):
+def plot_pathway_set(score_shift_summary, geneset, gene_score_shift_col, cell_type, col_name='tf', xlabel='TFs', temp_dir=None):
+    if temp_dir is None:
+        temp_dir = save_dir / 'insilico_perturbation' / 'biological_analysis' / 'figures'
+        os.makedirs(temp_dir, exist_ok=True)
     genesets = get_genesets(geneset)
     df_summary_opengenes_s = score_shift_summary[score_shift_summary['pathway'].isin(genesets)]
     # df_summary_opengenes_s[gene_score_shift_col] = df_summary_opengenes_s[gene_score_shift_col].abs()
-    pivot_df = df_summary_opengenes_s.pivot_table(index='pathway', columns='tf', values=gene_score_shift_col)
-    fig, ax1 = plt.subplots(1, 1, figsize=(6, len(pivot_df) * 0.18+1))
+    pivot_df = df_summary_opengenes_s.pivot_table(index='pathway', columns=col_name, values=gene_score_shift_col)
+    fig, ax1 = plt.subplots(1, 1, figsize=(pivot_df.shape[1]*.16+1, len(pivot_df) * 0.16+1))
     heatplot_perturbation_effect(pivot_df, ax1, gene_score_shift_col)
-    ax1.set_xlabel('TFs')
+    ax1.set_xlabel(xlabel)
     if geneset=='opengenes':
         title = 'OpenGenes'
     elif geneset=='essential_hallmark':
         title = 'Essential hallmark'
+    else:
+        raise ValueError(f'Unknown geneset: {geneset}')
     plt.title(f'{title}', pad=15, weight='bold')
-
+    plt.savefig(f'{temp_dir}/{geneset}_gene_score_shift.png', bbox_inches='tight', dpi=300, transparent=True)
     # - mean score shift
     mean_pivot_df = pivot_df.abs().mean(axis=0).reset_index(name='value')
-    barplot_yvalue_tfs(mean_pivot_df, color=colors_blind[1])
+    barplot_yvalue_tfs(mean_pivot_df, color=colors_blind[1], x=col_name)
     plt.title(f'{title} (absolute mean)', pad=15, weight='bold')
 
     # - Baseline gene score + n overlap with targets
@@ -230,11 +235,53 @@ def summarize_essential_genes_shift(score_shift_summary, gene_score_shift_col='g
     df_mean = df_summary_opengenes.groupby('tf')[gene_score_shift_col].median().reset_index(name='value')
     return df_mean
 
+def plot_pathway_score_shift(mean_scores_s, loc=[1.1, 0.1]):
+    terms = mean_scores_s['pathway'].unique()
+
+    # Generate a color palette with distinct colors
+    terms_palette = dict(zip(
+        terms,
+        sns.color_palette('tab20', n_colors=len(terms))
+    ))
+    fig, ax = plt.subplots(figsize=(3, 2.5))
+    # Plot each pathway separately to maintain color consistency
+    for pathway, df in mean_scores_s.groupby('pathway'):
+        color = terms_palette[pathway]
+        
+        ordered_tfs = df['added_tf'].cat.categories.tolist()
+        df = df.set_index('added_tf').reindex(ordered_tfs).reset_index()
+        sns.scatterplot(
+            data=df,
+            x='added_tf',
+            y='gene_score_shift_log2fc',
+            label=pathway,
+            color=color,
+            s=30,
+            ax=ax,
+            alpha=0.8,
+        )
+        ax.plot(
+            df['added_tf'],
+            df['gene_score_shift_log2fc'],
+            marker='s',
+            linestyle='--',
+            color=color,
+            alpha=0.8,
+            linewidth=1.5,
+        )
+
+    ax.legend(loc=loc, title='Pathway', frameon=False, markerscale=1.2)
+    ax.set_xlabel('TFs added')
+    ax.set_ylabel('Gene score shift \n (log2FC)')
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.margins(x=0.1, y=0.15)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
 def plot_all(score_shift_summary, gene_score_shift_col, cell_type, ordered_tfs, 
             overvap_risky_genes=True, 
             geneshift_opengenes=True,
             geneshift_hallmark=True,
-            ageshift_depmap=True
+            ageshift_depmap=True,
+            temp_dir=None
             ):
     from ciim.src.utils.util import get_genesets
 
@@ -243,11 +290,11 @@ def plot_all(score_shift_summary, gene_score_shift_col, cell_type, ordered_tfs,
     
     # --- opengenes
     if geneshift_opengenes:
-        plot_pathway_set(score_shift_summary, 'opengenes', gene_score_shift_col, cell_type)
+        plot_pathway_set(score_shift_summary, 'opengenes', gene_score_shift_col, cell_type, temp_dir=temp_dir)
     
     # --- hallmark essential genes
     if geneshift_hallmark:
-        plot_pathway_set(score_shift_summary, 'essential_hallmark', gene_score_shift_col, cell_type)
+        plot_pathway_set(score_shift_summary, 'essential_hallmark', gene_score_shift_col, cell_type, temp_dir=temp_dir)
     
     # -- depmap essential genes
     if ageshift_depmap:
