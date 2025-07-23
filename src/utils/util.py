@@ -14,23 +14,6 @@ from collections import defaultdict
 from task_grn_inference.src.utils.util import sum_by, read_gmt
 from ciim.src.common import base_dir, save_dir, prior_dir
 
-def retrieve_feature_data(dataset, smoothened=False, cell_type=None, type='bulk', feature_type='tf_activity', condition='healthy'):
-    from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
-    if smoothened:
-        file_path = f'{save_dir}/{feature_type}_smoothed/{dataset}_{cell_type}_{type}.h5ad'
-    else:
-        file_path = f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad'
-    if os.path.exists(file_path) == False:
-        raise ValueError(f'File {file_path} does not exist')
-
-    adata = ad.read_h5ad(file_path)
-    if ('SLE' in dataset) & (condition == 'healthy'):
-        adata = adata[adata.obs['disease'] == 'normal'].copy()
-    if cell_type is not None:
-        if cell_type not in adata.obs['cell_type'].unique():
-            raise ValueError(f'Given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
-        adata = adata[adata.obs['cell_type'] == cell_type]
-    return adata
 
 def get_opengenes_sets():
     df = pd.read_csv(f'{prior_dir}/gene-aging-mechanisms.tsv', sep='\t')

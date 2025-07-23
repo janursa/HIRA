@@ -175,14 +175,14 @@ def bin_feature_values(adata):
     max_vals = expr_mean.max(axis=1)
     expr_mean = (expr_mean.sub(min_vals, axis=0)).div(max_vals - min_vals, axis=0)
     return expr_mean
-def retrieve_feature_data(dataset, cell_type, type, feature_type='tf_activity'):
-    cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-    file_path = f'{website_input_dir}/{feature_type}/{dataset}_{cell_type_major}_{type}.h5ad'
-    if os.path.exists(file_path) == False:
-        raise ValueError(f'File {file_path} does not exist')
-    adata = ad.read_h5ad(file_path)
+# def retrieve_feature_data(dataset, cell_type, type, feature_type='tf_activity'):
+#     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
+#     file_path = f'{website_input_dir}/{feature_type}/{dataset}_{cell_type_major}_{type}.h5ad'
+#     if os.path.exists(file_path) == False:
+#         raise ValueError(f'File {file_path} does not exist')
+#     adata = ad.read_h5ad(file_path)
     
-    return adata
+#     return adata
 def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", y_label="Genes", figsize=(2.5, 3), ax=None, show_cbar=True, shrink=.7):
     import seaborn as sns
     import matplotlib.pyplot as plt

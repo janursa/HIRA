@@ -15,6 +15,6 @@ def bulkify_main(adata, cell_count_t=10, covariates=['cell_type', 'donor_id', 'a
     adata_bulk = sum_by(adata, 'sum_by', unique_mapping=True)
     cell_count_df = adata.obs.groupby('sum_by').size().reset_index(name='cell_count')
     adata_bulk.obs = adata_bulk.obs.merge(cell_count_df, on='sum_by')
-    adata_bulk = adata_bulk[adata_bulk.obs['cell_count']>cell_count_t]
+    adata_bulk = adata_bulk[adata_bulk.obs['cell_count']>=cell_count_t]
     adata_bulk = normalize(adata_bulk)
     return adata_bulk

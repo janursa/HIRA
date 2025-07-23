@@ -85,23 +85,40 @@ def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datas
         stats = stats[stats['dataset'].isin(datasets)]
     return stats
 
-def retrieve_feature_data(dataset, cell_type=None, type='bulk', feature_type='tf_activity', condition='healthy'):
+def retrieve_feature_data(dataset, smoothened=False, cell_type=None, type='bulk', feature_type='tf_activity', condition='healthy'):
     from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
-
-    # cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-    file_path = f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad'
+    if smoothened:
+        file_path = f'{save_dir}/{feature_type}_smoothed/{dataset}_{cell_type}_{type}.h5ad'
+    else:
+        file_path = f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad'
     if os.path.exists(file_path) == False:
         raise ValueError(f'File {file_path} does not exist')
 
     adata = ad.read_h5ad(file_path)
     if ('SLE' in dataset) & (condition == 'healthy'):
         adata = adata[adata.obs['disease'] == 'normal'].copy()
-    # adata = adata[adata.obs['condition'] == condition].copy()
     if cell_type is not None:
         if cell_type not in adata.obs['cell_type'].unique():
             raise ValueError(f'Given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
         adata = adata[adata.obs['cell_type'] == cell_type]
     return adata
+# def retrieve_feature_data(dataset, cell_type=None, type='bulk', feature_type='tf_activity', condition='healthy'):
+#     from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
+
+#     # cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
+#     file_path = f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad'
+#     if os.path.exists(file_path) == False:
+#         raise ValueError(f'File {file_path} does not exist')
+
+#     adata = ad.read_h5ad(file_path)
+#     if ('SLE' in dataset) & (condition == 'healthy'):
+#         adata = adata[adata.obs['disease'] == 'normal'].copy()
+#     # adata = adata[adata.obs['condition'] == condition].copy()
+#     if cell_type is not None:
+#         if cell_type not in adata.obs['cell_type'].unique():
+#             raise ValueError(f'Given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
+#         adata = adata[adata.obs['cell_type'] == cell_type]
+#     return adata
 
 def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activity'):
     adata.write_h5ad(f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')

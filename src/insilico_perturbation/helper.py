@@ -11,7 +11,8 @@ from ciim.src.feature_association.helper import get_consensus_net
 from ciim.src.common import datasets_all
 from ciim.src.utils.util import get_genesets
 import warnings
-from ciim.src.utils.util import calculate_genes_scores, retrieve_feature_data
+from ciim.src.feature_association.helper import retrieve_feature_data 
+
 warnings.filterwarnings('ignore')
 
 def compute_slopes(adata, feature_type='gene_expression'):
@@ -57,11 +58,10 @@ def compute_tf_slopes(adata, tfs):
     adata_sig = adata[:, mask_genes].copy()
     slope_df = compute_slopes(adata_sig, feature_type='gene_expression')
     return slope_df
-def perturb_tf_simulation(adata, net, tfs, slope_df, simulation_iteration=10):
+def perturb_tf_simulation(adata, net, tfs, slope_df, simulation_iteration=3):
     '''
      - 
     '''
-    # print('Number of tfs to perturb:', len(tfs))
 
     # Extract gene names (first part before //)
     gene_names = adata.var_names.str.split('//').str[0]
@@ -105,8 +105,9 @@ def perturb_tf_simulation(adata, net, tfs, slope_df, simulation_iteration=10):
     # Simulate per cell
     X_store = []
     for X0 in X0s:
-        Xs = run_simulation(N, X0, p, n_iter=10)
+        Xs = run_simulation(N, X0, p, n_iter=simulation_iteration)
         X = Xs[-1]
+        X = np.clip(X, 0, None)  # ensure non-negative expression
         X_store.append(X)
 
     # Create perturbed AnnData
@@ -115,13 +116,6 @@ def perturb_tf_simulation(adata, net, tfs, slope_df, simulation_iteration=10):
 
     return adata_perturb
 
-# def run_simulation(N, X0, p, n_iter=10):
-#     X = X0.copy()
-#     X_store = [X0]
-#     for it in range(n_iter):
-#         X = X + np.dot(N, p)
-#         X_store.append(X)
-#     return np.array(X_store)
 
 def run_simulation(N, X0, p, n_iter=3, decay=.7):
     X = X0.copy()
@@ -137,19 +131,8 @@ def run_simulation(N, X0, p, n_iter=3, decay=.7):
 
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
-def run_simulation_nonlin(N, X0, p, n_iter=10):
-    X = X0.copy()
-    X_store = [X0]
-    for _ in range(n_iter):
-        delta = np.dot(N, p)          # shape: (1422,)
-        delta = delta * X             # element-wise modulation by current gene state
-        delta = np.tanh(delta)
-        X = X + delta
-        X_store.append(X)
-    return np.array(X_store)
-def perturb_tf_activity(adata, tfs, slope_df, simulation_iteration=10):
-    # print('Number of tfs to perturb:', len(tfs))
 
+def perturb_tf_activity(adata, tfs, slope_df, simulation_iteration=10):
     # Extract gene names (first part before //)
     gene_names = adata.var_names.str.split('//').str[0]
     slope_genes = slope_df.index.str.split('//').str[0]
@@ -193,7 +176,6 @@ import anndata as ad
 import pandas as pd
 import numpy as np
 
-# from ciim.src.insilico_perturbation.helper import compute_tf_slopes, perturb_tf_simulation
 from ciim.src.feature_association.helper import retrieve_sig_stats, retrieve_net
 from ciim.src.clock.helper import predict_age
 from ciim.src.common import save_dir
@@ -252,25 +234,35 @@ def compute_gene_score_shift(adata_base, adata_perturbed, genes):
     # Compute expression shift
     score_shift = adata_perturbed.obs['gene_score_perturbed'] - adata_base.obs['gene_score_orig']
     assert adata_base.obs['gene_score_orig'].isna().any()==False, "Baseline gene scores contain only zeros, cannot compute shift."
-    # score_shift_n = score_shift.abs()/adata_base.obs['gene_score_orig'].abs()
 
-    # print(adata_base.shape)
-    # print(adata_base.obs['gene_score_orig'])
-    # print(adata_perturbed.obs['gene_score_perturbed'] )
-    # print(score_shift_n)
-    # aaa
-    
     adata_base.obs['donor_age'] = adata_base.obs['donor_id'].astype(str) + '_' + adata_base.obs['age'].astype(str)
     result_df = pd.DataFrame({
         'donor_age': adata_base.obs['donor_age'],
         'baseline_gene_score': adata_base.obs['gene_score_orig'].values,
         'perturbed_gene_score': adata_perturbed.obs['gene_score_perturbed'].values,
         'gene_score_shift': score_shift.values,
-        # 'gene_score_shift_n': score_shift_n,
     }, index=adata_base.obs_names)
     result_df.set_index('donor_age', inplace=True)
     return result_df
+import numpy as np
+import pandas as pd
 
+def compute_log2fc_genewise(adata_base, adata_perturbed):
+    # Get normalized expression matrices
+    X_base = adata_base.X
+    X_perturbed = adata_perturbed.X
+
+    # Convert to dense if sparse
+    if not isinstance(X_base, np.ndarray):
+        X_base = X_base.toarray()
+    if not isinstance(X_perturbed, np.ndarray):
+        X_perturbed = X_perturbed.toarray()
+
+    # Log2 fold change per cell per gene (no averaging)
+    log2fc = np.log2((X_perturbed + 1e-6) / (X_base + 1e-6))
+
+    # Return as DataFrame: rows = obs names, columns = gene names
+    return pd.DataFrame(log2fc, index=adata_perturbed.obs_names, columns=adata_perturbed.var_names)
 def run_in_silico(
         dataset,
         cell_type,
@@ -326,6 +318,10 @@ def run_in_silico(
     result['cell_type'] = cell_type
     result['dataset'] = dataset
     result['perturbation'] = perturbation_mode
+
+    log2f_gene_wise_df = compute_log2fc_genewise(adata, adata_perturb)
+    print(log2f_gene_wise_df)
+    aaa
 
     return result
 
