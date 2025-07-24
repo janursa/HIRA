@@ -12,6 +12,7 @@ from ciim.src.common import datasets_all
 from ciim.src.utils.util import get_genesets
 import warnings
 from ciim.src.feature_association.helper import retrieve_feature_data 
+from ciim.src.utils.util import calculate_genes_scores
 
 warnings.filterwarnings('ignore')
 
@@ -107,7 +108,7 @@ def perturb_tf_simulation(adata, net, tfs, slope_df, simulation_iteration=3):
     for X0 in X0s:
         Xs = run_simulation(N, X0, p, n_iter=simulation_iteration)
         X = Xs[-1]
-        X = np.clip(X, 0, None)  # ensure non-negative expression
+        # X = np.clip(X, 0, None)  # ensure non-negative expression
         X_store.append(X)
 
     # Create perturbed AnnData
@@ -124,6 +125,7 @@ def run_simulation(N, X0, p, n_iter=3, decay=.7):
     for _ in range(n_iter):
         delta = np.dot(N, signal)
         X = X + np.tanh(delta)  # non-linear update
+        X = np.clip(X, 0, None)  # ensure non-negative expression
         X_store.append(X)
         signal *= decay
     return np.array(X_store)
@@ -247,6 +249,65 @@ def compute_gene_score_shift(adata_base, adata_perturbed, genes):
 import numpy as np
 import pandas as pd
 
+def calculate_log2fc(x1, x2, epsilon=1e-8):
+    assert x1.shape == x2.shape, "Input arrays must have the same shape"
+    assert (x1>=0).all() and (x2>=0).all(), "Input arrays must contain non-negative values"
+    ratio = (np.abs(x1) + epsilon) / (np.abs(x2) + epsilon)
+    # sign = np.sign(x1 - x2)
+    # log2fc = sign*np.log2(ratio)
+    # print(sign)
+
+    log2fc = np.log2(ratio)
+    return log2fc
+def compute_log2fc_vs_ctr(adata):
+    import numpy as np
+    import anndata as ad
+    from scipy.sparse import issparse
+
+    adata = adata.copy()
+
+    # Use normalized expression layer
+    if 'X_norm' not in adata.layers:
+        raise ValueError("adata.layers must contain 'X_norm'")
+    adata.X = adata.layers['X_norm']
+
+    # Identify control cells
+    control_mask = adata.obs['is_control'] == True
+    adata_control = adata[control_mask]
+    adata_perturbed = adata[~control_mask]
+
+    X_control = adata_control.X.toarray() if issparse(adata_control.X) else adata_control.X
+    mean_control = X_control.mean(axis=0)
+
+    unique_perturbations = adata_perturbed.obs['perturbation'].unique()
+    genes = adata.var_names
+
+    X_log2fc = []
+    perturb_names = []
+
+    for perturb in unique_perturbations:
+        if perturb is None or perturb == 'control':
+            continue
+
+        mask = adata_perturbed.obs['perturbation'] == perturb
+        if mask.sum() == 0:
+            continue
+
+        X_pert = adata_perturbed[mask].X
+        X_pert = X_pert.toarray() if issparse(X_pert) else X_pert
+        mean_pert = X_pert.mean(axis=0)
+
+        log2fc = calculate_log2fc(mean_pert, mean_control)
+        X_log2fc.append(log2fc)
+        perturb_names.append(perturb)
+
+    X_log2fc = np.vstack(X_log2fc)
+
+    log2fc_adata = ad.AnnData(X=X_log2fc)
+    log2fc_adata.obs['perturbation'] = perturb_names
+    log2fc_adata.var_names = genes
+
+    return log2fc_adata
 def compute_log2fc_genewise(adata_base, adata_perturbed):
     # Get normalized expression matrices
     X_base = adata_base.X
@@ -259,10 +320,16 @@ def compute_log2fc_genewise(adata_base, adata_perturbed):
         X_perturbed = X_perturbed.toarray()
 
     # Log2 fold change per cell per gene (no averaging)
-    log2fc = np.log2((X_perturbed + 1e-6) / (X_base + 1e-6))
+    # log2fc = np.log2((X_perturbed + 1e-6) / (X_base + 1e-6))
+    log2fc = calculate_log2fc(X_perturbed, X_base)
+    assert np.any(np.isnan(log2fc))==False, "Log2 fold change contains NaN values, check the input data."
+
+    log2fc_adata = adata_perturbed.copy()
+    log2fc_adata.X = log2fc
+    del log2fc_adata.uns
 
     # Return as DataFrame: rows = obs names, columns = gene names
-    return pd.DataFrame(log2fc, index=adata_perturbed.obs_names, columns=adata_perturbed.var_names)
+    return log2fc_adata
 def run_in_silico(
         dataset,
         cell_type,
@@ -273,12 +340,14 @@ def run_in_silico(
         slope_df=None,
         data_type='bulk',
         simulation_iteration=3,
-        version='v1',
+        version='all_data',
         reg_type='ridge',
         feature_type='gene_expression',
         n_donors=20,
         perturbation_mode='natural_aging', # None, 'overexpression'
-        verbose=-1
+        verbose=-1,
+        log2fc_genewise=False,
+        temp_dir=None
     ):
     if verbose == 0:
         print(f"Processing: {cell_type} - {dataset} ({perturbation_mode})")
@@ -319,9 +388,15 @@ def run_in_silico(
     result['dataset'] = dataset
     result['perturbation'] = perturbation_mode
 
-    log2f_gene_wise_df = compute_log2fc_genewise(adata, adata_perturb)
-    print(log2f_gene_wise_df)
-    aaa
+    if log2fc_genewise:
+        assert temp_dir is not None, "temp_dir must be provided for log2fc_genewise computation"
+        os.makedirs(temp_dir, exist_ok=True)
+        assert len(tfs) == 1, "log2fc_genewise is only supported for single TF perturbations because of naming the file issues"
+        log2f_gene_wise_adata = compute_log2fc_genewise(adata, adata_perturb)
+        log2f_gene_wise_adata.obs['dataset'] = dataset
+        log2f_gene_wise_adata.obs['perturbation'] = perturbation_mode
+        log2f_gene_wise_adata.obs['tfs'] = ','.join(tfs)
+        log2f_gene_wise_adata.write(f'{temp_dir}/log2fc_gene_wise_{dataset}_{cell_type}_{perturbation_mode}_{tfs[0]}.h5ad', compression='gzip')
 
     return result
 
@@ -376,7 +451,7 @@ def wrapper_in_silico_single_perturbation(tfs, par, cell_types, datasets, n_jobs
 
     tasks = [
         delayed(run_in_silico)(
-            dataset=dataset, cell_type=cell_type, adata_dict=adata_dict, net_dict=net_dict, tfs=[tf], pathways=pathways,
+            dataset=dataset, cell_type=cell_type, adata_dict=adata_dict, net_dict=net_dict, tfs=[tf], pathways=pathways, log2fc_genewise=True, temp_dir=f"{save_dir}/perturbation/temp",
             **par
         )
         for cell_type in cell_types
