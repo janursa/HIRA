@@ -8,7 +8,7 @@ test_run = False
 
 save_dir = f'{base_dir}/datasets/perturbation'
 os.makedirs(save_dir, exist_ok=True)
-ref_cell_types = ['HCT116'] #'HEK293T', 'HCT116' #Human Embryonic Kidney 293T cells, Human Colorectal Carcinoma Cell Line 116
+ref_cell_types = ['HEK293T'] #'HEK293T', 'HCT116' #Human Embryonic Kidney 293T cells, Human Colorectal Carcinoma Cell Line 116
 
 for ref_cell_type in ref_cell_types:
     print('Reading data for', ref_cell_type, flush=True)
@@ -52,4 +52,7 @@ for ref_cell_type in ref_cell_types:
     adata.obs['group'] = adata.obs['group'].astype('str')
     adata_bulk = bulkify_main(adata, covariates=['group'], cell_count_t=cell_count_t)
     print('Saving pseudo bulk data', flush=True)
+    adata_bulk.obs = adata_bulk.obs.rename({'gene_target':'perturbation'}, axis=1)[['perturbation', 'is_control']]
+    del adata_bulk.var 
+    del adata_bulk.uns
     adata_bulk.write_h5ad(to_save, compression='gzip')
