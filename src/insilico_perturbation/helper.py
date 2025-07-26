@@ -7,9 +7,8 @@ from scipy import stats
 
 from ciim.src.common import save_dir, surrogate_names, palette_datasets_pretty
 from ciim.src.feature_association.helper import retrieve_sig_stats
-from ciim.src.feature_association.helper import get_consensus_net
 from ciim.src.common import datasets_all
-from ciim.src.utils.util import get_genesets
+from ciim.src.utils.util import get_genesets, get_consensus_net
 import warnings
 from ciim.src.feature_association.helper import retrieve_feature_data 
 from ciim.src.utils.util import calculate_genes_scores
@@ -178,7 +177,7 @@ import anndata as ad
 import pandas as pd
 import numpy as np
 
-from ciim.src.feature_association.helper import retrieve_sig_stats, retrieve_net
+from ciim.src.feature_association.helper import retrieve_sig_stats
 from ciim.src.clock.helper import predict_age
 from ciim.src.common import save_dir
 

@@ -24,42 +24,6 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-def retrieve_adata_bulk(dataset, type='bulk', cell_type=None): 
-    base_path = f"{base_dir}/datasets/"
-    if 'bulk' in type:
-        base_path = f"{base_path}/bulk/"
-       
-    gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
-
-    assert type in ['bulk', 'bulk_minor', 'bulk_M', 'bulk_F', 'bulk_minor_M', 'bulk_minor_F', 'metacell'], f'Unknown type {type}'
-    
-    if (type == 'bulk_M') | (type == 'bulk_F'):
-        gender = type.split('_')[1]
-        type = 'bulk'
-        adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
-        adata = adata[adata.obs['sex']==gender]
-    elif (type == 'bulk_minor_M') | (type == 'bulk_minor_F'):
-        gender = type.split('_')[-1]
-        type = 'bulk_minor'
-        adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
-        adata = adata[adata.obs['sex']==gender]
-    else:
-        adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
-
-    adata.obs['dataset'] = dataset
-    adata = adata[:, adata.var_names.isin(gene_names)]
-
-    if cell_type is not None:
-        if cell_type not in adata.obs['cell_type'].unique():
-            raise ValueError(f'Given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
-        adata = adata[adata.obs['cell_type'] == cell_type]
-    adata = adata[~adata.obs['age'].isna()].copy()
-    adata.obs['age'] = adata.obs['age'].astype(int)
-    adata = adata[adata.obs['age'] >= 20].copy()  
-    adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
-
-    return adata
-
 def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datasets=None, condition=None):
     from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
     
@@ -145,37 +109,6 @@ def retrieve_sig_stats(type='bulk', feature_type='tf_activity', race='both', fil
         stats_all = stats_all[stats_all['cell_type'] == cell_type]
     return stats_all
 
-def retrieve_net(dataset, cell_type, only_promotor_based=False, c_t=5):  
-    from ciim.src.common import save_dir
-    cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-    assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
-    if dataset == 'CXCL9':
-        net = get_consensus_net(cell_type=cell_type_major)
-    else:
-        net = pd.read_csv(f"{save_dir}/grns/{dataset}/net_{cell_type_major}_all_agegroups_all_batches.csv")
-    gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
-    net = net[net['target'].isin(gene_names)]
-    if False:
-        skeleton = pd.read_csv(f'{base_dir}/prior/skeleton_promotor.csv')
-        net['edge'] = net['source'] + '_' + net['target']
-        net = net[net['edge'].isin(skeleton['edge'])]
-        net = net.drop('edge', axis=1)
-    if only_promotor_based:
-        net = net[net['promotor_based']]
-    
-    centrality_df = net.groupby(['source']).size()
-    tfs = centrality_df[centrality_df>c_t].index
-    net = net[net['source'].isin(tfs)]
-    return net[['source', 'target', 'weight', 'cell_type']]
-
-def retrieve_nets(datasets, cell_type, only_promotor_based=False):
-    net_store = []
-    for dataset in datasets:
-        net = retrieve_net(dataset=dataset, cell_type=cell_type, only_promotor_based=only_promotor_based)
-        net['dataset'] = dataset
-        net_store.append(net)
-    nets = pd.concat(net_store, ignore_index=True)
-    return nets
 
 def retrieve_sig_net(type='bulk', race='both', cell_type=None):
     df = pd.read_csv(f'{save_dir}/sig_nets/sig_nets_{type}_{race}.csv')
@@ -241,41 +174,8 @@ def bin_feature_values(adata):
     expr_mean = (expr_mean.sub(min_vals, axis=0)).div(max_vals - min_vals, axis=0)
     return expr_mean
 
-from scipy.stats import zscore
 
-def get_consensus_net(datasets=datasets_all, cell_type='CD8T', min_degree=4):
-    net_store = []
-    for dataset in datasets:
-        net = retrieve_net(dataset, cell_type)
-        net['dataset'] = dataset
-        net_store.append(net)
 
-    nets = pd.concat(net_store)
-
-    nets['link'] = nets['source'] + '_' + nets['target']
-
-    # Filter out inconsistent links (keep those with consistent sign)
-    sign_info = nets.groupby('link')['weight'].apply(lambda x: set(np.sign(x)))
-    consistent_links = sign_info[sign_info.apply(lambda x: len(x) == 1)].index
-    nets = nets[nets['link'].isin(consistent_links)]
-
-    # Filter links shared by at least min_degree datasets
-    degrees = nets.groupby('link')['dataset'].nunique()
-    shared_links = degrees[degrees >= min_degree].index
-    nets = nets[nets['link'].isin(shared_links)]
-
-    # Compute z-score per link (within each link group)
-    nets['zscore'] = nets.groupby('dataset')['weight'].transform(zscore)
-
-    # Compute mean z-score across datasets per (source, target)
-    net_mean_z = (
-        nets.groupby(['source', 'target'])['zscore']
-        .mean()
-        .reset_index()
-        .rename(columns={'zscore': 'weight'})
-    )
-    
-    return net_mean_z
 def determine_stats_condition(adata, association_type='spearman', ctr_group='normal', condition_col='disease', test_type='unpaired', conditions=None):
     from scipy.stats import wilcoxon
     from scipy.sparse import issparse

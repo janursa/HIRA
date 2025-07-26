@@ -85,7 +85,8 @@ def _df_to_adata(df):
 def prepare_input(dataset, cell_type, feature_type='tf_activity', data_type='bulk'):
     '''
     For tf_activity, it gets the consensus net and calculates the tf activity'''
-    from ciim.src.feature_association.helper import retrieve_adata_bulk, get_consensus_net, calculate_tf_activity
+    from ciim.src.feature_association.helper import calculate_tf_activity
+    from ciim.src.utils.util import retrieve_adata_bulk, get_consensus_net
     from ciim.src.common import mapping_minor_2_major, datasets_all, minor_cell_types
     from scipy.sparse import issparse
 
@@ -106,6 +107,10 @@ def prepare_input(dataset, cell_type, feature_type='tf_activity', data_type='bul
         adata = adata[adata.obs['Sub_CT'].isin(minor_cell_types)].copy()
         adata = pivot_adata_minor(adata)
         print('pivoted', adata.X.shape)
+    try:
+        adata.X = adata.layers['X_norm']
+    except:
+        pass
     return adata
 def align_feature_space(adata, gene_names):
     var_names = np.array(adata.var_names)
@@ -130,7 +135,10 @@ def align_feature_space(adata, gene_names):
         X = X.toarray()  # convert sparse to dense
     return X
 def predict_age(adata, cell_type, feature_type='tf_activity', data_type='bulk', reg_type='ridge', version='v1.0'):
-    
+    try:
+        adata.X = adata.layers['X_norm'].copy()  # Ensure we use the normalized data
+    except:
+        pass
     # - load the model
     model, gene_names = retrieve_function(reg_type, cell_type, data_type, feature_type, version)
     

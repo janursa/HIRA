@@ -2,12 +2,14 @@ from ciim.src.common import base_dir
 import anndata as ad
 import numpy as np
 import pandas as pd
+import scanpy as sc
 import os
 
 test_run = False
 
-save_dir = f'{base_dir}/datasets/perturbation'
-os.makedirs(save_dir, exist_ok=True)
+# save_dir = f'{base_dir}/datasets/perturbation'
+save_dir = 'resources/extended_data/'
+# os.makedirs(save_dir, exist_ok=True)
 ref_cell_types = ['HEK293T'] #'HEK293T', 'HCT116' #Human Embryonic Kidney 293T cells, Human Colorectal Carcinoma Cell Line 116
 
 for ref_cell_type in ref_cell_types:
@@ -39,8 +41,8 @@ for ref_cell_type in ref_cell_types:
         print('Running QC', flush=True)
         adata = adata[(adata.obs['n_genes_by_counts']>10) & (adata.obs['n_genes_by_counts']<5000) & (adata.obs['pct_counts_mt']<10)] 
         n_batches = adata.obs['sample'].nunique()
-        n_cells_by_counts = 10*n_batches
-        adata = adata[:, adata.var['n_cells_by_counts']>n_cells_by_counts]
+        min_cells = 10*n_batches
+        sc.pp.filter_genes(adata, min_cells=min_cells)
 
         cell_count_t = 20
     # - pseudo bulk
@@ -55,4 +57,6 @@ for ref_cell_type in ref_cell_types:
     adata_bulk.obs = adata_bulk.obs.rename({'gene_target':'perturbation'}, axis=1)[['perturbation', 'is_control']]
     del adata_bulk.var 
     del adata_bulk.uns
+    adata_bulk.obs['perturbation_type'] = 'knockdown'
+    adata_bulk.layers['X_norm'] = adata_bulk.X.copy()
     adata_bulk.write_h5ad(to_save, compression='gzip')

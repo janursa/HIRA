@@ -13,4 +13,5 @@
 
 set -e
 
-python src/process_dataset/perturbation/script.py 
+
+python src/process_dataset/parse_bioscience/script.py

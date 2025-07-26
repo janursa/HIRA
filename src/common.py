@@ -9,10 +9,14 @@ import os
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 
-if False: # running on the server
+import platform
+
+if platform.system() == 'Linux':
     base_dir = '/vol/projects/jnourisa/'
+    task_grn_benchmark_dir = '/home/jnourisa/projs/ongoing/task_grn_inference/'
 else:
     base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
+    task_grn_benchmark_dir = '/Users/jno24/Documents/projs/ongoing/task_grn_inference/'
 save_dir = f'{base_dir}/output/'
 clock_save_dir = f"{save_dir}/clock/"
 plots_dir = f"{save_dir}/plots/"
@@ -71,7 +75,7 @@ datasets_all = datasets_e + datasets_a
 # aging_clock_train_datasets = ['data1', 'data7_allTPs_jalil', 'SLE_European', 'data13_Japanese', 'data12', 'data13_Korean']
 aging_clock_train_datasets = ['data1', 'data7_allTPs_jalil', 'data12', 'data13_Japanese']
 datasets_disease = ['SLE_European', 'Covid_50MHH']
-datasets_drug_perturbation = ['CXCL9']
+datasets_drug_perturbation = ['op', 'CXCL9']
 
 # - palettes  
 colors_blind = [

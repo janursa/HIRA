@@ -232,7 +232,7 @@ def wrapper_build_model_cell_type(cell_type, par):
     # Now this will give main_dataset code 0
     batch_labels = adata_all.obs['dataset'].cat.codes.values
 
-    adata_all.write(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_adata.h5ad")
+    # adata_all.write(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_adata.h5ad")
     gene_names = adata_all.var_names.values
     
     X = adata_all.X
@@ -247,9 +247,8 @@ def wrapper_build_model_cell_type(cell_type, par):
     model, model_args, model_kwargs, y_trained = build_model(reg_type, X, y, batch_labels=batch_labels, tune_model=par['tune_model'], temp_dir=par['temp_dir'])
 
     # Run CV again to get per-group scores
-    from scipy.stats import spearmanr
-
     if reg_type != 'NN':
+        from scipy.stats import spearmanr
         ordered_test_groups, cv = get_custom_cv(batch_labels)
         fold_scores = {}
         all_preds = []  # Store predictions here

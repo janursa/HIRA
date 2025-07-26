@@ -36,7 +36,7 @@ datasets=" data1 data13 SLE CXCL9" #data12 data7_allTPs_jalil data1 data13 SLE  
 
 for dataset in $datasets; do
         RAW_FILES_DIR="/vol/projects/CIIM/Healthy_Single_Cell_Data/count_matrix/"
-        PROCESSED_FILES_DIR="${MAIN_DIR}/datasets/"
+        PROCESSED_FILES_DIR="${MAIN_DIR}/datasets/sc/"
         
         # Define the command
         if [ "$RUN_PROCESS_DATASET" = true ]; then
@@ -52,11 +52,11 @@ datasets=" CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japane
 
 
 for dataset in $datasets; do
-        PROCESSED_DATASET_FILE="${MAIN_DIR}/datasets/${dataset}_sc.h5ad"
-        BULK_ALL="${MAIN_DIR}/datasets/${dataset}_bulk.h5ad"
-        BULK_MINOR_CELLTYPE="${MAIN_DIR}/datasets/${dataset}_bulk_minor.h5ad"
-        BULK_M="${MAIN_DIR}/datasets/${dataset}_bulk_M.h5ad"
-        BULK_F="${MAIN_DIR}/datasets/${dataset}_bulk_F.h5ad"
+        PROCESSED_DATASET_FILE="${MAIN_DIR}/datasets/sc/${dataset}_sc.h5ad"
+        BULK_ALL="${MAIN_DIR}/datasets/bulk/${dataset}_bulk.h5ad"
+        BULK_MINOR_CELLTYPE="${MAIN_DIR}/datasets/bulk/${dataset}_bulk_minor.h5ad"
+        BULK_M="${MAIN_DIR}/datasets/bulk/${dataset}_bulk_M.h5ad"
+        BULK_F="${MAIN_DIR}/datasets/bulk/${dataset}_bulk_F.h5ad"
         
         if [ "$RUN_PSEUDOBULK" = true ]; then
                 # set the flags
