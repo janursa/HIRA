@@ -11,21 +11,20 @@ from scipy.stats import spearmanr
 from sklearn.metrics import r2_score
 from sklearn.preprocessing import StandardScaler
 from scipy.sparse import issparse
+from anndata import AnnData
 
-
-def save_function(model, gene_names, cell_type, data_type, feature_type, reg_type, version, model_args=None, model_kwargs=None):
+def save_function(model, gene_names, cell_type, data_type, feature_type, reg_type, version, model_kwargs=None):
     import os
     import joblib
     import numpy as np
     os.makedirs(clock_save_dir, exist_ok=True)
     if reg_type == 'NN':
-        import torch
-        model_path = os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}_model.pt")
-        torch.save({
-            'state_dict': model.state_dict(),
-            'model_args': model_args,
-            'model_kwargs': model_kwargs
-        }, model_path)
+        import os
+        import shutil
+        model_dir = os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}")
+        if os.path.exists(model_dir) and os.path.isdir(model_dir):
+            shutil.rmtree(model_dir)
+        model.save(model_dir, save_anndata=True)
     else:
         joblib.dump(model, os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}_model.pkl"))
     np.savetxt(f'{clock_save_dir}/feature_names_{cell_type}_{data_type}_{feature_type}_{version}.txt', gene_names, fmt='%s')
@@ -35,17 +34,9 @@ def retrieve_function(reg_type, cell_type, data_type, feature_type, version):
     import joblib
     import numpy as np
     if reg_type == 'NN':
+        model_dir = os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}")
         from ciim.src.clock.NN.NN import VAEAgeModel
-        import torch
-        model_path = os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}_model.pt")
-        model_class = VAEAgeModel
-        checkpoint = torch.load(model_path, map_location=torch.device('cpu'))
-        model_args = checkpoint['model_args']
-        model_kwargs = checkpoint['model_kwargs']
-
-        model = model_class(*model_args, **model_kwargs)
-        model.load_state_dict(checkpoint['state_dict'])
-        model.eval()
+        model = VAEAgeModel.load(model_dir)
     else:
         model = joblib.load(os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}_model.pkl"))
     gene_names = np.loadtxt(f'{clock_save_dir}/feature_names_{cell_type}_{data_type}_{feature_type}_{version}.txt', dtype=str)
@@ -113,6 +104,7 @@ def prepare_input(dataset, cell_type, feature_type='tf_activity', data_type='bul
         pass
     return adata
 def align_feature_space(adata, gene_names):
+
     var_names = np.array(adata.var_names)
     var_index = {gene: i for i, gene in enumerate(var_names)}
 
@@ -129,11 +121,18 @@ def align_feature_space(adata, gene_names):
     if present.sum() > 0:
         X_aligned[:, present] = adata.X[:, idxs[present]]
 
-    # Convert to CSR for efficient prediction
-    X = X_aligned.tocsr()
-    if issparse(X):
-        X = X.toarray()  # convert sparse to dense
-    return X
+    # Convert to CSR for efficiency
+    X_aligned = X_aligned.tocsr()
+
+    # Create new AnnData object
+    new_adata = AnnData(
+        X=X_aligned,
+        obs=adata.obs.copy(),
+        var={"gene_symbols": gene_names},
+    )
+    new_adata.var_names = gene_names
+
+    return new_adata
 def predict_age(adata, cell_type, feature_type='tf_activity', data_type='bulk', reg_type='ridge', version='v1.0'):
     try:
         adata.X = adata.layers['X_norm'].copy()  # Ensure we use the normalized data
@@ -143,57 +142,25 @@ def predict_age(adata, cell_type, feature_type='tf_activity', data_type='bulk', 
     model, gene_names = retrieve_function(reg_type, cell_type, data_type, feature_type, version)
     
     # - align the genes
-    X = align_feature_space(adata, gene_names)
-    predicted_age = model.predict(X)
-    adata.obs['predicted_age'] = predicted_age.copy()
-    # # - show the score
-    # if False:
-    #     age = adata.obs['age']
-    #     predicted_age = adata.obs['predicted_age']
-    #     # print(predicted_age.shape, age.shape)
-    #     rr_dict = {'Spearman': spearmanr(age, predicted_age)[0], 'R2': r2_score(age, predicted_age)}
-    #     print(rr_dict)
-    # else:
-    #     scores = evaluate_groupwise_median(adata.obs)
+    adata = align_feature_space(adata, gene_names)
+    if reg_type == 'NN':
+        adata = model.predict_age(adata)
+    else:
+        predicted_age = model.predict(adata.X)
+        adata.obs['predicted_age'] = predicted_age.copy()
     return adata
-
-# def stability_selection_shap(model, X, y,  top_q=80):
-#     """
-#     Perform stability selection using SHAP values for feature importance.
-
-#     Parameters:
-#     - X: Feature matrix
-#     - y: Target vector
-#     - n_bootstrap: Number of bootstrap iterations.
-#     - top_k: Number of top features to select.
-
-#     Returns:
-#     - top_predictors: List of selected top-q most important features.
-#     """
-#     import shap
-#     import numpy as np
-
-#     model_function = lambda X: model.predict(X)
-
-#     model.fit(X, y)
-
-#     # Compute SHAP values
-#     explainer = shap.Explainer(model_function, X)
-#     required_evals = 2 * X.shape[1] + 1
-#     shap_values = explainer(X, max_evals=required_evals)
-
-#     # Compute mean absolute SHAP values for feature importance
-#     feature_importances = np.abs(shap_values.values).mean(axis=0)
-
-
-#     # Compute the q percentile threshold
-#     threshold = np.percentile(feature_importances, top_q)
-
-#     # Select features above the threshold
-#     top_features_idx = np.where(feature_importances >= threshold)[0]
-
-
-#     return top_features_idx
+def merge_adata(datasets, feature_type, cell_type, data_type, age_limit=0):
+    from ciim.src.common import save_dir
+    adata_store = []
+    for dataset in datasets:
+        # adata = prepare_input(dataset, cell_type, feature_type=feature_type, data_type=data_type)
+        adata = ad.read_h5ad(f"{save_dir}/{feature_type}_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
+        adata = adata[(adata.obs['age']>age_limit)].copy()
+        if 'SLE' in dataset:
+            adata = adata[adata.obs['disease']=='normal'].copy()
+        adata_store.append(adata)
+    adata_all = ad.concat(adata_store, join='inner', axis=0)
+    return adata_all
 
 def stability_selection_shap(features, model, X, y, top_q=80, top_features=50):
     """
