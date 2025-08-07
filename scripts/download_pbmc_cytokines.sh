@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=perturbation_preprocessing
+#SBATCH --job-name=in-silico
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --time=20:00:00
-#SBATCH --mem=1000GB
+#SBATCH --time=10:00:00
+#SBATCH --mem=100GB
 #SBATCH --partition=cpu
 #SBATCH --mail-type=END,FAIL      
 #SBATCH --mail-user=jalil.nourisa@gmail.com   
@@ -13,6 +13,4 @@
 
 set -e
 
-
-# python src/process_dataset/parse_bioscience/script.py
-python src/process_dataset/xaira/script.py
+wget https://parse-wget.s3.us-west-2.amazonaws.com/10m/Parse_10M_PBMC_cytokines.h5ad

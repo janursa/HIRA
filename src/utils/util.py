@@ -11,18 +11,20 @@ import json
 import scanpy as sc
 import matplotlib.pyplot as plt
 from collections import defaultdict
-from task_grn_inference.src.utils.util import sum_by, read_gmt
+from task_grn_inference.src.utils.util import read_gmt
 from ciim.src.common import base_dir, save_dir, prior_dir, datasets_all, mapping_minor_2_major
 
 
-def retrieve_adata_bulk(dataset, type='bulk', cell_type=None): 
+def retrieve_adata_bulk(dataset, type='bulk', cell_type=None, age_limit=20): 
     base_path = f"{base_dir}/datasets/"
     if 'bulk' in type:
         base_path = f"{base_path}/bulk/"
+    elif 'sc' in type:
+        base_path = f"{base_path}/sc/"
        
     gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
 
-    assert type in ['bulk', 'bulk_minor', 'bulk_M', 'bulk_F', 'bulk_minor_M', 'bulk_minor_F', 'metacell'], f'Unknown type {type}'
+    assert type in ['sc','bulk', 'bulk_minor', 'bulk_M', 'bulk_F', 'bulk_minor_M', 'bulk_minor_F', 'metacell'], f'Unknown type {type}'
     
     if (type == 'bulk_M') | (type == 'bulk_F'):
         gender = type.split('_')[1]
@@ -47,7 +49,7 @@ def retrieve_adata_bulk(dataset, type='bulk', cell_type=None):
     if 'age' in adata.obs.columns:
         adata = adata[~adata.obs['age'].isna()].copy()
         adata.obs['age'] = adata.obs['age'].astype(int)
-        adata = adata[adata.obs['age'] >= 20].copy()  
+        adata = adata[adata.obs['age'] >= age_limit].copy()  
     if 'sex' in adata.obs.columns:
         adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
 
@@ -572,3 +574,17 @@ def pathway_analysis_wrapper(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hal
     
     res2d_all = pd.concat(res2d_store)
     return res2d_all
+
+
+def bulkify_main(adata, cell_count_t=10, covariates=['cell_type', 'donor_id', 'age']):
+    from task_grn_inference.src.process_data.helper_data import sum_by
+    adata.obs['sum_by'] = ''
+    for covariate in covariates:
+        adata.obs['sum_by'] += '_' + adata.obs[covariate].astype(str)
+    # adata.obs['sum_by'] = '_' + adata.obs['cell_type'].astype(str) + '_' + adata.obs['donor_id'].astype(str) + '_' + adata.obs['age'].astype(str) 
+    adata.obs['sum_by'] = adata.obs['sum_by'].astype('category')
+    adata_bulk = sum_by(adata, 'sum_by', unique_mapping=True)
+    cell_count_df = adata.obs.groupby('sum_by').size().reset_index(name='cell_count')
+    adata_bulk.obs = adata_bulk.obs.merge(cell_count_df, on='sum_by')
+    adata_bulk = adata_bulk[adata_bulk.obs['cell_count']>=cell_count_t]
+    return adata_bulk

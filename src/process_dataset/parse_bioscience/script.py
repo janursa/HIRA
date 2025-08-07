@@ -48,6 +48,7 @@ print('Creating pseudo bulk data', flush=True)
 adata.obs['group'] = adata.obs['group'].astype('str')
 
 adata_bulk = bulkify_main(adata, covariates=['group'], cell_count_t=cell_count_t)
+aaa - normalize
 print('Saving pseudo bulk data', flush=True)
 
 del adata_bulk.uns['log1p']

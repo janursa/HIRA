@@ -31,14 +31,14 @@ from scvi.train import TrainRunner
 class Encoder(nn.Module):
     def __init__(self, n_genes, n_latent, n_hidden=128, dropout=0.2, n_batch_emb=2, latent_type='vanilla'):
         super().__init__()
-        self.fc1 = nn.Linear(n_genes + n_batch_emb, n_hidden)
+        self.fc1 = nn.Linear(n_genes, n_hidden)
         self.fc_mu = nn.Linear(n_hidden, n_latent)
         self.fc_logvar = nn.Linear(n_hidden, n_latent)
         self.dropout = nn.Dropout(dropout)
         self.latent_type = latent_type
 
-    def forward(self, x, batch_emb):
-        x = torch.cat([x, batch_emb], dim=1)
+    def forward(self, x):
+        # x = torch.cat([x, batch_emb], dim=1)
         h = F.relu(self.fc1(x))
         h = self.dropout(h)
         mu = self.fc_mu(h)
@@ -80,6 +80,20 @@ class AgeRegressor(nn.Module):
         h = F.relu(self.fc2(F.relu(self.fc1(z))))
         return self.fc3(h)
 
+class BatchDiscriminator(nn.Module):
+    def __init__(self, n_latent, n_hidden, n_batches):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(n_latent, n_hidden),
+            nn.ReLU(),
+            nn.Linear(n_hidden, n_hidden),
+            nn.ReLU(),
+            nn.Linear(n_hidden, n_batches),  
+        )
+
+    def forward(self, z):
+        return self.net(z)  # no softmax here
+
 class myModule(BaseModuleClass):
     def __init__(
         self,
@@ -100,6 +114,10 @@ class myModule(BaseModuleClass):
         self.age_loss_weight = age_loss_weight
         self.latent_type = latent_type
 
+        self.discriminator = BatchDiscriminator(n_latent, n_hidden, n_batches)
+        self.disc_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=1e-3)
+        self.adversarial_weight = 10  # hyperparameter to tune
+
     def _get_inference_input(self, tensors):
         return {
             "x": tensors[REGISTRY_KEYS.X_KEY],
@@ -116,7 +134,7 @@ class myModule(BaseModuleClass):
         x = x.to(self.device)
         batch_emb = self.batch_embed(batch_idx.to(self.device).long()) if batch_idx is not None else torch.zeros(x.shape[0], self.batch_embed.embedding_dim, device=self.device)
         batch_emb = batch_emb.reshape(x.shape[0], -1)  # Ensure batch_emb is of shape (batch_size, n_batch_emb)
-        z, mu, logvar = self.encoder(x, batch_emb)
+        z, mu, logvar = self.encoder(x)
         return {"z": z, "qzm": mu, "qzv": torch.exp(logvar), "batch_emb": batch_emb}
 
     def generative(self, z, batch_emb):
@@ -127,8 +145,10 @@ class myModule(BaseModuleClass):
     def loss(self, tensors, inference_outputs, generative_outputs) -> LossOutput:
         x = tensors[REGISTRY_KEYS.X_KEY]
         age_true = tensors[REGISTRY_KEYS.LABELS_KEY].float()
+        batch_true = tensors[REGISTRY_KEYS.BATCH_KEY].long().squeeze()
         recon_x = generative_outputs["recon_x"]
         age_pred = generative_outputs["age_pred"]
+        z = inference_outputs["z"]
         qz_m = inference_outputs["qzm"]
         qz_v = inference_outputs["qzv"]
 
@@ -143,14 +163,38 @@ class myModule(BaseModuleClass):
             kl_div = kl_divergence(post, prior).sum(dim=1)
 
         age_loss = F.mse_loss(age_pred, age_true.squeeze(), reduction="none")
-        loss = (recon_loss + kl_div + self.age_loss_weight * age_loss).mean()
+
+        # Adversarial training: discriminator tries to predict batch
+        try:
+            self.discriminator.train()
+            disc_logits = self.discriminator(z.detach())
+            # print("batch_true shape: ", batch_true.shape, "disc_logits shape: ", disc_logits.shape)
+            disc_loss = F.cross_entropy(disc_logits, batch_true)
+
+            self.disc_optimizer.zero_grad()
+            disc_loss.backward()
+            self.disc_optimizer.step()
+            # Encoder tries to fool discriminator
+            self.discriminator.eval()
+            adv_logits = self.discriminator(z)
+            adv_loss = -F.cross_entropy(adv_logits, batch_true)
+        except Exception as e:
+            raise RuntimeError(
+                "Adversarial training failed. Ensure that the discriminator is properly initialized and that the input tensors are correct."
+            ) 
+
+        total_loss = (recon_loss + kl_div + self.age_loss_weight * age_loss + self.adversarial_weight * adv_loss).mean()
 
         return LossOutput(
-            loss=loss,
+            loss=total_loss,
             reconstruction_loss=recon_loss,
             kl_local=kl_div,
             kl_global=0.0,
-            extra_metrics={"age_loss": age_loss.mean()}
+            extra_metrics={
+                "age_loss": age_loss.mean(),
+                "disc_loss": disc_loss.detach(),
+                "adv_loss": adv_loss.detach()
+            }
         )
 
 class VAEAgeModel(UnsupervisedTrainingMixin, BaseModelClass, VAEMixin):
@@ -176,7 +220,6 @@ class VAEAgeModel(UnsupervisedTrainingMixin, BaseModelClass, VAEMixin):
         )
         cls.setup_anndata(adata, is_train=False, batch_key=cls.batch_key)
         
-
     @classmethod
     def setup_anndata(cls, adata: AnnData, is_train=True, batch_key=None, layer=None, labels_key="age", **kwargs):
         if is_train:
@@ -194,7 +237,6 @@ class VAEAgeModel(UnsupervisedTrainingMixin, BaseModelClass, VAEMixin):
         adata_manager.register_fields(adata, **kwargs)
         cls.register_manager(adata_manager)
         
-
     def extend_batch_embedding(self, adata: AnnData):
         batch_name = adata.obs[self.batch_key].unique()[0]
 
@@ -232,7 +274,39 @@ class VAEAgeModel(UnsupervisedTrainingMixin, BaseModelClass, VAEMixin):
 
         adata.obs["predicted_age"] = age_pred
         return adata
-    
+    def train(
+        self,
+        max_epochs: Optional[int] = 100,
+        train_size: float = 0.9,
+        validation_size: float = 0.1,
+        batch_size: int = 128,
+        lr: float = 0.05,
+        device: str = "gpu" if torch.cuda.is_available() else "cpu",
+        **kwargs,
+    ):
+        """Train the model."""
+        # object to make train/test/val dataloaders
+        data_splitter = DataSplitter(
+            self.adata_manager,
+            train_size=train_size,
+            validation_size=validation_size,
+            batch_size=batch_size,
+        )
+        data_splitter.setup()
+        # defines optimizers, training step, val step, logged metrics
+        training_plan = TrainingPlan(
+            self.module
+        )
+        # creates Trainer, pre and post training procedures (Trainer.fit())
+        runner = TrainRunner(
+            self,
+            training_plan=training_plan,
+            data_splitter=data_splitter,
+            max_epochs=max_epochs,
+            **kwargs,
+        )
+        return runner()
+
 
     def train_test(
         self,
@@ -274,7 +348,7 @@ class VAEAgeModel(UnsupervisedTrainingMixin, BaseModelClass, VAEMixin):
         # defines optimizers, training step, val step, logged metrics
         training_plan = TrainingPlan(
             self.module,
-            len(data_splitter.train_idx),
+            len(data_splitter.train_idx)
         )
         # creates Trainer, pre and post training procedures (Trainer.fit())
         runner = TrainRunner(
@@ -282,7 +356,7 @@ class VAEAgeModel(UnsupervisedTrainingMixin, BaseModelClass, VAEMixin):
             training_plan=training_plan,
             data_splitter=data_splitter,
             max_epochs=max_epochs,
-            **kwargs,
+            **kwargs
         )
         return runner()
 

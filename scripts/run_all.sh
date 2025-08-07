@@ -21,8 +21,8 @@ dependencies=(
 
 set -e
 # Define run flags
-RUN_PROCESS_DATASET=true
-RUN_PSEUDOBULK=true
+RUN_PROCESS_DATASET=false
+RUN_PSEUDOBULK=false
 RUN_GRN=true
 CELL_TYPE_GRANULARITY='major'
 MAIN_DIR='/vol/projects/jnourisa/'
@@ -32,7 +32,7 @@ MAX_WORKERS=10
 data_type='sc'
 
 # datasets to include -> preprocessing 
-datasets=" data1 data13 SLE CXCL9" #data12 data7_allTPs_jalil data1 data13 SLE   CXCL9
+datasets=" data13" #data12 data7_allTPs_jalil data1 data13 SLE   CXCL9 
 
 for dataset in $datasets; do
         RAW_FILES_DIR="/vol/projects/CIIM/Healthy_Single_Cell_Data/count_matrix/"
@@ -76,7 +76,7 @@ for dataset in $datasets; do
                 FORCE=true # If true, overwrite the existing files in grns directory
                 SAVE_GRNS_DIR="${MAIN_DIR}/output/grns/${dataset}/"
                 
-                DATASET_FILE="/vol/projects/jnourisa/datasets/${dataset}_${data_type}.h5ad" # tailors raw based on the given flags such as make, downsample, etc.
+                DATASET_FILE="/vol/projects/jnourisa/datasets/sc/${dataset}_${data_type}.h5ad" # tailors raw based on the given flags such as make, downsample, etc.
 
                 args="  
                         --dataset_file $DATASET_FILE \

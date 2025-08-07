@@ -36,8 +36,12 @@ parser.add_argument('--bulk_F',
 args = parser.parse_args()
 
 ## VIASH END
-from helper import bulkify_main
+from ciim.src.utils.util import bulkify_main
 
+def normalize(adata):
+    sc.pp.normalize_total(adata, target_sum=1e6)
+    sc.pp.log1p(adata)
+    return adata
 
 if __name__ == '__main__':
     adata = ad.read_h5ad(args.sc_dataset_file)
@@ -49,6 +53,7 @@ if __name__ == '__main__':
         covariates.append('treatment')
     
     adata_bulk_major_celltypes = bulkify_main(adata, covariates=covariates)
+    adata_bulk_major_celltypes = normalize(adata_bulk_major_celltypes)
     adata_bulk_major_celltypes.write(args.bulk_all)
 
     # - bulk minor
@@ -56,6 +61,7 @@ if __name__ == '__main__':
     covariates_minor = covariates.copy()
     covariates_minor.append('Sub_CT')
     adata_bulk_minor_celltypes = bulkify_main(adata, covariates=covariates_minor)
+    adata_bulk_minor_celltypes = normalize(adata_bulk_minor_celltypes)
     adata_bulk_minor_celltypes.write(args.bulk_minor_celltype)
 
 

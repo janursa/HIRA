@@ -128,7 +128,7 @@ def build_model(reg_type, adata, tune_model, temp_dir):
         model = TabPFNRegressor()  
     elif reg_type == 'NN':
         from ciim.src.clock.NN.NN import VAEAgeModel, seed_all
-        max_epochs = 400
+        max_epochs = 100
         model_kwargs = {'n_latent': 100, 'n_hidden': 128, 'n_batch_emb':10 ,'dropout': .2}
 
         seed_all(42)
@@ -136,7 +136,7 @@ def build_model(reg_type, adata, tune_model, temp_dir):
         model = VAEAgeModel(adata, **model_kwargs)
         model.train(max_epochs=max_epochs)
        
-        return model, model_kwargs
+        return model
     elif reg_type == 'ridge':
         from sklearn.pipeline import make_pipeline
         from sklearn.preprocessing import StandardScaler
@@ -211,7 +211,7 @@ def wrapper_build_model_cell_type(cell_type, par):
     gene_names = adata_all.var_names.values
     
     
-    model, model_kwargs = build_model(reg_type, adata_all,  tune_model=par['tune_model'], temp_dir=par['temp_dir'])
+    model = build_model(reg_type, adata_all,  tune_model=par['tune_model'], temp_dir=par['temp_dir'])
 
     # # Run CV again to get per-group scores
     # if reg_type != 'NN':
@@ -260,6 +260,6 @@ def wrapper_build_model_cell_type(cell_type, par):
     # adata_all.obs['predicted_age'] = y_trained.copy()
     # adata_all.write(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_adata.h5ad")
     # - save the model and feature space
-    save_function(model, gene_names, cell_type, data_type, feature_type, reg_type, version=par['version'], model_kwargs=model_kwargs)
+    save_function(model, gene_names, cell_type, data_type, feature_type, reg_type, version=par['version'])
 
     

@@ -13,7 +13,7 @@ from sklearn.preprocessing import StandardScaler
 from scipy.sparse import issparse
 from anndata import AnnData
 
-def save_function(model, gene_names, cell_type, data_type, feature_type, reg_type, version, model_kwargs=None):
+def save_function(model, gene_names, cell_type, data_type, feature_type, reg_type, version):
     import os
     import joblib
     import numpy as np
@@ -149,15 +149,18 @@ def predict_age(adata, cell_type, feature_type='tf_activity', data_type='bulk', 
         predicted_age = model.predict(adata.X)
         adata.obs['predicted_age'] = predicted_age.copy()
     return adata
-def merge_adata(datasets, feature_type, cell_type, data_type, age_limit=0):
+def merge_adata(datasets, feature_type, cell_type, data_type, age_limit=0, only_healthy=True):
     from ciim.src.common import save_dir
     adata_store = []
     for dataset in datasets:
         # adata = prepare_input(dataset, cell_type, feature_type=feature_type, data_type=data_type)
         adata = ad.read_h5ad(f"{save_dir}/{feature_type}_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
         adata = adata[(adata.obs['age']>age_limit)].copy()
-        if 'SLE' in dataset:
+        if ('SLE' in dataset) & only_healthy:
             adata = adata[adata.obs['disease']=='normal'].copy()
+            print('here')
+        else:
+            adata.obs['disease'] = 'normal'  
         adata_store.append(adata)
     adata_all = ad.concat(adata_store, join='inner', axis=0)
     return adata_all
