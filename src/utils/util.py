@@ -576,7 +576,7 @@ def pathway_analysis_wrapper(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hal
     return res2d_all
 
 
-def bulkify_main(adata, cell_count_t=10, covariates=['cell_type', 'donor_id', 'age']):
+def bulkify_func(adata, cell_count_t=10, covariates=['cell_type', 'donor_id', 'age']):
     from task_grn_inference.src.process_data.helper_data import sum_by
     adata.obs['sum_by'] = ''
     for covariate in covariates:

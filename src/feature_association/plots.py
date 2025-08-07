@@ -16,7 +16,8 @@ from scipy.stats import spearmanr, linregress
 from pandas.api.types import CategoricalDtype
 
 from ciim.src.common import base_dir, save_dir, colors_blind, datasets_all ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
-from ciim.src.feature_association.helper import retrieve_adata_bulk, retrieve_net, calculate_tf_activity, bin_feature_values, retrieve_feature_data
+from ciim.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data
+from ciim.src.utils.util import retrieve_net, retrieve_adata_bulk
 
 # - retrieve the feature data (donor level) for the case TF 
 def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_value_adj, ax=None):
@@ -519,7 +520,7 @@ def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets,
     
     mean_expr_store = []
     for dataset in datasets:
-        adata = retrieve_feature_data(dataset, cell_type, type=type, feature_type=feature_type) 
+        adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, type=type, feature_type=feature_type) 
         adata = adata[(adata.obs['age'] > age_limit[0]) & (adata.obs['age'] < age_limit[1])]
         adata = adata[:, adata.var_names==feature]
         assert adata.shape[1] == 1, f"Feature {feature} not found in dataset {dataset} for cell type {cell_type}"
@@ -952,7 +953,8 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     from ciim.src.utils.plots import dotplot
     from matplotlib.colors import TwoSlopeNorm
     from ciim.src.common import cmap_trend, palette_trend_2, surrogate_names
-    from ciim.src.feature_association.helper import retrieve_stats_features, retrieve_sig_stats, retrieve_net
+    from ciim.src.feature_association.helper import retrieve_stats_features, retrieve_sig_stats
+    from ciim.src.utils.util import retrieve_net
     import matplotlib.gridspec as gridspec
     import pandas as pd
     import numpy as np

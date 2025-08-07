@@ -77,7 +77,7 @@ if __name__ == '__main__':
     
     if run_flag:
         for data_type in ['bulk']: # 'bulk_minor', 'bulk
-            for feature_type in ['gene_score']: # 'gene_expression', 'tf_activity', 'gene_score'
+            for feature_type in ['gene_expression', 'gene_score','tf_activity']: # 'gene_expression', 'tf_activity', 'gene_score'
                 par = {
                     'type': data_type,
                     'feature_type': feature_type,

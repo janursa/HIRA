@@ -42,12 +42,12 @@ min_cell = adata.obs['bc1_well'].nunique()*10
 adata = adata[(adata.obs['gene_count']>min_genes) & (adata.obs['gene_count']<5000), adata.var['n_cells']>min_cell]
 # - pseudo bulk
 print('Filtering data', flush=True)
-from ciim.src.process_dataset.bulkify.helper import bulkify_main
+from ciim.src.process_dataset.bulkify.helper import bulkify_func
 print('Creating pseudo bulk data', flush=True)
 
 adata.obs['group'] = adata.obs['group'].astype('str')
 
-adata_bulk = bulkify_main(adata, covariates=['group'], cell_count_t=cell_count_t)
+adata_bulk = bulkify_func(adata, covariates=['group'], cell_count_t=cell_count_t)
 aaa - normalize
 print('Saving pseudo bulk data', flush=True)
 

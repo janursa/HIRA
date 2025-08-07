@@ -20,6 +20,7 @@ from scipy.stats import mannwhitneyu
 from tqdm import tqdm
 from ciim.src.common import cell_types,base_dir, save_dir, mapping_major_2_minor, mapping_minor_2_major, minor_cell_types
 from scipy.sparse import issparse
+from ciim.src.utils.util import retrieve_adata_bulk, get_consensus_net
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -118,7 +119,6 @@ def retrieve_sig_net(type='bulk', race='both', cell_type=None):
 
 def determine_sig_network(type, race='both', min_degree=3):
     os.makedirs(f'{save_dir}/sig_nets', exist_ok=True)
-    from ciim.src.feature_association.helper import retrieve_nets
     stats_tfs = retrieve_sig_stats(type, feature_type='tf_activity')
     stats_targets = retrieve_sig_stats(type, feature_type='gene_expression')
     if race == 'european':
@@ -391,7 +391,7 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
         # ----------- calculate tf activity for all datasets
         for dataset in datasets:
             try:
-                adata = retrieve_feature_data(dataset, cell_type, data_type, feature_type=feature_type, condition=condition)
+                adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, type=data_type, feature_type=feature_type, condition=condition)
             except ValueError as e:
                 print(e)
                 continue
@@ -619,7 +619,6 @@ def association_with_age(adata, association_type, gene_col='tf'):
                 slope, p_value = spearmanr(ages, expression)
             if abs(slope)>1:
                 print('Slope is too high for', gene, slope, association_type)
-                aaa
             p_value_store.append({
                 gene_col: gene, 
                 'p_value': p_value,

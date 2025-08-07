@@ -16,15 +16,7 @@ train_datasets=['data1',
 test_datasets=['data13_Japanese'] #'data12'
 
 def wrapper_setup_data(adata, batch_key, data_type, cell_type):
-    if data_type is None:
-        cpa.CPA.setup_anndata(adata,
-                                # perturbation_key='disease',
-                                # control_group='healthy',
-                                batch_key=batch_key,  
-                                is_count_data=True if data_type == 'sc' else False,
-                                max_comb_len=1,
-                                )
-    else:
+    if cell_type is None:
         cpa.CPA.setup_anndata(adata,
                                 # perturbation_key='disease',
                                 # control_group='healthy',
@@ -33,6 +25,16 @@ def wrapper_setup_data(adata, batch_key, data_type, cell_type):
                                 is_count_data=True if data_type == 'sc' else False,
                                 max_comb_len=1,
                                 )
+        
+    else:
+        cpa.CPA.setup_anndata(adata,
+                                # perturbation_key='disease',
+                                # control_group='healthy',
+                                batch_key=batch_key,  
+                                is_count_data=True if data_type == 'sc' else False,
+                                max_comb_len=1,
+                                )
+        
 
 def get_params(data_type):
     recon_loss = 'nb' if data_type == 'sc' else 'gauss'
@@ -137,8 +139,15 @@ def extend_embedding(model, new_dataset, covariate):
         model.module.covars_embeddings[covariate] = new_embedding_layer
 
     # Freeze all other model.module parameters
+    # for name, param in model.module.named_parameters():
+    #     if f'covars_embeddings.{covariate}.weight' in name:
+    #         param.requires_grad = True
+    #     else:
+    #         param.requires_grad = False
+    # - check trainable params
     for name, param in model.module.named_parameters():
-        if f'covars_embeddings.{covariate}.weight' in name:
-            param.requires_grad = True
+        if param.requires_grad:
+            print(f"{name}: trainable")
         else:
-            param.requires_grad = False
+            # print(f"{name}: frozen (requires_grad=False)")
+            pass

@@ -21,5 +21,5 @@ conda activate cpa
 
 echo "Running training ..."
 python src/clock/NN/script_train.py --mode train
-echo "Running testing ..." 
-python src/clock/NN/script_train.py --mode test
+# echo "Running testing ..." 
+# python src/clock/NN/script_train.py --mode test

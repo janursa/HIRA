@@ -146,7 +146,10 @@ def predict_age(adata, cell_type, feature_type='tf_activity', data_type='bulk', 
     if reg_type == 'NN':
         adata = model.predict_age(adata)
     else:
-        predicted_age = model.predict(adata.X)
+        X = adata.X.copy()
+        if issparse(X):
+            X = X.toarray()
+        predicted_age = model.predict(X)
         adata.obs['predicted_age'] = predicted_age.copy()
     return adata
 def merge_adata(datasets, feature_type, cell_type, data_type, age_limit=0, only_healthy=True):
@@ -158,7 +161,6 @@ def merge_adata(datasets, feature_type, cell_type, data_type, age_limit=0, only_
         adata = adata[(adata.obs['age']>age_limit)].copy()
         if ('SLE' in dataset) & only_healthy:
             adata = adata[adata.obs['disease']=='normal'].copy()
-            print('here')
         else:
             adata.obs['disease'] = 'normal'  
         adata_store.append(adata)
