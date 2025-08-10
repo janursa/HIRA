@@ -1,5 +1,7 @@
 from ciim.src.common import save_dir
 import cpa
+import scanpy as sc
+
 
 run_id='bulk' #'try1'
 data_type = 'bulk'
@@ -151,3 +153,44 @@ def extend_embedding(model, new_dataset, covariate):
         else:
             # print(f"{name}: frozen (requires_grad=False)")
             pass
+
+def wrapper_umap(ad, cols=['dataset', 'cell_type']):
+      sc.pp.neighbors(ad)
+      sc.tl.umap(ad)
+
+      sc.pl.umap(ad,
+            color=cols,
+            frameon=False,
+            wspace=0.5)
+def plot_history(model):
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import math
+
+    df = model.epoch_history
+    metric_cols = [col for col in df.columns if col not in ['epoch', 'mode']]
+    n_metrics = len(metric_cols)
+
+    n_rows = 2
+    n_cols = math.ceil(n_metrics / n_rows)
+
+    fig, axes = plt.subplots(n_rows, n_cols, sharex=True, figsize=(3 * n_cols, 2.5 * n_rows))
+    axes = axes.flatten()
+
+    train_df = df[df['mode'] == 'train']
+    valid_df = df[df['mode'] == 'valid']
+
+    for i, col in enumerate(metric_cols):
+        ax = axes[i]
+        ax.plot(train_df['epoch'].values, train_df[col].values, label='train')
+        if len(valid_df) > 0:
+            ax.plot(valid_df['epoch'].values, valid_df[col].values, label='valid')
+        ax.set_title(col)
+
+    # Hide unused subplots if any
+    for j in range(i + 1, len(axes)):
+        axes[j].axis('off')
+
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc='lower center', ncol=2)
+    plt.tight_layout(rect=[0, 0.05, 1, 1])

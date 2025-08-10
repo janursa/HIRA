@@ -588,3 +588,18 @@ def bulkify_func(adata, cell_count_t=10, covariates=['cell_type', 'donor_id', 'a
     adata_bulk.obs = adata_bulk.obs.merge(cell_count_df, on='sum_by')
     adata_bulk = adata_bulk[adata_bulk.obs['cell_count']>=cell_count_t]
     return adata_bulk
+
+def normalize_func(adata, log_norm=True, pearson_residual=False):
+    import scanpy as sc
+    if 'counts' not in adata.layers:
+        adata.layers['counts'] = adata.X.copy()
+    if pearson_residual:
+        adata.layers['pearson_residual'] = sc.experimental.pp.normalize_pearson_residuals(adata)['X']
+    if log_norm:
+        X_norm = sc.pp.normalize_total(adata, layer='counts',inplace=False)['X']
+        X_norm = sc.pp.log1p(X_norm, copy=False)
+        adata.layers['lognorm'] = X_norm
+    adata.X = adata.layers['counts']
+    del adata.layers['counts']
+
+    return adata
