@@ -15,7 +15,7 @@ from task_grn_inference.src.utils.util import read_gmt
 from ciim.src.common import base_dir, save_dir, prior_dir, datasets_all, mapping_minor_2_major
 
 
-def retrieve_adata_bulk(dataset, type='bulk', cell_type=None, age_limit=20): 
+def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20): 
     base_path = f"{base_dir}/datasets/"
     if 'bulk' in type:
         base_path = f"{base_path}/bulk/"
@@ -24,7 +24,7 @@ def retrieve_adata_bulk(dataset, type='bulk', cell_type=None, age_limit=20):
        
     gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
 
-    assert type in ['sc','bulk', 'bulk_minor', 'bulk_M', 'bulk_F', 'bulk_minor_M', 'bulk_minor_F', 'metacell'], f'Unknown type {type}'
+    assert type in ['sc', 'bulk', 'bulk_minor', 'bulk_M', 'bulk_F', 'bulk_minor_M', 'bulk_minor_F', 'metacell'], f'Unknown type {type}'
     
     if (type == 'bulk_M') | (type == 'bulk_F'):
         gender = type.split('_')[1]
@@ -39,8 +39,18 @@ def retrieve_adata_bulk(dataset, type='bulk', cell_type=None, age_limit=20):
     else:
         adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
 
+    if 'age' not in adata.obs.columns:
+        print('Warning: "age" column not found in adata.obs. Setting to default age of 20.')
+        adata.obs['age'] = 20
+    
+    if ('lognorm' in adata.layers) | ('X_norm' in adata.layers):
+        print(f'Using layer {("lognorm" if "lognorm" in adata.layers else "X_norm")}')
+        adata.X = adata.layers['lognorm'] if 'lognorm' in adata.layers else adata.layers['X_norm']
+        
+
     adata.obs['dataset'] = dataset
     adata = adata[:, adata.var_names.isin(gene_names)]
+    # print('\n', adata.obs['cell_type'].unique())
 
     if cell_type is not None:
         if cell_type not in adata.obs['cell_type'].unique():

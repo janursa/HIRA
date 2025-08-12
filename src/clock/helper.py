@@ -77,19 +77,21 @@ def prepare_input(dataset, cell_type, feature_type='tf_activity', data_type='bul
     '''
     For tf_activity, it gets the consensus net and calculates the tf activity'''
     from ciim.src.feature_association.helper import calculate_tf_activity
-    from ciim.src.utils.util import retrieve_adata_bulk, get_consensus_net
+    from ciim.src.utils.util import retrieve_adata, get_consensus_net
     from ciim.src.common import mapping_minor_2_major, datasets_all, minor_cell_types
     from scipy.sparse import issparse
 
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     net = get_consensus_net(datasets_all, cell_type_major)
     
-    adata = retrieve_adata_bulk(dataset, cell_type=cell_type_major, type=data_type)
+    adata = retrieve_adata(dataset=dataset, cell_type=cell_type_major, type=data_type)
+    
     if feature_type == 'tf_activity':
         adata = calculate_tf_activity(adata, net)
     elif feature_type == 'gene_expression':
-        targets = net['target'].unique()
-        adata = adata[:, adata.var_names.isin(targets)].copy()
+        # targets = net['target'].unique()
+        # adata = adata[:, adata.var_names.isin(targets)].copy()
+        pass
     else:
         raise ValueError('Unknown feature type')
     adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + '_' + adata.obs['age'].astype(str)

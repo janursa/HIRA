@@ -12,7 +12,8 @@ warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 import platform
 
 if platform.system() == 'Linux':
-    base_dir = '/vol/projects/jnourisa/'
+    # base_dir = '/vol/projects/jnourisa/'
+    base_dir = '/home/jnourisa/projs/ongoing/ciim/'
     task_grn_benchmark_dir = '/home/jnourisa/projs/ongoing/task_grn_inference/'
 else:
     base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'

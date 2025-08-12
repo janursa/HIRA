@@ -3,9 +3,10 @@ import cpa
 import scanpy as sc
 
 
-run_id='bulk' #'try1'
+
 data_type = 'bulk'
-cell_type = None
+run_id=f'{data_type}' #'try1'
+cell_type_train = None
 batch_key = 'dataset'
 
 save_path_train=f'{save_dir}/NN/{run_id}_train'
@@ -15,10 +16,12 @@ train_datasets=['data1',
                 'SLE_European',
                 'data13_Korean'
                 ]
+
 test_datasets=['data13_Japanese'] #'data12'
 
 def wrapper_setup_data(adata, batch_key, data_type, cell_type):
     if cell_type is None:
+        print('Setting up data without cell type filtering.')
         cpa.CPA.setup_anndata(adata,
                                 # perturbation_key='disease',
                                 # control_group='healthy',
@@ -29,10 +32,12 @@ def wrapper_setup_data(adata, batch_key, data_type, cell_type):
                                 )
         
     else:
+        print(f'Setting up data for cell type: {cell_type}')
         cpa.CPA.setup_anndata(adata,
                                 # perturbation_key='disease',
                                 # control_group='healthy',
                                 batch_key=batch_key,  
+                                # categorical_covariate_keys=[batch_key],
                                 is_count_data=True if data_type == 'sc' else False,
                                 max_comb_len=1,
                                 )
@@ -60,8 +65,8 @@ def get_params(data_type):
 
     trainer_params = {
         "n_epochs_kl_warmup": None,
-        "n_epochs_pretrain_ae": 30,
-        "n_epochs_adv_warmup": 50,
+        "n_epochs_pretrain_ae": 20,
+        "n_epochs_adv_warmup": 20,
         "n_epochs_mixup_warmup": 0,
         "mixup_alpha": 0.0,
         "adv_steps": None,
@@ -70,8 +75,8 @@ def get_params(data_type):
         "use_batch_norm_adv": True,
         "use_layer_norm_adv": False,
         "dropout_rate_adv": 0.3,
-        "reg_adv": 20.0,
-        "pen_adv": 5.0,
+        "reg_adv": 100.0 if data_type=='bulk' else 20.0,
+        "pen_adv": 5,
         "lr": 0.0003,
         "wd": 4e-07,
         "adv_lr": 0.0003,
@@ -86,73 +91,28 @@ def get_params(data_type):
     return model_params, trainer_params
 
 def format_data(datasets, cell_type=None, data_type='bulk'):
-    from ciim.src.utils.util import retrieve_adata_bulk, get_consensus_net
+    from ciim.src.utils.util import retrieve_adata, get_consensus_net
     import anndata as ad
     
     adata_store = []
     for d in datasets:
+        adata = retrieve_adata(dataset=d, type=data_type)
         if d == 'SLE_European':
-            adata = retrieve_adata_bulk(d, type=data_type, cell_type=cell_type)
             adata.obs['disease'] = adata.obs['disease'].map({'normal': 'healthy', 'systemic lupus erythematosus': 'SLE'})
-            adata = adata[adata.obs['disease'].isin(['healthy'])].copy()
         else:
-            adata = retrieve_adata_bulk(d, type=data_type)
             adata.obs['disease'] = 'healthy'
+        adata = adata[adata.obs['disease'].isin(['healthy'])].copy()
         adata_store.append(adata)
 
     adata_train = ad.concat(adata_store, join='inner', axis=0)
     if cell_type is not None:
-        net = get_consensus_net(cell_type=cell_type)
-        adata_train = adata_train[adata_train.obs['cell_type'] == cell_type, adata_train.var_names.isin(net['target'].unique())].copy()
+        # net = get_consensus_net(cell_type=cell_type)
+        # adata_train = adata_train[adata_train.obs['cell_type'] == cell_type, adata_train.var_names.isin(net['target'].unique())].copy()
+        adata_train = adata_train[adata_train.obs['cell_type'] == cell_type, :].copy()
 
     adata_train.obs_names_make_unique()
 
     return adata_train
-
-def extend_embedding(model, new_dataset, covariate):
-    import torch
-    import torch.nn as nn
-
-    # Get current covariate encoding and embedding
-    covars = model.covars_encoder[covariate]
-
-    if new_dataset not in covars:
-        current_embedding = model.module.covars_embeddings[covariate]
-
-        # Add new covariate
-        n_covars = len(covars)
-        covars[new_dataset] = n_covars
-
-        # Create new embedding layer with 1 extra row
-        new_embedding_layer = nn.Embedding(n_covars + 1, model.module.n_latent)
-
-        # Copy old weights into new embedding layer
-        with torch.no_grad():
-            new_embedding_layer.weight[:n_covars] = current_embedding.weight
-
-        # Freeze old rows using a gradient hook
-        def freeze_old_rows(grad):
-            grad[:n_covars] = 0
-            return grad
-
-        new_embedding_layer.weight.register_hook(freeze_old_rows)
-
-        # Replace the embedding layer in the model
-        model.module.covars_embeddings[covariate] = new_embedding_layer
-
-    # Freeze all other model.module parameters
-    # for name, param in model.module.named_parameters():
-    #     if f'covars_embeddings.{covariate}.weight' in name:
-    #         param.requires_grad = True
-    #     else:
-    #         param.requires_grad = False
-    # - check trainable params
-    for name, param in model.module.named_parameters():
-        if param.requires_grad:
-            print(f"{name}: trainable")
-        else:
-            # print(f"{name}: frozen (requires_grad=False)")
-            pass
 
 def wrapper_umap(ad, cols=['dataset', 'cell_type']):
       sc.pp.neighbors(ad)

@@ -17,7 +17,7 @@ from pandas.api.types import CategoricalDtype
 
 from ciim.src.common import base_dir, save_dir, colors_blind, datasets_all ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
 from ciim.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data
-from ciim.src.utils.util import retrieve_net, retrieve_adata_bulk
+from ciim.src.utils.util import retrieve_net, retrieve_adata
 
 # - retrieve the feature data (donor level) for the case TF 
 def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_value_adj, ax=None):
@@ -1361,7 +1361,7 @@ def heatmap_tf_validation(mean_expr, ax, cmap="magma"):
 
 def process_trends_validation(cell_type, dataset, cut_off=50):
     # - calculate mean activation across age groups
-    adata_all = retrieve_adata_bulk(dataset)
+    adata_all = retrieve_adata(dataset)
 
     adata = adata_all[adata_all.obs['cell_type'] == cell_type]
     nets = retrieve_net(dataset, cell_type)
@@ -1415,7 +1415,7 @@ def binarize_age(obs):
     obs['age_group'] = pd.cut(obs['age'], bins=bins, labels=age_groups, right=False)
     return obs
 def plot_trend_tfs(cell_type, tfs, type='bulk', dataset='data1', ax=None):
-    adata = retrieve_adata_bulk(dataset, type=type)
+    adata = retrieve_adata(dataset, type=type)
     adata = adata[adata.obs['cell_type'] == cell_type]
     nets = retrieve_net(dataset, cell_type)
     tf_acts = calculate_tf_activity(adata, nets)
@@ -1432,7 +1432,7 @@ def plot_trend_tfs(cell_type, tfs, type='bulk', dataset='data1', ax=None):
     sorted_tfs = mean_expr.index
     return sorted_tfs
 def plot_trend_targets_binarized(cell_type, genes, dataset='data1', ax=None):
-    adata = retrieve_adata_bulk(dataset)
+    adata = retrieve_adata(dataset)
     adata = adata[adata.obs['cell_type'] == cell_type]
     adata = adata[:, adata.var_names.isin(genes)]
     from ciim.src.process_dataset.preprocess.helper import binarize_age

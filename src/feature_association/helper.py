@@ -20,7 +20,7 @@ from scipy.stats import mannwhitneyu
 from tqdm import tqdm
 from ciim.src.common import cell_types,base_dir, save_dir, mapping_major_2_minor, mapping_minor_2_major, minor_cell_types
 from scipy.sparse import issparse
-from ciim.src.utils.util import retrieve_adata_bulk, get_consensus_net
+from ciim.src.utils.util import retrieve_adata, get_consensus_net
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -443,7 +443,7 @@ def wrapper_tf_activity(par):
     # ----------- calculate tf activity for all datasets
     for dataset in datasets:
         print(dataset, data_type)
-        adata = retrieve_adata_bulk(dataset, data_type)
+        adata = retrieve_adata(dataset, data_type)
         cell_types_l = adata.obs[cell_type_col].unique()
         all_types = list(minor_cell_types)+list(cell_types)
         cell_types_l = [t for t in cell_types_l if t in all_types]
@@ -476,7 +476,7 @@ def wrapper_gene_score(par):
 
     # --------- load data
     print('Loading data...')
-    adata_dict = {dataset: retrieve_adata_bulk(dataset, type) for dataset in datasets}
+    adata_dict = {dataset: retrieve_adata(dataset, type) for dataset in datasets}
 
     pathways = get_genesets()
     
@@ -536,7 +536,7 @@ def wrapper_gene_expression(par):
     type = par['type']
     datasets = par['datasets']
     print('Loading data...')
-    adata_dict = {dataset: retrieve_adata_bulk(dataset, type) for dataset in datasets}
+    adata_dict = {dataset: retrieve_adata(dataset, type) for dataset in datasets}
 
     print('Calculating gene expression...')
     stats_store = []
