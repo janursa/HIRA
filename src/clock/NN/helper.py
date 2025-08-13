@@ -17,7 +17,7 @@ train_datasets=['data1',
                 'data13_Korean'
                 ]
 
-test_datasets=['data13_Japanese'] #'data12'
+test_datasets=['data13_Japanese', 'data12'] #'data12'
 
 
 def get_params(data_type):
@@ -44,6 +44,8 @@ def get_params(data_type):
         "n_epochs_kl_warmup": None,
         "n_epochs_pretrain_ae": 20,
         "n_epochs_adv_warmup": 20,
+        "n_epochs_pretrain_age": 50,
+        "age_lr": 0.0003,
         "n_epochs_mixup_warmup": 0,
         "mixup_alpha": 0.0,
         "adv_steps": None,
