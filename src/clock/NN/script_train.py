@@ -32,12 +32,12 @@ if __name__ == '__main__':
         model = cpa.CPA(adata=adata,
                         **model_params,
                     )
-        model.train(max_epochs=200,
+        model.train(max_epochs=400,
                 use_gpu=True,
                 batch_size=128 if data_type == 'sc' else 32,
                 plan_kwargs=trainer_params,
                 early_stopping_patience=5,
-                check_val_every_n_epoch=100,
+                check_val_every_n_epoch=20,
                 save_path=save_path_train,
             )
     else:

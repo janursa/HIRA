@@ -19,29 +19,6 @@ train_datasets=['data1',
 
 test_datasets=['data13_Japanese'] #'data12'
 
-def wrapper_setup_data(adata, batch_key, data_type, cell_type):
-    if cell_type is None:
-        print('Setting up data without cell type filtering.')
-        cpa.CPA.setup_anndata(adata,
-                                # perturbation_key='disease',
-                                # control_group='healthy',
-                                batch_key=batch_key,  
-                                categorical_covariate_keys=['cell_type'],
-                                is_count_data=True if data_type == 'sc' else False,
-                                max_comb_len=1,
-                                )
-        
-    else:
-        print(f'Setting up data for cell type: {cell_type}')
-        cpa.CPA.setup_anndata(adata,
-                                # perturbation_key='disease',
-                                # control_group='healthy',
-                                batch_key=batch_key,  
-                                # categorical_covariate_keys=[batch_key],
-                                is_count_data=True if data_type == 'sc' else False,
-                                max_comb_len=1,
-                                )
-        
 
 def get_params(data_type):
     recon_loss = 'nb' if data_type == 'sc' else 'gauss'
@@ -82,8 +59,6 @@ def get_params(data_type):
         "adv_lr": 0.0003,
         "adv_wd": 4e-07,
         "adv_loss": "cce",
-        "doser_lr": 0.0003,
-        "doser_wd": 4e-07,
         "do_clip_grad": True,
         "gradient_clip_value": 1.0,
         "step_size_lr": 10,
