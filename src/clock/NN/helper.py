@@ -1,23 +1,21 @@
 from ciim.src.common import save_dir
-import cpa
 import scanpy as sc
 
 
 
 data_type = 'bulk'
-run_id=f'{data_type}' #'try1'
 cell_type_train = None
+if cell_type_train is not None:
+    run_id=f'{cell_type_train}_{data_type}' #'try1'
+else:
+    run_id=f'{data_type}'
 batch_key = 'dataset'
 
-save_path_train=f'{save_dir}/NN/{run_id}_train'
-save_path_test=f'{save_dir}/NN/{run_id}_test'
-train_datasets=['data1',
-                'data7_allTPs_jalil',
-                'SLE_European',
-                'data13_Korean'
-                ]
+save_path_train = f'{save_dir}/NN/{run_id}_train'
+save_path_test = f'{save_dir}/NN/{run_id}_test'
 
-test_datasets=['data13_Japanese', 'data12'] #'data12'
+
+# test_datasets = ['data13_Japanese', 'data12'] #'data12'
 
 
 def get_params(data_type):
@@ -67,29 +65,7 @@ def get_params(data_type):
     }
     return model_params, trainer_params
 
-def format_data(datasets, cell_type=None, data_type='bulk'):
-    from ciim.src.utils.util import retrieve_adata, get_consensus_net
-    import anndata as ad
-    
-    adata_store = []
-    for d in datasets:
-        adata = retrieve_adata(dataset=d, type=data_type)
-        if d == 'SLE_European':
-            adata.obs['disease'] = adata.obs['disease'].map({'normal': 'healthy', 'systemic lupus erythematosus': 'SLE'})
-        else:
-            adata.obs['disease'] = 'healthy'
-        adata = adata[adata.obs['disease'].isin(['healthy'])].copy()
-        adata_store.append(adata)
 
-    adata_train = ad.concat(adata_store, join='inner', axis=0)
-    if cell_type is not None:
-        # net = get_consensus_net(cell_type=cell_type)
-        # adata_train = adata_train[adata_train.obs['cell_type'] == cell_type, adata_train.var_names.isin(net['target'].unique())].copy()
-        adata_train = adata_train[adata_train.obs['cell_type'] == cell_type, :].copy()
-
-    adata_train.obs_names_make_unique()
-
-    return adata_train
 
 def wrapper_umap(ad, cols=['dataset', 'cell_type']):
       sc.pp.neighbors(ad)

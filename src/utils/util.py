@@ -39,6 +39,8 @@ def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20):
     else:
         adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
 
+    
+
     if 'age' not in adata.obs.columns:
         print('Warning: "age" column not found in adata.obs. Setting to default age of 20.')
         adata.obs['age'] = 20
@@ -63,6 +65,34 @@ def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20):
     if 'sex' in adata.obs.columns:
         adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
 
+    if dataset not in ['ibd']:
+        adata.obs.rename({'perturbation': 'condition', 'disease': 'condition', 'treatment': 'condition'}, axis=1, inplace=True)
+
+    if 'condition' not in adata.obs.columns:
+        adata.obs['condition'] = 'normal'
+
+    unique_conditions = adata.obs['condition'].unique()
+
+    ctr_key = None
+    if 'normal' in unique_conditions:
+        ctr_key = 'normal'
+    elif 'healthy' in unique_conditions:
+        ctr_key = 'healthy'
+    elif 'PBS' in unique_conditions:
+        ctr_key = 'PBS'
+    elif 'Dimethyl Sulfoxide' in unique_conditions:
+        ctr_key = 'Dimethyl Sulfoxide'
+    elif '24 h RPMI' in unique_conditions:
+        ctr_key = '24 h RPMI'
+    elif dataset == 'ibd':
+        ctr_key = None
+    else:
+        raise ValueError(f'No control condition found for {dataset}.')
+
+    adata.obs.loc[:, 'is_control'] = adata.obs['condition'] == ctr_key
+
+    adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + adata.obs['age'].astype(str)
+        
     return adata
 
 def retrieve_net(dataset, cell_type, only_promotor_based=False, c_t=5):  
@@ -586,30 +616,61 @@ def pathway_analysis_wrapper(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hal
     return res2d_all
 
 
-def bulkify_func(adata, cell_count_t=10, covariates=['cell_type', 'donor_id', 'age']):
-    from task_grn_inference.src.process_data.helper_data import sum_by
-    adata.obs['sum_by'] = ''
-    for covariate in covariates:
-        adata.obs['sum_by'] += '_' + adata.obs[covariate].astype(str)
-    # adata.obs['sum_by'] = '_' + adata.obs['cell_type'].astype(str) + '_' + adata.obs['donor_id'].astype(str) + '_' + adata.obs['age'].astype(str) 
-    adata.obs['sum_by'] = adata.obs['sum_by'].astype('category')
-    adata_bulk = sum_by(adata, 'sum_by', unique_mapping=True)
-    cell_count_df = adata.obs.groupby('sum_by').size().reset_index(name='cell_count')
-    adata_bulk.obs = adata_bulk.obs.merge(cell_count_df, on='sum_by')
-    adata_bulk = adata_bulk[adata_bulk.obs['cell_count']>=cell_count_t]
-    return adata_bulk
 
-def normalize_func(adata, log_norm=True, pearson_residual=False):
-    import scanpy as sc
-    if 'counts' not in adata.layers:
-        adata.layers['counts'] = adata.X.copy()
-    if pearson_residual:
-        adata.layers['pearson_residual'] = sc.experimental.pp.normalize_pearson_residuals(adata)['X']
-    if log_norm:
-        X_norm = sc.pp.normalize_total(adata, layer='counts',inplace=False)['X']
-        X_norm = sc.pp.log1p(X_norm, copy=False)
-        adata.layers['lognorm'] = X_norm
-    adata.X = adata.layers['counts']
-    del adata.layers['counts']
+def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_age'):
+    import warnings
+    warnings.filterwarnings("ignore")
+    if dataset == 'op':
+        fixed_effects=['condition']
+        group_key='plate_name'
+    elif dataset == 'parsebioscience':
+        fixed_effects=['condition', 'cell_type_minor']
+        group_key='donor_id'
+    else:
+        raise ValueError('Unknown dataset for mixed effects')
+    import statsmodels.formula.api as smf
 
-    return adata
+    df = df[df['condition'].isin([ctr, treatment])].copy()
+    df['condition'] = pd.Categorical(df['condition'], categories=[ctr, treatment], ordered=True)
+    df['condition'] = df['condition'].cat.codes  # 0 for ctr, 1 for treatment
+    # df['donor_age'] = df['donor_age'].astype('category')
+    # df['donor_age'] = df['donor_age'].cat.codes
+    # Construct formula dynamically
+    fixed_effects_s = ' + '.join(fixed_effects)
+    formula = f"{target_variable} ~ {fixed_effects_s}"
+    if group_key is None:
+        model = smf.mixedlm(formula, df)
+    else:
+        model = smf.mixedlm(formula, df, groups=df[group_key])
+    result = model.fit()
+    pval = result.pvalues['condition']
+    coef = result.params['condition']
+    return pval, coef
+
+def test_paired(df, ctr, treatment):
+    import scipy.stats as stats
+    df_pivot = df.pivot(index=['donor_age'], columns='condition', values='predicted_age').dropna()
+    assert df_pivot.shape[1] == 2, f"Expected exactly two conditions, found {df_pivot.shape[1]}: {df_pivot.columns.tolist()}"
+    
+    t_stat, p_value = stats.ttest_rel(df_pivot[treatment], df_pivot[ctr])
+    slope = (df_pivot[treatment] - df_pivot[ctr]).mean()
+    return p_value, slope
+
+def test_unpaired(df, ctr, treatment):
+    # Extract samples
+    ctr_samples = df[df['condition'] == ctr]['predicted_age'].dropna()
+    treatment_samples = df[df['condition'] == treatment]['predicted_age'].dropna()
+    
+    # Check if we have enough samples
+    if len(ctr_samples) < 2 or len(treatment_samples) < 2:
+        raise ValueError(f"Not enough samples for {ctr} vs {treatment}. ")
+    
+    # Check for zero variance or non-numeric data
+    if ctr_samples.var() == 0 or treatment_samples.var() == 0:
+        raise ValueError(f"Zero variance in samples for {ctr} vs {treatment}. "
+                         "Ensure there are multiple unique values in each group.")
+    # Perform the t-test
+    t_stat, p_value = stats.ttest_ind(treatment_samples, ctr_samples, equal_var=False)
+    slope = treatment_samples.mean() - ctr_samples.mean()
+
+    return p_value, slope

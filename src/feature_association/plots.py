@@ -20,25 +20,34 @@ from ciim.src.feature_association.helper import calculate_tf_activity, bin_featu
 from ciim.src.utils.util import retrieve_net, retrieve_adata
 
 # - retrieve the feature data (donor level) for the case TF 
-def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_value_adj, ax=None):
+def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_value_adj, dataset, ax=None):
     perturbation_surrogate_names = {
         '24 h LPS': 'LPS',
         '24 h LPS + ruxolitinib': 'Ruxolitinib (LPS)',
+        '24 h RPMI': 'RPMI',
+        '24 h RPMI + ruxolitinib': 'Ruxolitinib (RPMI)'
     }
     def get_perturbation_raw_data(case_tf, cell_type, ctr, treatment):
-        adata = retrieve_feature_data(dataset='CXCL9', cell_type=cell_type, type='bulk', feature_type='tf_activity', condition=None)
-        adata = adata[adata.obs['treatment'].isin([ctr, treatment])]
+        adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, type='bulk', feature_type='tf_activity', condition=None)
+        if 'treatment' in adata.obs.columns:
+            key = 'treatment'
+            
+        elif 'perturbation' in adata.obs.columns:
+            key = 'perturbation'
+        else:
+            raise ValueError(f"Dataset {dataset} does not contain 'treatment' or 'perturbation' in obs.")
+        adata = adata[adata.obs[key].isin([ctr, treatment])]
         adata = adata[:, adata.var_names == case_tf]
 
         # Convert to dataframe
         df = pd.DataFrame({
             'expression': adata.X.flatten(),
-            'treatment': adata.obs['treatment'].values,
+            'treatment': adata.obs[key].values,
             'donor_id': adata.obs['donor_id'].values
         })
-        df['treatment'] = df['treatment'].map(perturbation_surrogate_names)
+        df['treatment'] = df['treatment'].map(lambda name: perturbation_surrogate_names.get(name, name))
         # # Pivot for plotting
-        df_pivot = df.pivot(index='donor_id', columns='treatment', values='expression').dropna()
+        df_pivot = df.pivot_table(index='donor_id', columns='treatment', values='expression').dropna()
         dummy_donor_names = {donor: f"Donor {i+1}" for i, donor in enumerate(df_pivot.index)}
         df_pivot_renamed = df_pivot.rename(index=dummy_donor_names)
         return df_pivot_renamed

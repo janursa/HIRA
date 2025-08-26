@@ -86,6 +86,7 @@ def retrieve_feature_data(dataset, smoothened=False, cell_type=None, type='bulk'
 #     return adata
 
 def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activity'):
+    # print('writing here: ', f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
     adata.write_h5ad(f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
 
 def retrieve_sig_stats(type='bulk', feature_type='tf_activity', race='both', filter_inconsistent=True, cell_type=None):
@@ -188,7 +189,6 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
     name_mapping = {'normal': 'healthy', 'systemic lupus erythematosus': 'SLE'}
     stats_all = []
     if 'SLE' in dataset:
-        
         # case 1: association with age in healhty and disease samples
         for group in conditions:
             adata_sub = adata[adata.obs[condition_col] == group]
@@ -206,8 +206,7 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
         
         control_group = adata.X[mask_ctr, :]
         case_group = adata.X[mask_condition, :]
-
-        if (np.sum(mask_condition) < 5) or (np.sum(mask_ctr) < 5):
+        if (np.sum(mask_condition) < 3) or (np.sum(mask_ctr) < 3):
             print('Not enough samples for', condition, ' vs ', ctr_group)
             return None
         results = []
@@ -232,30 +231,26 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
                 stat, pval = ttest_rel(values_case, values_control)
                 coef = np.median(values_case) - np.median(values_control)
             elif test_type == 'mixed-effect':
-                import warnings
-                warnings.filterwarnings("ignore")
-                donors_ctr = adata.obs.loc[mask_ctr, 'donor_id']
-                donors_case = adata.obs.loc[mask_condition, 'donor_id']
-                df = pd.DataFrame({
-                    "G": np.concatenate([values_control, values_case]), 'donor_id': np.concatenate([donors_ctr, donors_case]), 'condition': [ctr_group]*len(donors_ctr) + [condition]*len(donors_case)
-                    })
-                df['condition'] = pd.Categorical(df['condition'], categories=[ctr_group, condition], ordered=True)
-                model = smf.mixedlm("G ~ condition", df, groups=df["donor_id"])
-                try:
-                    result = model.fit()
-                    # print(gene,result.summary())
-                    coef = result.params[f'condition[T.{condition}]']
-                    pval = result.pvalues[f'condition[T.{condition}]']
-                except Exception as e:
-                    coef = np.nan
-                    pval = np.nan
+                from ciim.src.utils.util import test_mixed_effects
                 
-
-                values_case = None
-                values_control = None
+                obs_ctr = adata.obs.loc[mask_ctr, :]
+                obs_ctr['feature_values'] = values_control
+                obs_ctr['condition'] = ctr_group
+                obs_case = adata.obs.loc[mask_condition, :]
+                obs_case['condition'] = condition
+                obs_case['feature_values'] = values_case
+                
+                df = pd.concat([obs_ctr, obs_case])
+                                
+                pval, coef = test_mixed_effects(dataset, df, ctr_group, condition, target_variable='feature_values')
+   
             else:
                 raise ValueError('Unknown test type')
-
+            if np.isnan(pval):
+                print(f'{dataset} {gene} {condition} vs {ctr_group} p-value: {pval:.4f}, coef: {coef:.4f}')
+                print(f'values_case: {values_case}, values_control: {values_control}, i {i}')
+                raise ValueError('NaN p-value')
+            
             results.append({
                 "tf": gene,
                 "p_value": pval,
@@ -286,7 +281,10 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
             stats_df = stats_condition_vs_ctr(adata_sub, condition)
             if stats_df is None:
                 continue
+
             stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
+            assert np.any(np.isnan(stats_df['p_value_adj']) == False), f'NaN p-values in {stats_df}'
+            
             stats_df['age_group'] = age_subset
             stats_all.append(stats_df)
     
@@ -380,6 +378,7 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
     datasets = par['datasets']
     feature_type = par['feature_type']
     data_type = par['type']
+    cell_types = par['cell_types']
 
     print(f'Association {feature_type} with age/disease...')
     if 'minor' in data_type:
@@ -405,6 +404,7 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
             # - subset based on prior (only for target genes) -> add this to meta analysis
             genes = adata_sub.var_names
             adata_sub = adata_sub[:, adata_sub.var_names.isin(genes)]
+
             if issparse(adata_sub.X):
                 adata_sub.X = adata_sub.X.toarray()
             if ('SLE' in dataset):
@@ -412,9 +412,22 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
             elif ('Covid' in dataset):
                 stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col='Max_WHO_Group', ctr_group='mild', association_type=par['association_type'])
             elif dataset == 'CXCL9':
-                stats_1 = determine_stats_condition(adata_sub, ctr_group='24 h RPMI', condition_col='treatment', test_type=test_type)
-                stats_2 = determine_stats_condition(adata_sub, ctr_group='24 h LPS', condition_col='treatment', test_type=test_type,  conditions=['24 h LPS + metformin', '24 h LPS + metformin + ruxolitinib', '24 h LPS + ruxolitinib'])
-                stats = pd.concat([stats_1, stats_2])
+                stats_store_l = []
+                stats = determine_stats_condition(adata_sub, ctr_group='24 h RPMI', condition_col='treatment', test_type=test_type,
+                                                conditions=['24 h RPMI + ruxolitinib'])
+                stats_store_l.append(stats)
+                # stats = determine_stats_condition(adata_sub, ctr_group='24 h LPS', condition_col='treatment', test_type=test_type,  
+                #                                 conditions=['24 h LPS + ruxolitinib']#['24 h LPS + metformin', '24 h LPS + metformin + ruxolitinib', '24 h LPS + ruxolitinib'])
+                # )
+                # stats_store.append(stats)
+                stats = pd.concat(stats_store_l)
+            elif dataset=='op':
+                stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col='perturbation', 
+                            ctr_group='Dimethyl Sulfoxide', association_type=par['association_type'], conditions=['Ruxolitinib', 'LY2090314'])
+            elif dataset=='parsebioscience':
+                stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col='condition', 
+                            ctr_group='PBS', association_type=par['association_type'], conditions=['IL-10'])
+            
             else:
                 stats = association_with_age(adata_sub, association_type=par['association_type'])
                 stats['condition'] = 'healthy'
@@ -424,6 +437,7 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
             stats_store.append(stats)
         
     stats_all = pd.concat(stats_store)
+
     if feature_type == 'gene_expression':
         stats_all.rename(columns={'tf': 'target'}, inplace=True)
 

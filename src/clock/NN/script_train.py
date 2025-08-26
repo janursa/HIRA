@@ -27,16 +27,17 @@ if __name__ == '__main__':
         print("Training mode activated.")
         assert len(train_datasets)>0, "Training mode requires at least one training dataset."
         print('Loading training data ... ')
-        adata = format_data(train_datasets, cell_type_train, data_type)
+        adata = format_data(train_datasets, cell_type_train, data_type, only_ctr=True)
         cpa.CPA.wrapper_setup_data(adata, batch_key=batch_key, data_type=data_type, cell_type=cell_type_train)
         model = cpa.CPA(adata=adata,
+                        include_age_head=True,
                         **model_params,
                     )
         model.train(max_epochs=400,
             use_gpu=True,
             batch_size=128 if data_type == 'sc' else 32,
             plan_kwargs=trainer_params,
-            early_stopping_patience=10,
+            early_stopping_patience=5,
             check_val_every_n_epoch=10,
             save_path=save_path_train,
         )

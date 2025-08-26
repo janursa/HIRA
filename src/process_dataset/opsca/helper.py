@@ -4,7 +4,7 @@ import numpy as np
 import sctk
 from scipy import sparse
 import scanpy as sc
-from task_grn_inference.src.utils.util import sum_by
+from task_grn_inference.src.process_data.helper_data import sum_by
 
 import sys
 
