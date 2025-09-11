@@ -11,18 +11,20 @@ import json
 import scanpy as sc
 import matplotlib.pyplot as plt
 from collections import defaultdict
-from task_grn_inference.src.utils.util import sum_by, read_gmt
+from task_grn_inference.src.utils.util import read_gmt
 from ciim.src.common import base_dir, save_dir, prior_dir, datasets_all, mapping_minor_2_major
 
 
-def retrieve_adata_bulk(dataset, type='bulk', cell_type=None): 
+def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20): 
     base_path = f"{base_dir}/datasets/"
     if 'bulk' in type:
         base_path = f"{base_path}/bulk/"
+    elif 'sc' in type:
+        base_path = f"{base_path}/sc/"
        
     gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
 
-    assert type in ['bulk', 'bulk_minor', 'bulk_M', 'bulk_F', 'bulk_minor_M', 'bulk_minor_F', 'metacell'], f'Unknown type {type}'
+    assert type in ['sc', 'bulk', 'bulk_minor', 'bulk_M', 'bulk_F', 'bulk_minor_M', 'bulk_minor_F', 'metacell'], f'Unknown type {type}'
     
     if (type == 'bulk_M') | (type == 'bulk_F'):
         gender = type.split('_')[1]
@@ -37,8 +39,17 @@ def retrieve_adata_bulk(dataset, type='bulk', cell_type=None):
     else:
         adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
 
+    if 'age' not in adata.obs.columns:
+        print('Warning: "age" column not found in adata.obs. Setting to default age of 20.')
+        adata.obs['age'] = 20
+    
+    if ('lognorm' in adata.layers) | ('X_norm' in adata.layers):
+        print(f'Using layer {("lognorm" if "lognorm" in adata.layers else "X_norm")}')
+        adata.X = adata.layers['lognorm'] if 'lognorm' in adata.layers else adata.layers['X_norm']
+
     adata.obs['dataset'] = dataset
     adata = adata[:, adata.var_names.isin(gene_names)]
+    # print('\n', adata.obs['cell_type'].unique())
 
     if cell_type is not None:
         if cell_type not in adata.obs['cell_type'].unique():
@@ -46,21 +57,49 @@ def retrieve_adata_bulk(dataset, type='bulk', cell_type=None):
         adata = adata[adata.obs['cell_type'] == cell_type]
     if 'age' in adata.obs.columns:
         adata = adata[~adata.obs['age'].isna()].copy()
-        adata.obs['age'] = adata.obs['age'].astype(int)
-        adata = adata[adata.obs['age'] >= 20].copy()  
+        adata.obs['age'] = adata.obs['age'].astype(float).astype(int)
+        adata = adata[adata.obs['age'] >= age_limit].copy()  
     if 'sex' in adata.obs.columns:
         adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
 
+    if dataset not in ['ibd']:
+        adata.obs.rename({'perturbation': 'condition', 'disease': 'condition', 'treatment': 'condition', 'Max_WHO_Group': 'condition'}, axis=1, inplace=True)
+    
+    if 'condition' not in adata.obs.columns:
+        adata.obs['condition'] = 'normal'
+
+    unique_conditions = adata.obs['condition'].unique()
+
+    ctr_key = None
+    if 'normal' in unique_conditions:
+        ctr_key = 'normal'
+    elif 'healthy' in unique_conditions:
+        ctr_key = 'healthy'
+    elif 'PBS' in unique_conditions:
+        ctr_key = 'PBS'
+    elif 'Dimethyl Sulfoxide' in unique_conditions:
+        ctr_key = 'Dimethyl Sulfoxide'
+    elif '24 h RPMI' in unique_conditions:
+        ctr_key = '24 h RPMI'
+    elif dataset == 'ibd':
+        ctr_key = None
+    elif dataset == 'Covid_50MHH':
+        ctr_key = None
+    else:
+        raise ValueError(f'No control condition found for {dataset}.')
+
+    adata.obs.loc[:, 'is_control'] = adata.obs['condition'] == ctr_key
+    
+
+    adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + adata.obs['age'].astype(str)
+        
     return adata
 
 def retrieve_net(dataset, cell_type, only_promotor_based=False, c_t=5):  
     from ciim.src.common import save_dir
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
-    if dataset == 'CXCL9':
-        net = get_consensus_net(cell_type=cell_type_major)
-    else:
-        net = pd.read_csv(f"{save_dir}/grns/{dataset}/net_{cell_type_major}_all_agegroups_all_batches.csv")
+    net = pd.read_csv(f"{save_dir}/grns/{dataset}/net_{cell_type_major}_all_agegroups_all_batches.csv")
     gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
     net = net[net['target'].isin(gene_names)]
     if False:
@@ -85,7 +124,7 @@ def retrieve_nets(datasets, cell_type, only_promotor_based=False):
     nets = pd.concat(net_store, ignore_index=True)
     return nets
 
-def get_consensus_net(datasets=datasets_all, cell_type='CD8T', min_degree=4):
+def get_consensus_net(datasets=datasets_all, cell_type='CD8T', min_degree=3):
     from scipy.stats import zscore
     net_store = []
     for dataset in datasets:
@@ -572,3 +611,67 @@ def pathway_analysis_wrapper(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hal
     
     res2d_all = pd.concat(res2d_store)
     return res2d_all
+
+
+
+def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_age'):
+    import warnings
+    warnings.filterwarnings("ignore")
+    if dataset == 'op':
+        fixed_effects=['condition']
+        group_key='plate_name'
+    elif dataset == 'parsebioscience':
+        fixed_effects=['condition', 'cell_type_minor']
+        group_key='donor_id'
+    elif dataset == 'CXCL9':
+        fixed_effects=['condition']
+        group_key='donor_id'
+    else:
+        raise ValueError('Unknown dataset for mixed effects')
+    import statsmodels.formula.api as smf
+
+    df = df[df['condition'].isin([ctr, treatment])].copy()
+    df['condition'] = pd.Categorical(df['condition'], categories=[ctr, treatment], ordered=True)
+    df['condition'] = df['condition'].cat.codes  # 0 for ctr, 1 for treatment
+    # df['donor_age'] = df['donor_age'].astype('category')
+    # df['donor_age'] = df['donor_age'].cat.codes
+    # Construct formula dynamically
+    fixed_effects_s = ' + '.join(fixed_effects)
+    formula = f"{target_variable} ~ {fixed_effects_s}"
+    if group_key is None:
+        model = smf.mixedlm(formula, df)
+    else:
+        model = smf.mixedlm(formula, df, groups=df[group_key])
+    result = model.fit()
+    pval = result.pvalues['condition']
+    coef = result.params['condition']
+    
+    return pval, coef
+
+def test_paired(df, ctr, treatment):
+    import scipy.stats as stats
+    df_pivot = df.pivot(index=['donor_age'], columns='condition', values='predicted_age').dropna()
+    assert df_pivot.shape[1] == 2, f"Expected exactly two conditions, found {df_pivot.shape[1]}: {df_pivot.columns.tolist()}"
+    
+    t_stat, p_value = stats.ttest_rel(df_pivot[treatment], df_pivot[ctr])
+    slope = (df_pivot[treatment] - df_pivot[ctr]).mean()
+    return p_value, slope
+
+def test_unpaired(df, ctr, treatment):
+    # Extract samples
+    ctr_samples = df[df['condition'] == ctr]['predicted_age'].dropna()
+    treatment_samples = df[df['condition'] == treatment]['predicted_age'].dropna()
+    
+    # Check if we have enough samples
+    if len(ctr_samples) < 2 or len(treatment_samples) < 2:
+        raise ValueError(f"Not enough samples for {ctr} vs {treatment}. ")
+    
+    # Check for zero variance or non-numeric data
+    if ctr_samples.var() == 0 or treatment_samples.var() == 0:
+        raise ValueError(f"Zero variance in samples for {ctr} vs {treatment}. "
+                         "Ensure there are multiple unique values in each group.")
+    # Perform the t-test
+    t_stat, p_value = stats.ttest_ind(treatment_samples, ctr_samples, equal_var=False)
+    slope = treatment_samples.mean() - ctr_samples.mean()
+
+    return p_value, slope

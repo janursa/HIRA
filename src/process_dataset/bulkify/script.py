@@ -36,8 +36,12 @@ parser.add_argument('--bulk_F',
 args = parser.parse_args()
 
 ## VIASH END
-from helper import bulkify_main
+from task_grn_inference.src.process_data.helper_data import bulkify_func
 
+def normalize(adata):
+    sc.pp.normalize_total(adata, target_sum=1e6)
+    sc.pp.log1p(adata)
+    return adata
 
 if __name__ == '__main__':
     adata = ad.read_h5ad(args.sc_dataset_file)
@@ -48,14 +52,27 @@ if __name__ == '__main__':
     if 'treatment' in adata.obs.columns:
         covariates.append('treatment')
     
-    adata_bulk_major_celltypes = bulkify_main(adata, covariates=covariates)
+    dataset = adata.obs['dataset'].unique()[0]
+    if dataset == 'op':
+        covariates = ['cell_type', 'plate_name', 'condition', 'well', 'donor_id']
+    elif dataset == 'CXCL9':
+        covariates = ['cell_type', 'pool_id', 'condition', 'donor_id']
+        
+    
+    adata_bulk_major_celltypes = bulkify_func(adata, covariates=covariates)
+    adata_bulk_major_celltypes = normalize(adata_bulk_major_celltypes)
+    low_cells = adata_bulk_major_celltypes.obs['cell_count'] < 10
+    print(f'Dropping {low_cells.sum()} bulk samples with less than 10 cells')
+    adata_bulk_major_celltypes = adata_bulk_major_celltypes[~low_cells].copy()
+    print(adata_bulk_major_celltypes.shape)
     adata_bulk_major_celltypes.write(args.bulk_all)
 
     # - bulk minor
     print('Bulkifying minor cell types')
     covariates_minor = covariates.copy()
     covariates_minor.append('Sub_CT')
-    adata_bulk_minor_celltypes = bulkify_main(adata, covariates=covariates_minor)
+    adata_bulk_minor_celltypes = bulkify_func(adata, covariates=covariates_minor)
+    adata_bulk_minor_celltypes = normalize(adata_bulk_minor_celltypes)
     adata_bulk_minor_celltypes.write(args.bulk_minor_celltype)
 
 

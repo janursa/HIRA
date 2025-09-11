@@ -16,6 +16,8 @@ state*
 trace*
 tw*
 base_folder/*
+datasets/*
+prior/*
 
 # related to python
 .ipynb_checkpoints

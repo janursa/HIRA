@@ -4,8 +4,8 @@
 #SBATCH --error=logs/%j.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
-#SBATCH --time=1-00:00:00
-#SBATCH --mem=800GB
+#SBATCH --time=10:00:00
+#SBATCH --mem=250GB
 #SBATCH --partition=cpu
 #SBATCH --mail-type=END,FAIL      
 #SBATCH --mail-user=jalil.nourisa@gmail.com   
@@ -32,15 +32,22 @@ MAX_WORKERS=10
 data_type='sc'
 
 # datasets to include -> preprocessing 
-datasets=" data1 data13 SLE CXCL9" #data12 data7_allTPs_jalil data1 data13 SLE   CXCL9
+datasets=" CXCL9" #data12 data7_allTPs_jalil data1 data13 SLE   CXCL9 
 
 for dataset in $datasets; do
-        RAW_FILES_DIR="/vol/projects/CIIM/Healthy_Single_Cell_Data/count_matrix/"
+        if [ "$dataset" = "op" ]; then
+                input_file="/home/jnourisa/projs/ongoing/task_grn_inference/resources/datasets_raw/op_perturbation_sc_counts.h5ad"
+        elif [ "$dataset" = "CXCL9" ]; then
+                input_file="/vol/projects/CIIM/Healthy_Single_Cell_Data/count_matrix/CXCL9_TI.h5ad"
+        else
+                input_file="${MAIN_DIR}/datasets/raw/${dataset}_CMtx.h5ad"
+        fi
+        
         PROCESSED_FILES_DIR="${MAIN_DIR}/datasets/sc/"
         
         # Define the command
         if [ "$RUN_PROCESS_DATASET" = true ]; then
-                args="--dataset_name $dataset --processed_files_dir $PROCESSED_FILES_DIR --raw_files_dir $RAW_FILES_DIR"
+                args="--dataset_name $dataset --processed_files_dir $PROCESSED_FILES_DIR --input_file $input_file"
                 cmd="python ${dependencies["process_dataset"]} $args"
                 echo "Running (bash): $cmd"
                 $cmd
@@ -48,7 +55,7 @@ for dataset in $datasets; do
         
 done
 
-datasets=" CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_European" #CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_European
+datasets=" CXCL9 " #CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_European
 
 
 for dataset in $datasets; do
@@ -76,7 +83,7 @@ for dataset in $datasets; do
                 FORCE=true # If true, overwrite the existing files in grns directory
                 SAVE_GRNS_DIR="${MAIN_DIR}/output/grns/${dataset}/"
                 
-                DATASET_FILE="/vol/projects/jnourisa/datasets/${dataset}_${data_type}.h5ad" # tailors raw based on the given flags such as make, downsample, etc.
+                DATASET_FILE="/vol/projects/jnourisa/datasets/sc/${dataset}_${data_type}.h5ad" # tailors raw based on the given flags such as make, downsample, etc.
 
                 args="  
                         --dataset_file $DATASET_FILE \

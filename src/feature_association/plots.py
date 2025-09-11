@@ -16,33 +16,119 @@ from scipy.stats import spearmanr, linregress
 from pandas.api.types import CategoricalDtype
 
 from ciim.src.common import base_dir, save_dir, colors_blind, datasets_all ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
-from ciim.src.feature_association.helper import retrieve_adata_bulk, retrieve_net, calculate_tf_activity, bin_feature_values, retrieve_feature_data
+from ciim.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data
+from ciim.src.utils.util import retrieve_net, retrieve_adata
 
 # - retrieve the feature data (donor level) for the case TF 
-def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_value_adj, ax=None):
+def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_value_adj, dataset, ax=None, bbox_to_anchor=(1.02, .8)):
     perturbation_surrogate_names = {
         '24 h LPS': 'LPS',
         '24 h LPS + ruxolitinib': 'Ruxolitinib (LPS)',
+        '24 h RPMI': 'RPMI',
+        '24 h RPMI + ruxolitinib': 'Ruxolitinib (RPMI)',
+        'Dimethyl Sulfoxide': 'DMSO',
     }
     def get_perturbation_raw_data(case_tf, cell_type, ctr, treatment):
-        adata = retrieve_feature_data(dataset='CXCL9', cell_type=cell_type, type='bulk', feature_type='tf_activity', condition=None)
-        adata = adata[adata.obs['treatment'].isin([ctr, treatment])]
+        adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, type='bulk', feature_type='tf_activity', condition=None)
+        if 'treatment' in adata.obs.columns:
+            key = 'treatment'
+        elif 'condition' in adata.obs.columns:
+            key = 'condition'
+        elif 'perturbation' in adata.obs.columns:
+            key = 'perturbation'
+        else:
+            raise ValueError(f"Dataset {dataset} does not contain 'treatment' or 'perturbation' in obs.")
+        adata = adata[adata.obs[key].isin([ctr, treatment])]
         adata = adata[:, adata.var_names == case_tf]
 
         # Convert to dataframe
         df = pd.DataFrame({
             'expression': adata.X.flatten(),
-            'treatment': adata.obs['treatment'].values,
+            'treatment': adata.obs[key].values,
             'donor_id': adata.obs['donor_id'].values
         })
-        df['treatment'] = df['treatment'].map(perturbation_surrogate_names)
+        df['treatment'] = df['treatment'].map(lambda name: perturbation_surrogate_names.get(name, name))
         # # Pivot for plotting
-        df_pivot = df.pivot(index='donor_id', columns='treatment', values='expression').dropna()
+        df_pivot = df.pivot_table(index='donor_id', columns='treatment', values='expression').dropna()
         dummy_donor_names = {donor: f"Donor {i+1}" for i, donor in enumerate(df_pivot.index)}
         df_pivot_renamed = df_pivot.rename(index=dummy_donor_names)
         return df_pivot_renamed
+    # def plot_perturbation_effect_donors(data, figsize=(2, 2), ax=None):
+    #     from matplotlib.patches import ConnectionPatch
+    #     # Determine number of stars
+    #     if p_value_adj < 0.001:
+    #         stars = '***'
+    #     elif p_value_adj < 0.01:
+    #         stars = '**'
+    #     elif p_value_adj < 0.05:
+    #         stars = '*'
+    #     else:
+    #         stars = 'n.s.'
+
+    #     # Calculate y position for the bracket and text
+    #     columns = data.columns
+    #     y_max = data.max().max()
+    #     y_bracket = y_max * 1.05
+
+    #     # Plot
+    #     if ax is None:
+    #         fig, ax = plt.subplots(figsize=figsize)
+    #     for i, (donor_id, row) in enumerate(data.iterrows()):
+    #         if i == 0:
+    #             ax.plot([0, 1], row.values, marker='o', alpha=0.5, label="Donor i", color='black')
+    #         else:
+    #             ax.plot([0, 1], row.values, marker='o', alpha=0.5,  color='black')
+
+    #     # Axis setup
+    #     ax.set_xticks([0, 1])
+    #     ax.set_xticklabels(columns)
+    #     ax.set_ylabel(f"TF activity")
+    #     ax.set_yticks([])
+        
+    #     x1, x2 = 0, 1  # x positions of the two bars
+
+    #     # Larger gap above y_max
+    #     vertical_gap = abs(y_max) * 0.8  # increase this for more distance from data
+    #     bracket_height = abs(y_max) * 0.1
+    #     edge_height = bracket_height * 0.7
+    #     text_offset = bracket_height * 0.6
+
+    #     # Bracket vertical placement
+    #     y_bracket_top = y_max + vertical_gap + bracket_height
+    #     y_bracket_mid = y_bracket_top - edge_height
+
+    #     # Draw bracket
+    #     ax.plot(
+    #         [x1, x1, x2, x2],
+    #         [y_bracket_mid, y_bracket_top, y_bracket_top, y_bracket_mid],
+    #         lw=1.5, color='black'
+    #     )
+
+    #     # Draw stars
+    #     ax.text(
+    #         (x1 + x2) * 0.5,
+    #         y_bracket_top + text_offset,
+    #         stars,
+    #         ha='center',
+    #         va='bottom',
+    #         fontsize=13
+    #     )
+    #     sns.despine()
+    #     ax.margins(x=0.2, y=0.2)
+    #     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+    #     ax.legend(
+    #         title='',
+    #         bbox_to_anchor=(1.02, .8),
+    #         loc='upper left',
+    #         frameon=False,
+    #         labelspacing=0.2,       # Reduce vertical space between labels
+    #         handletextpad=0.5,      # Space between handle and text
+    #         borderaxespad=0.2       # Space between legend and axis
+    #     )
     def plot_perturbation_effect_donors(data, figsize=(2, 2), ax=None):
-        from matplotlib.patches import ConnectionPatch
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+        
         # Determine number of stars
         if p_value_adj < 0.001:
             stars = '***'
@@ -58,23 +144,34 @@ def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_v
         y_max = data.max().max()
         y_bracket = y_max * 1.05
 
+        # Generate a color palette (one color per donor)
+        donors = data.index.unique()
+        palette = dict(zip(donors, sns.color_palette("tab10", n_colors=len(donors))))
+
         # Plot
         if ax is None:
             fig, ax = plt.subplots(figsize=figsize)
         for donor_id, row in data.iterrows():
-            ax.plot([0, 1], row.values, marker='o', label=donor_id, alpha=0.5)
+            ax.plot(
+                [0, 1], 
+                row.values, 
+                marker='o', 
+                alpha=0.7, 
+                color=palette[donor_id], 
+                label=donor_id
+            )
 
         # Axis setup
         ax.set_xticks([0, 1])
         ax.set_xticklabels(columns)
-        ax.set_ylabel(f"TF activity")
+        ax.set_ylabel("TF activity")
         ax.set_yticks([])
         
         x1, x2 = 0, 1  # x positions of the two bars
 
         # Larger gap above y_max
-        vertical_gap = abs(y_max) * 0.8  # increase this for more distance from data
-        bracket_height = abs(y_max) * 0.12
+        vertical_gap = abs(y_max) * 0.2
+        bracket_height = abs(y_max) * 0.1
         edge_height = bracket_height * 0.7
         text_offset = bracket_height * 0.6
 
@@ -88,8 +185,6 @@ def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_v
             [y_bracket_mid, y_bracket_top, y_bracket_top, y_bracket_mid],
             lw=1.5, color='black'
         )
-
-        # Draw stars
         ax.text(
             (x1 + x2) * 0.5,
             y_bracket_top + text_offset,
@@ -101,19 +196,21 @@ def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_v
         sns.despine()
         ax.margins(x=0.2, y=0.2)
         ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
         ax.legend(
+            by_label.values(), 
+            by_label.keys(),
             title='',
-            bbox_to_anchor=(1.02, 1.1),
+            bbox_to_anchor=bbox_to_anchor,
             loc='upper left',
             frameon=False,
-            labelspacing=0.2,       # Reduce vertical space between labels
-            handletextpad=0.5,      # Space between handle and text
-            borderaxespad=0.2       # Space between legend and axis
+            labelspacing=0.1,
+            handletextpad=0.5,
+            borderaxespad=0.2,
+            fontsize=8
         )
-    # - retrieve the data
     df_pivot_renamed = get_perturbation_raw_data(case_tf, cell_type, ctr, treatment)
-    
-    # - plot the perturbation effect
     plot_perturbation_effect_donors(df_pivot_renamed, figsize=(1.8, 1.7), ax=ax)
     ax.set_title(f"{case_tf} ", fontsize=10,  pad=15)
 
@@ -122,11 +219,9 @@ def plot_term_genes(pathway_scores, cell_type, term):
         (pathway_scores['Term'] == term) &
         (pathway_scores['cell_type'] == cell_type)
     ]
-    
     if pathway_scores_t.empty:
         print(f"No data found for cell type '{cell_type}' and term '{term}'")
         return
-
     df = (
         pathway_scores_t
         .groupby('trend')['Genes']
@@ -134,11 +229,8 @@ def plot_term_genes(pathway_scores, cell_type, term):
         .reset_index(name='Genes')
         .set_index('trend')
     )
-    
-
     pp_dict = {}
     every_n_words = 5
-
     for trend in df.index:
         genes = df.loc[trend, 'Genes'].split(';')
         if trend == 'Increase in aging':
@@ -153,8 +245,6 @@ def plot_term_genes(pathway_scores, cell_type, term):
     from matplotlib.lines import Line2D
     alpha = 0.5
     plt.figure(figsize=(0, 0))
-
-    # Create legend handles only for present trends
     color_legend = [
         Line2D([0], [0], marker='o', color='none', markerfacecolor=color,
                markersize=10, label=pp_dict[trend], alpha=alpha)
@@ -446,22 +536,57 @@ def dotplot_category_color(df, ax,
 
     # Create Legends
     if show_size_legend:
-        size_legend_values = np.linspace(df[size_col].min() , df[size_col].max(), num=4)
-        size_legend_handles = [plt.scatter([], [], s=s * size_legend_scale, color="black", label=f"{s:.1f}") for s in size_legend_values]
-        size_legend_handle = plt.legend(handles=size_legend_handles, title=size_legend_title, loc=size_legend_loc, frameon=False)
-    
-    if show_color_legend:
-        color_legend = [
-            Line2D([0], [0], marker='o', color='none', markerfacecolor=color,
-                markersize=10, label=name, alpha=alpha) 
-            for name, color in palette.items()
+        size_legend_values = np.linspace(df[size_col].min(), df[size_col].max(), num=4)
+        size_legend_values = np.round(size_legend_values).astype(int)  # force integers
+        
+        size_legend_handles = [
+            plt.scatter([], [], s=s * size_legend_scale, color="black", label=f"{s}")
+            for s in size_legend_values
         ]
-        color_legend_handle = plt.legend(
-            handles=color_legend, 
-            title=color_legend_title, 
-            loc=color_legend_loc, 
+        size_legend_handle = plt.legend(
+            handles=size_legend_handles,
+            title=size_legend_title,
+            loc=size_legend_loc,
             frameon=False
         )
+    if show_color_legend:
+        if isinstance(palette, dict):
+            # Case 1: dictionary palette
+            color_legend = [
+                Line2D([0], [0], marker='o', color='none', markerfacecolor=color,
+                    markersize=10, label=name, alpha=alpha) 
+                for name, color in palette.items()
+            ]
+            color_legend_handle = plt.legend(
+                handles=color_legend, 
+                title=color_legend_title, 
+                loc=color_legend_loc, 
+                frameon=False
+            )
+        elif palette == "viridis":
+            import matplotlib as mpl
+            cmap = plt.cm.viridis
+            values = -np.log10(df[color_col])
+            values = values[np.isfinite(values)]
+
+            vmin = values.min()
+            vmax = values.max()
+            norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+
+            sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+            sm.set_array([])
+
+            # use your variable for placement: [x0, y0, width, height]
+            cax = ax.inset_axes([*color_legend_loc, 0.2, 0.2])  # width and height adjustable
+
+            cbar = plt.colorbar(sm, cax=cax)
+            cbar.set_label(color_legend_title, fontsize=10)
+            cbar.ax.tick_params(labelsize=9)
+
+        else:
+            raise ValueError(f"Unsupported palette type: {palette}")
+
+        
         ax.add_artist(size_legend_handle)
 
 def plot_feature_values_per_datasets(cell_type, features, type, datasets, feature_type='gene_expression', age_limit=[20, 75], cluster=False, figsize=None):
@@ -519,7 +644,7 @@ def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets,
     
     mean_expr_store = []
     for dataset in datasets:
-        adata = retrieve_feature_data(dataset, cell_type, type=type, feature_type=feature_type) 
+        adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, type=type, feature_type=feature_type) 
         adata = adata[(adata.obs['age'] > age_limit[0]) & (adata.obs['age'] < age_limit[1])]
         adata = adata[:, adata.var_names==feature]
         assert adata.shape[1] == 1, f"Feature {feature} not found in dataset {dataset} for cell type {cell_type}"
@@ -617,7 +742,7 @@ def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5), 
     # --- Plot ---
     tfs = df['tf'].unique()
     if plot_centrality:
-        fig, axes = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': [1.2, .5]})
+        fig, axes = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': [1.2, .8]})
     else:
         fig, axes = plt.subplots(1, 1, figsize=figsize)
 
@@ -693,6 +818,9 @@ def wrapper_drug_aging_overlap(
     import matplotlib.patches as mpatches
     import numpy as np
     import pandas as pd
+
+    if not pd.api.types.is_categorical_dtype(stats_drug_sig['cell_type']):
+        stats_drug_sig['cell_type'] = stats_drug_sig['cell_type'].astype('category')
 
     included_celltypes = stats_drug_sig['cell_type'].cat.categories 
 
@@ -952,7 +1080,8 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     from ciim.src.utils.plots import dotplot
     from matplotlib.colors import TwoSlopeNorm
     from ciim.src.common import cmap_trend, palette_trend_2, surrogate_names
-    from ciim.src.feature_association.helper import retrieve_stats_features, retrieve_sig_stats, retrieve_net
+    from ciim.src.feature_association.helper import retrieve_stats_features, retrieve_sig_stats
+    from ciim.src.utils.util import retrieve_net
     import matplotlib.gridspec as gridspec
     import pandas as pd
     import numpy as np
@@ -1359,7 +1488,7 @@ def heatmap_tf_validation(mean_expr, ax, cmap="magma"):
 
 def process_trends_validation(cell_type, dataset, cut_off=50):
     # - calculate mean activation across age groups
-    adata_all = retrieve_adata_bulk(dataset)
+    adata_all = retrieve_adata(dataset)
 
     adata = adata_all[adata_all.obs['cell_type'] == cell_type]
     nets = retrieve_net(dataset, cell_type)
@@ -1413,7 +1542,7 @@ def binarize_age(obs):
     obs['age_group'] = pd.cut(obs['age'], bins=bins, labels=age_groups, right=False)
     return obs
 def plot_trend_tfs(cell_type, tfs, type='bulk', dataset='data1', ax=None):
-    adata = retrieve_adata_bulk(dataset, type=type)
+    adata = retrieve_adata(dataset, type=type)
     adata = adata[adata.obs['cell_type'] == cell_type]
     nets = retrieve_net(dataset, cell_type)
     tf_acts = calculate_tf_activity(adata, nets)
@@ -1430,7 +1559,7 @@ def plot_trend_tfs(cell_type, tfs, type='bulk', dataset='data1', ax=None):
     sorted_tfs = mean_expr.index
     return sorted_tfs
 def plot_trend_targets_binarized(cell_type, genes, dataset='data1', ax=None):
-    adata = retrieve_adata_bulk(dataset)
+    adata = retrieve_adata(dataset)
     adata = adata[adata.obs['cell_type'] == cell_type]
     adata = adata[:, adata.var_names.isin(genes)]
     from ciim.src.process_dataset.preprocess.helper import binarize_age
@@ -2310,6 +2439,41 @@ class DotPlotTFtarget:
         data_all = data_all[data_all['target'].isin(top_targets)]
         return data_all
 
+def plot_overlap(stats_drugs, aging_stats_sig, cell_types, cfg, plots_dir, agreement="opposite", figsize=None):
+    comparisions = cfg["comparisons"]
+    show_sig_tfs = cfg["show_sig_tfs"]
+
+    if figsize is None:
+        figsize = (1 * len(comparisions), 1.5)
+    fig, axes = plt.subplots(1, len(comparisions), figsize=figsize, sharex=False, sharey=False)
+
+    for i, comp in enumerate(comparisions):
+        ax = axes[i] if len(comparisions) > 1 else axes
+        subset = stats_drugs if not show_sig_tfs else stats_drugs[stats_drugs["p_value_adj"] < 0.05]
+        stats_t = subset[subset["comparision"] == comp]
+
+        assert stats_t.shape[0] > 0, f"No TFs found for {comp}"
+        stats_t = stats_t[stats_t["cell_type"].isin(cell_types)]
+
+        legend = (i == len(comparisions) - 1)
+        wrapper_drug_aging_overlap(
+            stats_t[["tf", "cell_type", "slope_condition"]],
+            aging_stats_sig[["tf", "cell_type", "slope"]],
+            col="cell_type",
+            how="left",
+            agreement=agreement,
+            ax=ax,
+            legend=legend,
+            legend_loc=(1, 0.5),
+        )
+        # ax.set_title(comp, fontsize=12, fontweight="bold", pad=10)
+        if i > 0:
+            ax.set_ylabel("")
+            ax.spines["left"].set_visible(False)
+            ax.set_yticks([])
+        ax.set_xticks([])
+
+    
 # def plot_enrich(df, ax, palette, scale=50):
 #     sizes=None
 #     # Identify term-cell type pairs that have both Increase and Decrease

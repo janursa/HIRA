@@ -1,4 +1,5 @@
-bash_file="scripts/run_process_perturbation.sh"
+# bash_file="scripts/run_process_perturbation.sh"
+bash_file="scripts/run_train_nn.sh"
 jid=$(sbatch $bash_file | awk '{print $4}'); \
 out_file="logs/${jid}.out"; \
 err_file="logs/${jid}.err"; \

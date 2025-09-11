@@ -10,7 +10,7 @@ import scanpy as sc
 
 
 from ciim.src.common import base_dir, task_grn_benchmark_dir
-
+ 
 
 
 ## VIASH START
@@ -49,8 +49,14 @@ def main_perturbation(par):
     print('writing op_perturbation_bulk')
     print(bulk_adata)
 
-    bulk_adata.obs['age'] = 20 #TODO: fix this
-    bulk_adata.obs['sex'] = 'M' 
+    meta = pd.DataFrame({
+        "donor_id": ['donor_0', 'donor_1', 'donor_2'],
+        "age": [45, 52, 45],
+        "sex": ["Female", "Male", "Male"]
+    })
+
+    # join metadata into obs
+    bulk_adata.obs = bulk_adata.obs.merge(meta, left_on='donor_id', right_on='donor_id', how='left')
     
     bulk_adata.write(par['op_perturbation_bulk'])
 

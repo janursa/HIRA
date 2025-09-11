@@ -13,6 +13,7 @@ import platform
 
 if platform.system() == 'Linux':
     base_dir = '/vol/projects/jnourisa/'
+    # base_dir = '/home/jnourisa/projs/ongoing/ciim/'
     task_grn_benchmark_dir = '/home/jnourisa/projs/ongoing/task_grn_inference/'
 else:
     base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
@@ -32,6 +33,8 @@ surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All 
 
                     'data1': 'C1: European', 'data7_allTPs_jalil': 'C2: European', 'data12': 'C3: European',
                     'data13_Korean': 'C4: Korean', 'data13_Japanese': 'C4: Japanese',
+                    'op': 'OPSCA',
+                    'parsebioscience': 'Parse Bioscience',
                     
                     'SLE_Asian': 'C5: Asian',
                     'SLE_Asian_normal': 'C5: Asian Healthy',
@@ -39,6 +42,7 @@ surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All 
                     'SLE_European': 'C5: European',
                     'SLE_European_normal': 'C5: European Healthy',
                     'SLE_European_systemic lupus erythematosus': 'C5: European SLE',
+                    'CXCL9': 'CXCL9',
                     'Covid_50MHH': 'C6: Covid',
                     'normal': 'Healthy',
                     'systemic lupus erythematosus': 'SLE',
@@ -72,8 +76,26 @@ datasets_e = ['data1', 'data7_allTPs_jalil', 'data12', 'SLE_European']
 datasets_a = ['data13_Korean' , 'data13_Japanese']
 datasets_all = datasets_e + datasets_a
 
-# aging_clock_train_datasets = ['data1', 'data7_allTPs_jalil', 'SLE_European', 'data13_Japanese', 'data12', 'data13_Korean']
-aging_clock_train_datasets = ['data1', 'data7_allTPs_jalil', 'data12', 'data13_Japanese']
+aging_clock_train_datasets = [
+                'data1',
+                'data7_allTPs_jalil',
+                # 'SLE_European',
+                # 'data12',
+                # 'data13_Korean',
+
+                # 'data13_Japanese',
+                # # 
+                # 'parsebioscience', 
+                # 'op',
+                # 'CXCL9'
+                ]
+
+test_datasets = [
+                'SLE_European',
+                'data12',
+                'data13_Korean',
+                'data13_Japanese'
+                ]
 datasets_disease = ['SLE_European', 'Covid_50MHH']
 datasets_drug_perturbation = ['op', 'CXCL9']
 
@@ -86,8 +108,8 @@ colors_blind = [
           '#0072B2',  # Blue
           '#D55E00',  # Vermillion
           '#CC79A7']  # Reddish Purple
-set2_colors = sns.color_palette("Set2", n_colors=len(datasets_all)+2)
-palette_datasets = {d: color for d, color in zip(datasets_all+['collectri', 'Covid_50MHH'], set2_colors)}
+set2_colors = sns.color_palette("Set2", n_colors=len(datasets_all)+5)
+palette_datasets = {d: color for d, color in zip(datasets_all+['collectri', 'Covid_50MHH', 'CXCL9', 'op', 'parsebioscience'], set2_colors)}
 palette_datasets_pretty = {surrogate_names[d]:color for d, color in palette_datasets.items()}
 palette_regulation = {'Positive': '#56B4E9', 'Negative': 'lightcoral'}
 

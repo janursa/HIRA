@@ -20,6 +20,7 @@ from scipy.stats import mannwhitneyu
 from tqdm import tqdm
 from ciim.src.common import cell_types,base_dir, save_dir, mapping_major_2_minor, mapping_minor_2_major, minor_cell_types
 from scipy.sparse import issparse
+from ciim.src.utils.util import retrieve_adata, get_consensus_net, retrieve_net
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -60,31 +61,15 @@ def retrieve_feature_data(dataset, smoothened=False, cell_type=None, type='bulk'
 
     adata = ad.read_h5ad(file_path)
     if ('SLE' in dataset) & (condition == 'healthy'):
-        adata = adata[adata.obs['disease'] == 'normal'].copy()
+        adata = adata[adata.obs['condition'] == 'normal'].copy()
     if cell_type is not None:
         if cell_type not in adata.obs['cell_type'].unique():
-            raise ValueError(f'Given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
+            raise ValueError(f'Error in retrieving feature data: given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
         adata = adata[adata.obs['cell_type'] == cell_type]
     return adata
-# def retrieve_feature_data(dataset, cell_type=None, type='bulk', feature_type='tf_activity', condition='healthy'):
-#     from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
-
-#     # cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-#     file_path = f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad'
-#     if os.path.exists(file_path) == False:
-#         raise ValueError(f'File {file_path} does not exist')
-
-#     adata = ad.read_h5ad(file_path)
-#     if ('SLE' in dataset) & (condition == 'healthy'):
-#         adata = adata[adata.obs['disease'] == 'normal'].copy()
-#     # adata = adata[adata.obs['condition'] == condition].copy()
-#     if cell_type is not None:
-#         if cell_type not in adata.obs['cell_type'].unique():
-#             raise ValueError(f'Given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
-#         adata = adata[adata.obs['cell_type'] == cell_type]
-#     return adata
 
 def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activity'):
+    # print('writing here: ', f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
     adata.write_h5ad(f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
 
 def retrieve_sig_stats(type='bulk', feature_type='tf_activity', race='both', filter_inconsistent=True, cell_type=None):
@@ -118,7 +103,6 @@ def retrieve_sig_net(type='bulk', race='both', cell_type=None):
 
 def determine_sig_network(type, race='both', min_degree=3):
     os.makedirs(f'{save_dir}/sig_nets', exist_ok=True)
-    from ciim.src.feature_association.helper import retrieve_nets
     stats_tfs = retrieve_sig_stats(type, feature_type='tf_activity')
     stats_targets = retrieve_sig_stats(type, feature_type='gene_expression')
     if race == 'european':
@@ -176,7 +160,7 @@ def bin_feature_values(adata):
 
 
 
-def determine_stats_condition(adata, association_type='spearman', ctr_group='normal', condition_col='disease', test_type='unpaired', conditions=None):
+def determine_stats_condition(adata, association_type='spearman', ctr_group='normal', condition_col='condition', test_type='unpaired', conditions=None):
     from scipy.stats import wilcoxon
     from scipy.sparse import issparse
     from scipy.stats import mannwhitneyu
@@ -188,7 +172,6 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
     name_mapping = {'normal': 'healthy', 'systemic lupus erythematosus': 'SLE'}
     stats_all = []
     if 'SLE' in dataset:
-        
         # case 1: association with age in healhty and disease samples
         for group in conditions:
             adata_sub = adata[adata.obs[condition_col] == group]
@@ -206,8 +189,7 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
         
         control_group = adata.X[mask_ctr, :]
         case_group = adata.X[mask_condition, :]
-
-        if (np.sum(mask_condition) < 5) or (np.sum(mask_ctr) < 5):
+        if (np.sum(mask_condition) < 3) or (np.sum(mask_ctr) < 3):
             print('Not enough samples for', condition, ' vs ', ctr_group)
             return None
         results = []
@@ -232,30 +214,26 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
                 stat, pval = ttest_rel(values_case, values_control)
                 coef = np.median(values_case) - np.median(values_control)
             elif test_type == 'mixed-effect':
-                import warnings
-                warnings.filterwarnings("ignore")
-                donors_ctr = adata.obs.loc[mask_ctr, 'donor_id']
-                donors_case = adata.obs.loc[mask_condition, 'donor_id']
-                df = pd.DataFrame({
-                    "G": np.concatenate([values_control, values_case]), 'donor_id': np.concatenate([donors_ctr, donors_case]), 'condition': [ctr_group]*len(donors_ctr) + [condition]*len(donors_case)
-                    })
-                df['condition'] = pd.Categorical(df['condition'], categories=[ctr_group, condition], ordered=True)
-                model = smf.mixedlm("G ~ condition", df, groups=df["donor_id"])
-                try:
-                    result = model.fit()
-                    # print(gene,result.summary())
-                    coef = result.params[f'condition[T.{condition}]']
-                    pval = result.pvalues[f'condition[T.{condition}]']
-                except Exception as e:
-                    coef = np.nan
-                    pval = np.nan
+                from ciim.src.utils.util import test_mixed_effects
                 
-
-                values_case = None
-                values_control = None
+                obs_ctr = adata.obs.loc[mask_ctr, :]
+                obs_ctr['feature_values'] = values_control
+                obs_ctr['condition'] = ctr_group
+                obs_case = adata.obs.loc[mask_condition, :]
+                obs_case['condition'] = condition
+                obs_case['feature_values'] = values_case
+                
+                df = pd.concat([obs_ctr, obs_case])
+                                
+                pval, coef = test_mixed_effects(dataset, df, ctr_group, condition, target_variable='feature_values')
+   
             else:
                 raise ValueError('Unknown test type')
-
+            if np.isnan(pval):
+                print(f'{dataset} {gene} {condition} vs {ctr_group} p-value: {pval:.4f}, coef: {coef:.4f}')
+                print(f'values_case: {values_case}, values_control: {values_control}, i {i}')
+                raise ValueError('NaN p-value')
+            
             results.append({
                 "tf": gene,
                 "p_value": pval,
@@ -286,7 +264,10 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
             stats_df = stats_condition_vs_ctr(adata_sub, condition)
             if stats_df is None:
                 continue
+
             stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
+            assert np.any(np.isnan(stats_df['p_value_adj']) == False), f'NaN p-values in {stats_df}'
+            
             stats_df['age_group'] = age_subset
             stats_all.append(stats_df)
     
@@ -380,6 +361,7 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
     datasets = par['datasets']
     feature_type = par['feature_type']
     data_type = par['type']
+    cell_types = par['cell_types']
 
     print(f'Association {feature_type} with age/disease...')
     if 'minor' in data_type:
@@ -391,20 +373,22 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
         # ----------- calculate tf activity for all datasets
         for dataset in datasets:
             try:
-                adata = retrieve_feature_data(dataset, cell_type, data_type, feature_type=feature_type, condition=condition)
+                adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, type=data_type, feature_type=feature_type, condition=condition)
+                adata = adata[:, adata.var_names.isin(features)] if features is not None else adata
             except ValueError as e:
                 print(e)
                 continue
-
+            # print(adata)
             # - add which cell type resolution to run the analysis
             adata_sub = adata[adata.obs[par['cell_type_resolution']]==cell_type]
-            if adata_sub.shape[0] < 10:
+            if adata_sub.shape[0] < 3:
                 print('Not enough samples for', cell_type, dataset)
                 continue
             
             # - subset based on prior (only for target genes) -> add this to meta analysis
             genes = adata_sub.var_names
             adata_sub = adata_sub[:, adata_sub.var_names.isin(genes)]
+
             if issparse(adata_sub.X):
                 adata_sub.X = adata_sub.X.toarray()
             if ('SLE' in dataset):
@@ -412,58 +396,73 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
             elif ('Covid' in dataset):
                 stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col='Max_WHO_Group', ctr_group='mild', association_type=par['association_type'])
             elif dataset == 'CXCL9':
-                stats_1 = determine_stats_condition(adata_sub, ctr_group='24 h RPMI', condition_col='treatment', test_type=test_type)
-                stats_2 = determine_stats_condition(adata_sub, ctr_group='24 h LPS', condition_col='treatment', test_type=test_type,  conditions=['24 h LPS + metformin', '24 h LPS + metformin + ruxolitinib', '24 h LPS + ruxolitinib'])
-                stats = pd.concat([stats_1, stats_2])
+                stats_store_l = []
+                stats = determine_stats_condition(adata_sub, ctr_group='24 h RPMI', condition_col='condition', test_type=test_type,
+                                                conditions=['24 h RPMI + ruxolitinib'])
+                stats_store_l.append(stats)
+                stats = determine_stats_condition(adata_sub, ctr_group='24 h LPS', condition_col='condition', test_type=test_type,  
+                                                conditions=['24 h LPS + ruxolitinib']#['24 h LPS + metformin', '24 h LPS + metformin + ruxolitinib', '24 h LPS + ruxolitinib'])
+                )
+                stats_store_l.append(stats)
+                
+                stats = pd.concat(stats_store_l)
+            elif dataset=='op':
+                if 'condition' in adata_sub.obs.columns:
+                    pertub_col = 'condition'
+                elif 'perturbation' in adata_sub.obs.columns:
+                    pertub_col = 'perturbation'
+                else:
+                    raise ValueError('No condition or perturbation column in op dataset')
+
+                stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col=pertub_col, 
+                            ctr_group='Dimethyl Sulfoxide', association_type=par['association_type'], conditions=['Ruxolitinib'])
+            elif dataset=='parsebioscience':
+                stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col='condition', 
+                            ctr_group='PBS', association_type=par['association_type'], conditions=['IL-10'])
+            
             else:
                 stats = association_with_age(adata_sub, association_type=par['association_type'])
                 stats['condition'] = 'healthy'
+            if stats is None or len(stats) == 0:
+                print('No stats for', cell_type, dataset)
+                continue
             stats['dataset'] = dataset
             stats['cell_type'] = cell_type
             
             stats_store.append(stats)
-        
-    stats_all = pd.concat(stats_store)
+    assert len(stats_store)>0, 'No stats calculated, something went wrong'
+    if len(stats_store) == 1:
+        stats_all = stats
+    else:
+        stats_all = pd.concat(stats_store)
+    print(stats_all['cell_type'].unique())
     if feature_type == 'gene_expression':
         stats_all.rename(columns={'tf': 'target'}, inplace=True)
 
     return stats_all
 
 def wrapper_tf_activity(par):
-    # --------- load data
     print('Loading data...')
     data_type = par['type']
     cell_types = par['cell_types']
     datasets = par['datasets']
     cell_type_col = par['cell_type_resolution']
-
-    # - calculate tf activity for all datasets
     print('Calculating TF activity...')
     stats_store = []
-    # ----------- calculate tf activity for all datasets
     for dataset in datasets:
         print(dataset, data_type)
-        adata = retrieve_adata_bulk(dataset, data_type)
+        adata = retrieve_adata(dataset, data_type)
         cell_types_l = adata.obs[cell_type_col].unique()
-        all_types = list(minor_cell_types)+list(cell_types)
-        cell_types_l = [t for t in cell_types_l if t in all_types]
+        cell_types_l = [ct for ct in cell_types_l if ct in cell_types]
         for cell_type in tqdm(cell_types_l, desc='cell types'):
             adata_t = adata[adata.obs[cell_type_col]==cell_type]
-            if dataset == 'Covid_50MHH':
-                # net = retrieve_net(dataset, cell_type)
-                net = get_consensus_net(datasets=datasets_all, cell_type=cell_type)
-            else:
-                # net = retrieve_net(dataset, cell_type)
-                net = get_consensus_net(datasets=datasets_all, cell_type=cell_type)
-
-            if adata.shape[0] < 10:
+            net = get_consensus_net(datasets=datasets_all, cell_type=cell_type)
+            if adata_t.shape[0] < 10:
                 continue
-            tf_acts = calculate_tf_activity(adata, net)
+            tf_acts = calculate_tf_activity(adata_t, net)
             tf_acts.obs['dataset'] = dataset
             tf_acts.uns['dataset'] = dataset
-            
             tf_acts = tf_acts[tf_acts.obs['age'].isna()==False] # there is a bug in the code that causes age to be NaN
-
             write_feature_data(tf_acts, dataset, cell_type, data_type)
 
 def wrapper_gene_score(par):
@@ -476,7 +475,7 @@ def wrapper_gene_score(par):
 
     # --------- load data
     print('Loading data...')
-    adata_dict = {dataset: retrieve_adata_bulk(dataset, type) for dataset in datasets}
+    adata_dict = {dataset: retrieve_adata(dataset, type) for dataset in datasets}
 
     pathways = get_genesets()
     
@@ -528,15 +527,13 @@ def wrapper_gene_score(par):
             adata_scores = sc.AnnData(X=X_df.values, obs=obs, var=var)
             write_feature_data(adata_scores, dataset, cell_type, type, feature_type=feature_type)
 
-
-    
 def wrapper_gene_expression(par):
     # --------- load data
     cell_types = par['cell_types']
     type = par['type']
     datasets = par['datasets']
     print('Loading data...')
-    adata_dict = {dataset: retrieve_adata_bulk(dataset, type) for dataset in datasets}
+    adata_dict = {dataset: retrieve_adata(dataset, type) for dataset in datasets}
 
     print('Calculating gene expression...')
     stats_store = []
@@ -619,7 +616,6 @@ def association_with_age(adata, association_type, gene_col='tf'):
                 slope, p_value = spearmanr(ages, expression)
             if abs(slope)>1:
                 print('Slope is too high for', gene, slope, association_type)
-                aaa
             p_value_store.append({
                 gene_col: gene, 
                 'p_value': p_value,
