@@ -147,28 +147,29 @@ def format_data(datasets, cell_type=None, data_type='bulk', only_ctr=False, only
     if only_targets:
         from ciim.src.common import datasets_all
         assert cell_type is not None, "cell_type must be specified to filter for target genes"
-        net = get_consensus_net(datasets_all, cell_type)
+        # min_degree = min(len(aging_clock_train_datasets), 4)
+        net = get_consensus_net(datasets_all, cell_type, min_degree=3)
         target_genes = net['target'].unique()
         adata_train = adata_train[:, adata_train.var_names.isin(target_genes)].copy()
 
     return adata_train
 def align_feature_space(adata, gene_names):
 
-    var_names = np.array(adata.var_names)
+    var_names = np.array(adata.var.index.tolist())
     var_index = {gene: i for i, gene in enumerate(var_names)}
 
     # Collect indices or mark as -1 for missing
     idxs = np.array([var_index.get(gene, -1) for gene in gene_names])
 
     # Create a matrix with correct shape
-    rows = adata.shape[0]
+    rows = adata.obs.shape[0]
     cols = len(gene_names)
     X_aligned = sparse.lil_matrix((rows, cols))
 
     # Fill in available gene columns
     present = idxs != -1
     if present.sum() > 0:
-        X_aligned[:, present] = adata.X[:, idxs[present]]
+        X_aligned[:, present] = adata[:].X[:, idxs[present]]
 
     # Convert to CSR for efficiency
     X_aligned = X_aligned.tocsr()

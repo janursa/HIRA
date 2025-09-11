@@ -3,7 +3,7 @@ import scanpy as sc
 
 
 
-data_type = 'bulk'
+data_type = 'sc'
 cell_type_train = None
 if cell_type_train is not None:
     run_id=f'{cell_type_train}_{data_type}' #'try1'

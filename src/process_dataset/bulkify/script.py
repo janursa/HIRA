@@ -36,7 +36,7 @@ parser.add_argument('--bulk_F',
 args = parser.parse_args()
 
 ## VIASH END
-from ciim.src.utils.util import bulkify_func
+from task_grn_inference.src.process_data.helper_data import bulkify_func
 
 def normalize(adata):
     sc.pp.normalize_total(adata, target_sum=1e6)
@@ -52,8 +52,19 @@ if __name__ == '__main__':
     if 'treatment' in adata.obs.columns:
         covariates.append('treatment')
     
+    dataset = adata.obs['dataset'].unique()[0]
+    if dataset == 'op':
+        covariates = ['cell_type', 'plate_name', 'condition', 'well', 'donor_id']
+    elif dataset == 'CXCL9':
+        covariates = ['cell_type', 'pool_id', 'condition', 'donor_id']
+        
+    
     adata_bulk_major_celltypes = bulkify_func(adata, covariates=covariates)
     adata_bulk_major_celltypes = normalize(adata_bulk_major_celltypes)
+    low_cells = adata_bulk_major_celltypes.obs['cell_count'] < 10
+    print(f'Dropping {low_cells.sum()} bulk samples with less than 10 cells')
+    adata_bulk_major_celltypes = adata_bulk_major_celltypes[~low_cells].copy()
+    print(adata_bulk_major_celltypes.shape)
     adata_bulk_major_celltypes.write(args.bulk_all)
 
     # - bulk minor

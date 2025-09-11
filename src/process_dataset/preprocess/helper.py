@@ -41,20 +41,52 @@ def qc_check(adata):
     sc.pp.filter_cells(adata, max_genes=5000)
     # - in filtering, consider the number of donors
     n_donors = adata.obs['donor_id'].nunique()
-
-    # E.g., require gene to be expressed in at least 20% of donors, ~1 cell per donor
-    min_cells_per_donor = 5
+    min_cells_per_donor = 10
     min_cells = int(n_donors * min_cells_per_donor)
-
-    # Add a lower bound to avoid being too permissive
     min_cells = max(min_cells, 10)
 
     # Apply filters
     sc.pp.filter_genes(adata, min_cells=min_cells)
     sc.pp.filter_genes(adata, min_counts=1)
     print('Shape after filtering:', adata.shape)
-    return adata
 
+    return adata
+def qc_post_annotation(adata, par):
+    if 'condition' in adata.obs.columns and 'cell_type' in adata.obs.columns:
+        print(f'Filtering based on condition + cell_type combinations')
+        min_cells_per_group = 10
+        group_counts = adata.obs.groupby(['condition', 'cell_type']).size()
+        keep_groups = group_counts[group_counts >= min_cells_per_group].index
+        mask = adata.obs.set_index(['condition', 'cell_type']).index.isin(keep_groups)
+        adata = adata[mask].copy()
+        print(f"Kept {len(keep_groups)} condition+cell_type groups (>= {min_cells_per_group} cells each) out of {len(group_counts)} total")
+    sample_size = adata.obs.groupby('donor_age', as_index=False).size()
+    sample_size = sample_size[sample_size['size']>par['n_cell_t']]
+    adata = adata[adata.obs['donor_age'].isin(sample_size.donor_age)]
+    print('size after filtering for donor sinlge cell count: ', adata.shape)
+
+    return adata
+def format_data(adata, dataset_name):
+    if dataset_name == 'op':
+        adata.obs = adata.obs.rename(columns={'sm_name':'perturbation'})
+        adata.obs['is_control'] = adata.obs['perturbation'].isin(['Dimethyl Sulfoxide'])
+        adata.obs['is_positive_control'] = adata.obs['perturbation'].isin(['Dabrafenib', 'Belinostat'])
+        
+        meta = pd.DataFrame({
+            "donor_id": ['Donor 1', 'Donor 2', 'Donor 3'],
+            "age": [45, 52, 45],
+            "sex": ["Female", "Male", "Male"]
+        })
+
+        # join metadata into obs
+        adata.obs = adata.obs.merge(meta, left_on='donor_id', right_on='donor_id', how='left')
+        print(adata.obs)
+
+    adata.obs.rename(columns={'perturbation':'condition', 'disease':'condition', 'treatment':'condition'}, inplace=True)
+    adata.obs.rename(columns={'orig.ident': 'dataset'}, inplace=True)
+    adata.obs = adata.obs.astype('str')
+    adata.obs['donor_age'] = adata.obs['age'].astype(str) + '_' + adata.obs['donor_id'].astype(str)
+    return adata
 def annotate_celltypes(adata):
     print('Annotating cell types...')
     adata.layers['counts'] = adata.X.copy()
@@ -158,47 +190,21 @@ def annotate_celltypes(adata):
     adata.obs = adata.obs.join(adata_for_celltypist.obs[['Major_CT', 'Sub_CT']])
     adata.X = adata.layers["counts"]
     del adata.layers
-    return adata
 
-def trim_adata(adata):
-    adata.var = adata.var[[]]
-    # adata.obs = adata.obs[['orig.ident', 'donor_id', 'age', 'sex', 'batch_info', 'ct_major_published', 'Major_CT', 'Sub_CT']]
-    if hasattr(adata, 'uns'):
-        del adata.uns
-    if hasattr(adata, 'raw'):
-        del adata.raw
-    return adata
-
-
-def binarize_age(obs):
-    obs = obs.copy()
-    obs['donor_age'] = obs['age'].astype(str) + '_' + obs['donor_id'].astype(str)
-    obs['age'] = pd.to_numeric(obs['age'], errors='coerce')
-    # min_age = obs.age.min()
-    # bins = [min_age, 35, 45, 55, 65, 75, 100]  
-    # age_groups = ['34-', '35_44', '45_54', '55_64', '65_75', '75+']  
-    # obs['age_group'] = pd.cut(obs['age'], bins=bins, labels=age_groups, right=False)
-    return obs
-
-def process_obs(obs, par):
-    # - cleanup
-    # obs_cols = ['orig.ident', 'donor_id', 'age', 'Major_CT', 'Sub_CT', 'sex']
-    # obs = obs[obs_cols]
-    obs['dataset'] = obs['orig.ident']
-    obs['cell_type'] = obs['Major_CT']
-    
-    obs = binarize_age(obs)
+    adata.obs['cell_type'] = adata.obs['Major_CT']
     major_cell_types = ["MONO", "NK", "B", "CD8T", "CD4T"]
-    obs = obs[obs['cell_type'].isin(major_cell_types)]
+    adata = adata[adata.obs['cell_type'].isin(major_cell_types)]
+    
+    return adata
 
-    # - actual processing
-    print('Original size: ', obs.shape)
-    obs['donor_id'] = obs['donor_id'].astype(str)
-    # - filter samples with low cell counts
-    sample_size = obs.groupby('donor_age', as_index=False).size()
-    sample_size = sample_size[sample_size['size']>par['n_cell_t']]
-    obs = obs[obs['donor_age'].isin(sample_size.donor_age)]
-    print('size after filtering for donor sinlge cell count: ', obs.shape)
 
-    assert not obs.isna().any().any()
-    return obs
+
+# def binarize_age(obs):
+#     obs = obs.copy()
+#     obs['donor_age'] = obs['age'].astype(str) + '_' + obs['donor_id'].astype(str)
+#     obs['age'] = pd.to_numeric(obs['age'], errors='coerce')
+#     # min_age = obs.age.min()
+#     # bins = [min_age, 35, 45, 55, 65, 75, 100]  
+#     # age_groups = ['34-', '35_44', '45_54', '55_64', '65_75', '75+']  
+#     # obs['age_group'] = pd.cut(obs['age'], bins=bins, labels=age_groups, right=False)
+#     return obs

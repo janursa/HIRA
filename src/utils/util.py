@@ -39,8 +39,6 @@ def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20):
     else:
         adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
 
-    
-
     if 'age' not in adata.obs.columns:
         print('Warning: "age" column not found in adata.obs. Setting to default age of 20.')
         adata.obs['age'] = 20
@@ -48,7 +46,6 @@ def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20):
     if ('lognorm' in adata.layers) | ('X_norm' in adata.layers):
         print(f'Using layer {("lognorm" if "lognorm" in adata.layers else "X_norm")}')
         adata.X = adata.layers['lognorm'] if 'lognorm' in adata.layers else adata.layers['X_norm']
-        
 
     adata.obs['dataset'] = dataset
     adata = adata[:, adata.var_names.isin(gene_names)]
@@ -60,14 +57,14 @@ def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20):
         adata = adata[adata.obs['cell_type'] == cell_type]
     if 'age' in adata.obs.columns:
         adata = adata[~adata.obs['age'].isna()].copy()
-        adata.obs['age'] = adata.obs['age'].astype(int)
+        adata.obs['age'] = adata.obs['age'].astype(float).astype(int)
         adata = adata[adata.obs['age'] >= age_limit].copy()  
     if 'sex' in adata.obs.columns:
         adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
 
     if dataset not in ['ibd']:
-        adata.obs.rename({'perturbation': 'condition', 'disease': 'condition', 'treatment': 'condition'}, axis=1, inplace=True)
-
+        adata.obs.rename({'perturbation': 'condition', 'disease': 'condition', 'treatment': 'condition', 'Max_WHO_Group': 'condition'}, axis=1, inplace=True)
+    
     if 'condition' not in adata.obs.columns:
         adata.obs['condition'] = 'normal'
 
@@ -86,10 +83,13 @@ def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20):
         ctr_key = '24 h RPMI'
     elif dataset == 'ibd':
         ctr_key = None
+    elif dataset == 'Covid_50MHH':
+        ctr_key = None
     else:
         raise ValueError(f'No control condition found for {dataset}.')
 
     adata.obs.loc[:, 'is_control'] = adata.obs['condition'] == ctr_key
+    
 
     adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + adata.obs['age'].astype(str)
         
@@ -99,10 +99,7 @@ def retrieve_net(dataset, cell_type, only_promotor_based=False, c_t=5):
     from ciim.src.common import save_dir
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
-    if dataset == 'CXCL9':
-        net = get_consensus_net(cell_type=cell_type_major)
-    else:
-        net = pd.read_csv(f"{save_dir}/grns/{dataset}/net_{cell_type_major}_all_agegroups_all_batches.csv")
+    net = pd.read_csv(f"{save_dir}/grns/{dataset}/net_{cell_type_major}_all_agegroups_all_batches.csv")
     gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
     net = net[net['target'].isin(gene_names)]
     if False:
@@ -127,7 +124,7 @@ def retrieve_nets(datasets, cell_type, only_promotor_based=False):
     nets = pd.concat(net_store, ignore_index=True)
     return nets
 
-def get_consensus_net(datasets=datasets_all, cell_type='CD8T', min_degree=4):
+def get_consensus_net(datasets=datasets_all, cell_type='CD8T', min_degree=3):
     from scipy.stats import zscore
     net_store = []
     for dataset in datasets:
@@ -626,6 +623,9 @@ def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_a
     elif dataset == 'parsebioscience':
         fixed_effects=['condition', 'cell_type_minor']
         group_key='donor_id'
+    elif dataset == 'CXCL9':
+        fixed_effects=['condition']
+        group_key='donor_id'
     else:
         raise ValueError('Unknown dataset for mixed effects')
     import statsmodels.formula.api as smf
@@ -645,6 +645,7 @@ def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_a
     result = model.fit()
     pval = result.pvalues['condition']
     coef = result.params['condition']
+    
     return pval, coef
 
 def test_paired(df, ctr, treatment):

@@ -128,12 +128,6 @@ def filter_func(bulk_adata, cell_counts_t):
     for key in ['cell_type','plate_name']:
         bulk_adata_filtered.obs[key] = bulk_adata_filtered.obs[key].astype(str)
     return bulk_adata_filtered
-def normalize_func(adata):
-    X_norm = sc.pp.normalize_total(adata, inplace=False)['X']
-    X_norm = sc.pp.log1p(X_norm, copy=False)
-    adata.layers['X_norm'] = X_norm
-    
-    return adata
 
 def pseudobulk_sum_func(sc_counts):
     # pseudobulk

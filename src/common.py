@@ -79,14 +79,22 @@ datasets_all = datasets_e + datasets_a
 aging_clock_train_datasets = [
                 'data1',
                 'data7_allTPs_jalil',
-                'SLE_European',
-                'data13_Korean',
+                # 'SLE_European',
+                # 'data12',
+                # 'data13_Korean',
 
-                'data13_Japanese',
-                'data12',
+                # 'data13_Japanese',
+                # # 
                 # 'parsebioscience', 
                 # 'op',
                 # 'CXCL9'
+                ]
+
+test_datasets = [
+                'SLE_European',
+                'data12',
+                'data13_Korean',
+                'data13_Japanese'
                 ]
 datasets_disease = ['SLE_European', 'Covid_50MHH']
 datasets_drug_perturbation = ['op', 'CXCL9']

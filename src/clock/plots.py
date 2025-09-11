@@ -313,3 +313,167 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset):
     # plt.suptitle(f"Age shift in {disease_name}", fontsize=13, y=1.05, weight='bold')
     plt.tight_layout()
     # plt.show()
+def plot_experiment(test_type, df_all, ctr, treatment, cell_type, pval_map, ax=None):
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(2, 2))
+    assert test_type in ['paired', 'unpaired', 'mixed_effect']
+
+    # subset data
+    df_sub = df_all[df_all['condition'].isin([ctr, treatment])].copy()
+
+    # map donor IDs to pretty names
+    donor_ids = df_sub['test_group'].unique()
+    donor_pretty = {did: f"Donor {i+1}" for i, did in enumerate(donor_ids)}
+    df_sub['test_group_pretty'] = df_sub['test_group'].map(donor_pretty)
+
+    # create donor palette
+    donors = df_sub['test_group_pretty'].unique()
+    donor_palette = dict(zip(
+        donors,
+        sns.color_palette("husl", len(donors))
+    ))
+
+    if test_type == "paired":
+        # pivot to ensure donors have both conditions
+        df_pivot = df_sub.pivot_table(index='test_group_pretty', columns='condition', values='predicted_age')
+        df_pivot = df_pivot.dropna(subset=[ctr, treatment], how='any')
+
+        df_plot = df_pivot.reset_index().melt(
+            id_vars='test_group_pretty',
+            value_vars=[ctr, treatment],
+            var_name='condition',
+            value_name='predicted_age'
+        )
+
+        sns.lineplot(
+            data=df_plot,
+            x='condition', y='predicted_age',
+            hue='test_group_pretty', marker='o', alpha=0.6,
+            ax=ax, palette=donor_palette, legend=True
+        )
+    else:
+        # donor-colored scatter dots
+        sns.stripplot(
+            data=df_sub,
+            x='condition', y='predicted_age',
+            order=[ctr, treatment],
+            dodge=False, jitter=True,
+            hue='test_group_pretty',
+            palette=donor_palette,
+            ax=ax, alpha=0.7
+        )
+        ax.legend_.set_title("Donor")
+
+    # add stats annotation
+    pval, slope = pval_map.get((cell_type, ctr, treatment), (1.0, 0))
+    star = '***' if pval < 0.001 else '**' if pval < 0.01 else '*' if pval < 0.05 else ''
+
+    y_max = df_sub['predicted_age'].max()
+    y_bracket = y_max + 7
+    h = 2
+
+    ax.plot([0, 0, 1, 1], [y_bracket - h, y_bracket, y_bracket, y_bracket - h],
+            lw=1.5, c='black')
+    ax.text(0.5, y_bracket + 1, f"{slope:.2f} yrs {star}\n(p={pval:.3g})",
+            ha='center', va='bottom', fontsize=10)
+
+    ax.set_xlabel("")
+    ax.set_ylabel("Predicted Age")
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
+    ax.margins(x=0.1, y=0.3)
+    ax.spines[['top', 'right']].set_visible(False)
+
+    return ax
+
+
+def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="Control", 
+            figsize=None,  margins=(0.2, 0.2), name_mapping={},
+            bbox_to_anchor=(1, 1), max_len=15, ha='left'):
+    """
+    Strip plot showing treatment-control differences for all significant treatments.
+    Each dot is one donor/sample, colored by donor ID.
+    """
+    if not group_exps:
+        return None
+
+    df_plot = []
+    donors_all = sorted(df_all['test_group'].unique())
+    donor_map = {d: f"Donor {i+1}" for i, d in enumerate(donors_all)}  # Pretty names
+
+    # Build mapping: treatment -> control
+    treatment_to_ctr = {}
+
+    for ctr, treatment in group_exps:
+        df_sub = df_all[df_all['condition'].isin([ctr, treatment])].copy()
+        df_pivot = df_sub.pivot_table(index='test_group', columns='condition', values='predicted_age')
+        if df_pivot.empty:
+            continue
+
+        diff = df_pivot[treatment] - df_pivot[ctr]
+        if group_name == "Rejuvenating":
+            diff = -diff
+
+        for donor, val in diff.items():
+            df_plot.append({
+                'treatment': treatment,
+                'diff': val,
+                'p_value': pval_map.get((cell_type, ctr, treatment), (1.0, 0))[0],
+                'donor': donor_map[donor]
+            })
+
+        # store control for later pval lookup
+        treatment_to_ctr[treatment] = ctr
+    if not df_plot:
+        return None
+
+    df_plot = pd.DataFrame(df_plot)
+    # Sort treatments by mean difference
+    order = df_plot.groupby('treatment')['p_value'].mean().sort_values(
+        ascending=True
+    ).index
+
+    # Plot strip
+    extra_space = 1 if len(order) > 4 else 3
+    if figsize is None:
+        figsize = (.4*len(order)+extra_space, 3)
+    fig, ax = plt.subplots(figsize=figsize)
+    donors = sorted(df_plot['donor'].unique(), key=lambda x: int(x.split(' ')[1]))
+    donor_palette = dict(zip(donors, sns.color_palette("husl", len(donors))))
+
+    sns.stripplot(
+        data=df_plot,
+        x='treatment',
+        y='diff',
+        order=order,
+        size=6,
+        hue='donor',
+        palette=donor_palette,
+        jitter=False,
+        ax=ax,
+        hue_order=donors 
+    )
+    
+
+    # Annotate above the dots
+    for i, treatment in enumerate(order):
+        mean_diff = df_plot[df_plot['treatment']==treatment]['diff'].mean()
+        max_diff = df_plot[df_plot['treatment']==treatment]['diff'].max()
+        ctr = treatment_to_ctr[treatment]  # get correct control
+        pval, slope = pval_map.get((cell_type, ctr, treatment))
+        text = f"{pval:.2}"
+        y_loc = max_diff + .1*max_diff
+        ax.text(i, y_loc, text, ha='center', va='bottom', fontsize=8, rotation=45)
+
+    # Trim x-tick labels
+    # ax.set_xticklabels([t[:25] for t in order], rotation=45, ha='right')
+    ax.set_xticklabels([name_mapping.get(t, t)[:max_len] for t in order], rotation=45, ha=ha)
+    ax.margins(x=margins[0], y=margins[1])
+    # Update y-axis label
+    ylabel = "Age rejuvenation (yrs)" if group_name=="Rejuvenating" else "Age acceleration (yrs)"
+    ax.set_ylabel(ylabel)
+    ax.set_xlabel('')
+    ax.set_title(f"{cell_type}", fontsize=12, weight='bold', pad=40)
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.legend(title="", bbox_to_anchor=bbox_to_anchor, loc='upper left', frameon=False, labelspacing=0.2,)
+    plt.tight_layout()
+    return fig, ax

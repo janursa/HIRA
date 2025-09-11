@@ -223,50 +223,52 @@ def wrapper_build_model_cell_type(cell_type, par):
 
     # Run CV again to get per-group scores
     if reg_type != 'NN':
-        X = adata_all.X
-        y = adata_all.obs['age'].values
-        if issparse(X):
-            X = X.toarray()
-        from scipy.stats import spearmanr
-        ordered_test_groups, cv = get_custom_cv(batch_labels)
-        fold_scores = {}
-        all_preds = []  # Store predictions here
+        if False:
+            X = adata_all.X
+            y = adata_all.obs['age'].values
+            if issparse(X):
+                X = X.toarray()
+            from scipy.stats import spearmanr
+            ordered_test_groups, cv = get_custom_cv(batch_labels)
+            fold_scores = {}
+            all_preds = []  # Store predictions here
 
-        for i, code in enumerate(ordered_test_groups):
-            train_idx, test_idx = cv[i]
+            for i, code in enumerate(ordered_test_groups):
+                train_idx, test_idx = cv[i]
 
-            model.fit(X[train_idx], y[train_idx])
-            y_true = y[test_idx]
-            y_pred = model.predict(X[test_idx])
+                model.fit(X[train_idx], y[train_idx])
+                y_true = y[test_idx]
+                y_pred = model.predict(X[test_idx])
 
-            # Calculate scores
-            spearman_corr = spearmanr(y_true, y_pred).correlation
-            r2 = r2_score(y_true, y_pred)
+                # Calculate scores
+                spearman_corr = spearmanr(y_true, y_pred).correlation
+                r2 = r2_score(y_true, y_pred)
 
-            # Store rounded scores
-            dataset_name = dataset_code_map[code]
-            fold_scores[dataset_name] = {
-                'spearman': round(spearman_corr, 3),
-                'r2': round(r2, 3)
-            }
+                # Store rounded scores
+                dataset_name = dataset_code_map[code]
+                fold_scores[dataset_name] = {
+                    'spearman': round(spearman_corr, 3),
+                    'r2': round(r2, 3)
+                }
 
-            # Store predictions
-            pred_df = pd.DataFrame({
-                'age': y_true,
-                'predicted_age': y_pred,
-                'dataset': dataset_name,
-                'fold': i,
-                'cell_type': cell_type
-            }) 
-            all_preds.append(pred_df)
+                # Store predictions
+                pred_df = pd.DataFrame({
+                    'age': y_true,
+                    'predicted_age': y_pred,
+                    'dataset': dataset_name,
+                    'fold': i,
+                    'cell_type': cell_type
+                }) 
+                all_preds.append(pred_df)
 
-        # Save scores
-        scores_df = pd.DataFrame.from_dict(fold_scores, orient='index')
-        scores_df.to_csv(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_cv_scores.csv")
+            # Save scores
+            scores_df = pd.DataFrame.from_dict(fold_scores, orient='index')
+            scores_df.to_csv(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_cv_scores.csv")
 
-        # Save predictions
-        predictions_df = pd.concat(all_preds)
-        predictions_df.to_csv(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_cv_predictions.csv")
+            # Save predictions
+            predictions_df = pd.concat(all_preds)
+            predictions_df.to_csv(f"{par['temp_dir']}/{cell_type}_{data_type}_{feature_type}_{reg_type}_cv_predictions.csv")
+        
         
     # - save the training performance
     adata_all.obs['predicted_age'] = y_trained.copy()

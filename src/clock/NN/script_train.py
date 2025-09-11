@@ -11,12 +11,16 @@ import os
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 import cpa
-from ciim.src.clock.NN.helper import  format_data, train_datasets, test_datasets, get_params, data_type, cell_type_train, save_path_train, save_path_test, batch_key
+from ciim.src.clock.NN.helper import  get_params, save_path_train, save_path_test, batch_key, data_type, cell_type_train
+from ciim.src.clock.helper import  format_data
+from ciim.src.common import aging_clock_train_datasets as train_datasets
+
 
 import argparse 
 arg = argparse.ArgumentParser(description='Train CPA model')
 arg.add_argument('--mode', type=str, default='train', help='Whether to train or test')
 args = arg.parse_args()
+
 
 
 if __name__ == '__main__':
@@ -27,7 +31,7 @@ if __name__ == '__main__':
         print("Training mode activated.")
         assert len(train_datasets)>0, "Training mode requires at least one training dataset."
         print('Loading training data ... ')
-        adata = format_data(train_datasets, cell_type_train, data_type, only_ctr=True)
+        adata = format_data(train_datasets, cell_type_train, data_type, only_ctr=True, only_targets=False)
         cpa.CPA.wrapper_setup_data(adata, batch_key=batch_key, data_type=data_type, cell_type=cell_type_train)
         model = cpa.CPA(adata=adata,
                         include_age_head=True,
