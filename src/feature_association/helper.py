@@ -302,6 +302,9 @@ def wrapper_meta_analysis(par):
                 print('Not enough mutual TFs for ', cell_type, ' skipping it')
                 continue
             # - keep only min_degree info that is consistent
+            nan_sim = stats['p_value_adj'].isna().sum()
+            if nan_sim>0:
+                raise ValueError(f'NaN p-values found in stats in {cell_type}: {nan_sim} NaNs')
             meta_stats = run_meta_analysis(stats, temp_dir=par['temp_dir'], meta_analysis_type=meta_analysis_type, min_degree=min_degree)
             pval_col = 'meta_p_adj'
             meta_stats = compute_trend(meta_stats, pval_col=pval_col, slope_col='slope', col=feature_col, min_degree=min_degree)
@@ -378,7 +381,6 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
             except ValueError as e:
                 print(e)
                 continue
-            # print(adata)
             # - add which cell type resolution to run the analysis
             adata_sub = adata[adata.obs[par['cell_type_resolution']]==cell_type]
             if adata_sub.shape[0] < 3:
@@ -590,8 +592,10 @@ def determine_std(adata):
 
 def association_with_age(adata, association_type, gene_col='tf'):
     '''
-    Calculate p-values for the linear regression of the top tfs across datasets with ageing,
-    and apply FDR correction (Benjamini-Hochberg).
+    Calculate p-values for the linear regression or Spearman correlation
+    of the top tfs across datasets with ageing, and apply FDR correction
+    (Benjamini-Hochberg). Includes safeguards and prints diagnostics when
+    values are invalid.
     '''
     p_value_store = []
 
@@ -601,32 +605,54 @@ def association_with_age(adata, association_type, gene_col='tf'):
 
         df = adata_sub.to_df()
         df = df.merge(adata_sub.obs[['age']], left_index=True, right_index=True)
-
         df.sort_values('age', inplace=True)
 
         ages = df['age'].values
         expression = df[gene].values
 
-        # Fit linear regression
-        if len(ages) > 1:
+        # Safeguard: need variance in both age and expression
+        if len(np.unique(ages)) <= 1:
+            print(f"[SKIP] {gene}: only one unique age → assigning p=1.0, slope=0.0")
+            p_value, slope = 1.0, 0.0
+        elif np.std(expression) == 0:
+            print(f"[SKIP] {gene}: expression constant → assigning p=1.0, slope=0.0")
+            p_value, slope = 1.0, 0.0
+        else:
             if association_type == 'linear':
-                # Perform linear regression
                 slope, intercept, r_value, p_value, _ = linregress(ages, expression)
             elif association_type == 'spearman':
                 slope, p_value = spearmanr(ages, expression)
-            if abs(slope)>1:
-                print('Slope is too high for', gene, slope, association_type)
-            p_value_store.append({
-                gene_col: gene, 
-                'p_value': p_value,
-                'slope': slope
-            })
+            else:
+                raise ValueError("association_type must be 'linear' or 'spearman'")
+
+            # Handle invalid results
+            if p_value is None or np.isnan(p_value) or p_value <= 0 or p_value > 1:
+                print(f"[WARN] {gene}: invalid p-value {p_value}")
+                raise ValueError('NaN p-value encountered')
+            if slope is None or np.isnan(slope):
+                print(f"[WARN] {gene}: invalid slope {slope}")
+                raise ValueError('NaN slope encountered')
+            if abs(slope) > 1:
+                print(f"[CHECK] {gene}: unusually high slope = {slope:.3f} ({association_type})")
+
+        p_value_store.append({
+            gene_col: gene,
+            'p_value': float(p_value),
+            'slope': float(slope)
+        })
 
     stats_df = pd.DataFrame(p_value_store)
 
-    # # Apply FDR correction to p-values
+    # Apply FDR correction
     if not stats_df.empty:
-        stats_df['p_value_adj'] = multipletests(stats_df['p_value'], method='fdr_bh')[1]
+        adj_p = multipletests(stats_df['p_value'], method='fdr_bh')[1]
+        if np.any(np.isnan(adj_p)):
+            print("[WARN] NaN values detected in adjusted p-values")
+            raise ValueError('NaN adjusted p-values encountered')
+            
+        stats_df['p_value_adj'] = adj_p
+    else:
+        stats_df['p_value_adj'] = []
 
     return stats_df
 
