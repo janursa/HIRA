@@ -2584,25 +2584,17 @@ def plot_activation_vs_expression(df_combined,
                                   col_x = 'signed_-log10_pval_exp', 
                                   col_y = 'signed_-log10_pval', 
                                   y_label = "Activation\nsigned -log10(p adj)",
-                                  x_label = "Expression\nsigned -log10(p adj)"):
+                                  x_label = "Expression\nsigned -log10(p adj)",
+                                  figsize=(4, 2.7)):
     import matplotlib.patches as mpatches
     cell_types_local = df_combined["cell_type"].unique()
     n_cell_types = len(cell_types_local)
-    # datasets = df_combined["dataset"].unique()
-    
-    
     for i, cell_type in enumerate(cell_types_local):
-        
         df_cell_type = df_combined[df_combined["cell_type"] == cell_type]
-        
-        
-        fig, ax = plt.subplots(1, 1, figsize=(4, 2.7), sharey=False, sharex=False)
-        # for j, ax in enumerate(axes):
-        # df_dataset = df_cell_type[df_cell_type["dataset"] == dataset]
+        fig, ax = plt.subplots(1, 1, figsize=figsize, sharey=False, sharex=False)
         df_dataset = df_cell_type
         df_dataset['dataset'] = df_dataset['dataset'].map(surrogate_names)
         assert df_dataset.shape[0]>0, f"No data for {cell_type} in {datasets[j]}"
-        # Plot scatter with correct color mapping
         sns.scatterplot(
             data=df_dataset,
             x=col_x,
@@ -2616,33 +2608,34 @@ def plot_activation_vs_expression(df_combined,
             alpha=0.7,
             ax=ax,
         )
+        top_tfs = df_dataset.sort_values(by='p_value_adj_target', ascending=False).head(2)
+        # compute small offsets relative to axis ranges
+        x_range = df_dataset[col_x].max() - df_dataset[col_x].min()
+        y_range = df_dataset[col_y].max() - df_dataset[col_y].min()
+        x_offset = 0.2 * x_range
 
-        # Set the limits to be the same for both axes
+        for _, row in top_tfs.iterrows():
+            ax.text(
+                row[col_x] + x_offset,
+                row[col_y] + np.random.rand() * .1 *  y_range,
+                row['tf'],  # assumes TF names are in column "tf"
+                fontsize=7,
+                ha='left',    # anchor text to the left since we shift right
+                va='bottom',  # anchor text above since we shift up
+                color='black'
+            )
+        # Annotate top genes with the highest activation significance
         xmin, xmax = df_dataset[col_x].min(), df_dataset[col_x].max()
         ymin, ymax = df_dataset[col_y].min(), df_dataset[col_y].max()
-
         global_min = min(xmin, ymin)
         global_max = max(xmax, ymax)
-
         placed_positions = []
-
         ax.set_ylabel(y_label)
-        ax.set_xlabel(x_label, labelpad=15)
-        # ax.get_legend().remove()  # Remove legend from individual plot
-
-        
+        ax.set_xlabel(x_label, labelpad=15)        
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
-        
         ax.set_aspect("equal", adjustable="datalim")
-
-        # Define padding as a percentage of the total range
         padding = 0.15 * (global_max - global_min)
-
-        # Apply the same limits to both axes
-        # ax.set_xlim(global_min - padding, global_max + padding)
-        # ax.set_ylim(global_min - padding, global_max + padding)
-        # Add significance threshold lines
         sig_threshold = 1.4
         ax.margins(x=0.01, y=0.05)
         linewidth = .5
@@ -2651,19 +2644,6 @@ def plot_activation_vs_expression(df_combined,
         ax.axvline(-sig_threshold, linestyle="--", color="red", alpha=alpha, linewidth=linewidth)  # Vertical
         ax.axhline(sig_threshold, linestyle="--", color="red", alpha=alpha, linewidth=linewidth)  # Horizontal
         ax.axhline(-sig_threshold, linestyle="--", color="red", alpha=alpha, linewidth=linewidth)  # Horizontal
-        # plt.suptitle(cell_type, y=1.05)
-        # handles, labels = ax.get_legend_handles_labels()
-        # # Create color legend for trend
-        # color_legend = [mpatches.Patch(color=value, label=name) for name, value in palette_datasets.items()]
-        # color_legend_handle = plt.legend(handles=color_legend, title='Dataset', loc=(1.08, .75), frameon=False)
-
-        # Create size legend for TF centrality
-        # size_legend_handle = plt.legend(handles=handles[-5:], labels=labels[-5:], title="TF centrality", 
-        #                                 loc=(1.1, -.2),  frameon=False)
-        
-
-        # # Add the color legend manually after the size legend
-        # plt.gca().add_artist(color_legend_handle)
         ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1), frameon=False, fontsize=10, title='Dataset', title_fontsize=10)
 def compare_stats_across_datasets(df, y_label='TFs'):
     """Compare TFs for each cell type across multiple datasets.
