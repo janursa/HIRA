@@ -400,8 +400,6 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
             elif ('Covid' in dataset):
                 stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col='Max_WHO_Group', ctr_group='mild', association_type=par['association_type'])
             elif dataset == 'CXCL9':
-                
-                
                 stats_store_l = []
                 stats = determine_stats_condition(adata_sub, ctr_group='24 h RPMI', condition_col='condition', test_type=test_type,
                                                 conditions=['24 h RPMI + ruxolitinib'])
@@ -545,9 +543,10 @@ def wrapper_gene_expression(par):
     print('Calculating gene expression...')
     stats_store = []
     for cell_type in tqdm(cell_types, desc='cell types'):
-        # ----------- calculate tf activity for all datasets
         for dataset in datasets:
             adata = adata_dict[dataset][adata_dict[dataset].obs['cell_type']==cell_type]
+            print(adata.shape)
+            aaa
             if type == 'sc':
                 sc.pp.normalize_total(adata)
                 sc.pp.log1p(adata)
