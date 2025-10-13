@@ -32,7 +32,7 @@ def run_workflow_tf_activity(par):
 
 def run_workflow_gene_expression(par):
     print(par)
-    if False: 
+    if True: 
         print('Calculating gene expression...')
         wrapper_gene_expression(par)
     # - step 2: calculate association with age
@@ -74,7 +74,7 @@ if __name__ == '__main__':
     
     if run_flag:
         for data_type in ['bulk']: # 'bulk_minor', 'bulk
-            for feature_type in ['gene_expression']: # 'gene_expression', 'tf_activity', 'gene_score'
+            for feature_type in ['gene_score']: # 'gene_expression', 'tf_activity', 'gene_score'
                 par = {
                     'type': data_type,
                     'feature_type': feature_type,
