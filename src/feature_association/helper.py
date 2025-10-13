@@ -51,9 +51,11 @@ def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datas
     return stats
 
 def retrieve_feature_data(dataset, smoothened=False, cell_type=None, type='bulk', feature_type='tf_activity', condition='healthy'):
+    
     from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
     if smoothened:
         file_path = f'{save_dir}/{feature_type}_smoothed/{dataset}_{cell_type}_{type}.h5ad'
+        
     else:
         file_path = f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad'
     if os.path.exists(file_path) == False:

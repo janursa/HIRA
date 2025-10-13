@@ -600,7 +600,7 @@ def plot_feature_values_per_datasets(cell_type, features, type, datasets, featur
         figsize = (n_datasets*3, .2*n_features+1)
     fig, axes = plt.subplots(1, n_datasets, figsize=figsize, sharey=False)
     for i, (dataset) in enumerate(datasets):
-        adata = retrieve_feature_data(dataset, cell_type, type, feature_type=feature_type)
+        adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, type=type, feature_type=feature_type)
         adata = adata[:, adata.var_names.isin(features)]
         
         if age_limit is not None:
