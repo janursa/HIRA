@@ -6,7 +6,6 @@ from sklearn.pipeline import Pipeline
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
 from scipy.sparse import issparse
-from sklearn.linear_model import Ridge
 from sklearn.model_selection import cross_val_score, GroupKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler

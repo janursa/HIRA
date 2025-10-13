@@ -232,9 +232,9 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
             else:
                 raise ValueError('Unknown test type')
             if np.isnan(pval):
-                print(f'{dataset} {gene} {condition} vs {ctr_group} p-value: {pval:.4f}, coef: {coef:.4f}')
-                print(f'values_case: {values_case}, values_control: {values_control}, i {i}')
-                raise ValueError('NaN p-value')
+                print(f'NaN p-value, {dataset} {gene} {condition} vs {ctr_group}')
+                continue
+                # raise ValueError(f'NaN p-value, {dataset} {gene} {condition} vs {ctr_group}')
             
             results.append({
                 "tf": gene,
@@ -400,6 +400,8 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
             elif ('Covid' in dataset):
                 stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col='Max_WHO_Group', ctr_group='mild', association_type=par['association_type'])
             elif dataset == 'CXCL9':
+                
+                
                 stats_store_l = []
                 stats = determine_stats_condition(adata_sub, ctr_group='24 h RPMI', condition_col='condition', test_type=test_type,
                                                 conditions=['24 h RPMI + ruxolitinib'])
@@ -411,6 +413,7 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
                 
                 stats = pd.concat(stats_store_l)
             elif dataset=='op':
+                print(adata_sub)
                 if 'condition' in adata_sub.obs.columns:
                     pertub_col = 'condition'
                 elif 'perturbation' in adata_sub.obs.columns:

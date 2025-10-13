@@ -566,17 +566,15 @@ def dotplot_category_color(df, ax,
         elif palette == "viridis":
             import matplotlib as mpl
             cmap = plt.cm.viridis
-            values = -np.log10(df[color_col])
+            values = df[color_col]
+            # values = np.clip(values, a_min=0, a_max=5)
             values = values[np.isfinite(values)]
-
             vmin = values.min()
             vmax = values.max()
             norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 
             sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
             sm.set_array([])
-
-            # use your variable for placement: [x0, y0, width, height]
             cax = ax.inset_axes([*color_legend_loc, 0.2, 0.2])  # width and height adjustable
 
             cbar = plt.colorbar(sm, cax=cax)
@@ -735,12 +733,12 @@ def plot_trend_sle_case(adata, tf='LEF1', cell_type='CD8T'):
     plt.suptitle(f'{tf}', fontsize=10, fontweight='bold', y=.9)
     plt.tight_layout()
 
-def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5), plot_centrality=True,
+def plot_analysis_and_centrality(df, all_groups, palette_all, feature_col='tf', figsize=(3.5, 5), plot_centrality=True,
                                 ax2_margins={'y': 0.1, 'x': 0.1}, hide_ylabels=False, show_legend=True):
     
     # stats_d_sig = stats_d[stats_d['p_value_adj'] < 0.05]
     # --- Plot ---
-    tfs = df['tf'].unique()
+    tfs = df[feature_col].unique()
     if plot_centrality:
         fig, axes = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': [1.2, .8]})
     else:
@@ -748,23 +746,23 @@ def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5), 
 
     # - Scatter plot
     ax0 = axes[0] if plot_centrality else axes
-    sns.scatterplot(data=df, x='analysis', y='tf', hue='trend', ax=ax0, palette=palette_all, s=100, alpha=.8)
+    sns.scatterplot(data=df, x='analysis', y=feature_col, hue='trend', ax=ax0, palette=palette_all, s=100, alpha=.8)
 
     # Overlay black stars
-    aging_df = df[df['analysis'] == 'Age-associated TFs']
+    aging_df = df[df['analysis'] == 'Age-associated']
     assert aging_df.shape[0] > 0, "No Aging TFs found in the data"
-    ax0.scatter(aging_df['analysis'], aging_df['tf'], color='black', marker='*', s=10, zorder=10)
+    ax0.scatter(aging_df['analysis'], aging_df[feature_col], color='black', marker='*', s=10, zorder=10)
     sig_df = df[df.get('p_value_adj', 1.0) < 0.05]
-    ax0.scatter(sig_df['analysis'], sig_df['tf'], color='black', marker='*', s=10, zorder=10, alpha=.8)
+    ax0.scatter(sig_df['analysis'], sig_df[feature_col], color='black', marker='*', s=10, zorder=10, alpha=.8)
 
     # Fill in missing x-axis categories
     missing = set(all_groups) - set(df['analysis'].unique())
     for cat in missing:
-        ax0.scatter(cat, df['tf'].iloc[0], color='white', alpha=0)
+        ax0.scatter(cat, df[feature_col].iloc[0], color='white', alpha=0)
 
     ax0.set_xticklabels(ax0.get_xticklabels(), rotation=45, ha="right")
     ax0.set_xlabel('')
-    ax0.set_ylabel('TFs')
+    ax0.set_ylabel('TFs' if feature_col == 'tf' else 'Pathways')
     ax0.margins(x=.2, y=.05 if len(tfs) > 10 else 0.2)
     ax0.spines[['top', 'right']].set_visible(False)
     if hide_ylabels:
@@ -776,8 +774,8 @@ def plot_analysis_and_centrality(df, all_groups, palette_all, figsize=(3.5, 5), 
     # - Degree barplot
     if plot_centrality:
         ax1 = axes[1]
-        bar_data = df.drop_duplicates(subset='tf')
-        sns.barplot(data=bar_data, x='degree', y='tf', ax=ax1, color='#56B4E9', alpha=0.7, ci=None)
+        bar_data = df.drop_duplicates(subset=feature_col)
+        sns.barplot(data=bar_data, x='degree', y=feature_col, ax=ax1, color='#56B4E9', alpha=0.7, ci=None)
         ax1.set_xlabel('Centrality')
         ax1.set_ylabel('')
         ax1.set_yticks([])
@@ -945,7 +943,7 @@ def plot_gene_score_association_with_age(cell_type, datasets, type, features=Non
         raise ValueError(f"Unknown feature type: {feature_type}")
 
     # - format the data
-    stats_t = retrieve_stats_features(type, feature_type, cell_type=cell_type, datasets=datasets, condition='healthy')
+    stats_t = retrieve_stats_features(type=type, feature_type=feature_type, cell_type=cell_type, datasets=datasets, condition='healthy')
     
     if 'tf' in stats_t.columns:
         stats_t = stats_t.rename(columns={'tf': 'source'})
@@ -956,12 +954,13 @@ def plot_gene_score_association_with_age(cell_type, datasets, type, features=Non
         stats_t = stats_t[stats_t[feature_col].isin(sig_tfs)]
     if features is None:
         features = stats_t[feature_col].unique()
+        print(len(features), f'{feature_col}s found in {cell_type} for {feature_type}')
     stats_t = stats_t[stats_t[feature_col].isin(features)]
     
     # - add the number of genes in each pathway
     c_store = []
     for dataset in datasets:
-        df = retrieve_feature_data(dataset, cell_type, type, feature_type='gene_score').var
+        df = retrieve_feature_data(dataset=dataset, cell_type=cell_type, type=type, feature_type='gene_score', smoothened=False).var
         df.index.name = 'pathway'
         df = df.reset_index()
         df['dataset'] = dataset
@@ -975,6 +974,11 @@ def plot_gene_score_association_with_age(cell_type, datasets, type, features=Non
     c_std = c.groupby([feature_col])['n_matching_genes'].std().reset_index(name='n_matching_genes_std')
     stats_t = stats_t.merge(c_median, left_on=feature_col, right_on=feature_col, how='inner')
     stats_t = stats_t.merge(c_std, left_on=feature_col, right_on=feature_col, how='inner')
+    # sort based on median gene count
+    features = c_median[feature_col].tolist()
+    stats_t[feature_col] = pd.Categorical(stats_t[feature_col], categories=features, ordered=True)
+    stats_t = stats_t.sort_values(by=[feature_col, 'dataset'])
+    # print(stats_t[feature_col].nunique(), 'features after merging with gene count')
     
 
     stats_t['neg_log10_adj_pval'] = -np.log10(stats_t['p_value_adj'])
