@@ -545,8 +545,7 @@ def wrapper_gene_expression(par):
     for cell_type in tqdm(cell_types, desc='cell types'):
         for dataset in datasets:
             adata = adata_dict[dataset][adata_dict[dataset].obs['cell_type']==cell_type]
-            print(adata.shape)
-            aaa
+
             if type == 'sc':
                 sc.pp.normalize_total(adata)
                 sc.pp.log1p(adata)
@@ -665,16 +664,23 @@ def compute_trend(df, pval_col='meta_p_adj', slope_col='slope', col='tf', min_de
     df["neg_log10_adj_pval"] = -np.log10(df[pval_col])
     if 'trend' in df.columns:
         df.drop('trend', inplace=True, axis=1)
-
+    
     # Function to assign trend based on slope sign and min_degree
     def determine_trend(x):
         pos = (x > 0).sum()
         neg = (x < 0).sum()
         total = len(x)
         
-        if pos == total:
+        if col=='tf':
+            threshold = total
+        elif col =='target':
+            threshold = total -1
+        else:
+            threshold = total -1
+        # print(pos, neg, total, threshold)
+        if pos >= (threshold):
             return 'Increase in aging'
-        elif neg == total:
+        elif neg >= (threshold):
             return 'Decrease in aging'
         else:
             # if min_degree is not None:

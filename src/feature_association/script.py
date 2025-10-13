@@ -20,10 +20,10 @@ from ciim.src.common import cell_types, datasets_e, datasets_a, datasets_all, ma
 
 def run_workflow_tf_activity(par):
     print(par)
-    if True: 
+    if False: 
         print('Calculating TF activity...')
         wrapper_tf_activity(par)
-    if True:
+    if False:
         stats_features_all = wrapper_association_with_age_condition(par)
         stats_features_all.to_csv(par['stats_features'], index=False)
     if True:
@@ -32,11 +32,11 @@ def run_workflow_tf_activity(par):
 
 def run_workflow_gene_expression(par):
     print(par)
-    if True: 
+    if False: 
         print('Calculating gene expression...')
         wrapper_gene_expression(par)
     # - step 2: calculate association with age
-    if True:
+    if False:
         stats_features = wrapper_association_with_age_condition(par)
         stats_features.rename(columns={'tf': 'gene'}, inplace=True)
         stats_features.to_csv(par['stats_features'], index=False)
@@ -74,7 +74,7 @@ if __name__ == '__main__':
     
     if run_flag:
         for data_type in ['bulk']: # 'bulk_minor', 'bulk
-            for feature_type in ['gene_score']: # 'gene_expression', 'tf_activity', 'gene_score'
+            for feature_type in ['tf_activity', 'gene_expression']: # 'gene_expression', 'tf_activity', 'gene_score'
                 par = {
                     'type': data_type,
                     'feature_type': feature_type,
