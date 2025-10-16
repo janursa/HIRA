@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from scipy import stats
 
-from ciim.src.common import save_dir, surrogate_names, palette_datasets_pretty
+from ciim.src.common import SAVE_DIR, surrogate_names, palette_datasets_pretty
 from ciim.src.feature_association.helper import retrieve_sig_stats
 from ciim.src.common import datasets_all
 from ciim.src.utils.util import get_genesets, get_consensus_net
@@ -179,7 +179,7 @@ import numpy as np
 
 from ciim.src.feature_association.helper import retrieve_sig_stats
 from ciim.src.clock.helper import predict_age
-from ciim.src.common import save_dir
+from ciim.src.common import SAVE_DIR
 
 import warnings
 
@@ -400,11 +400,11 @@ def run_in_silico(
     return result
 
 def wrapper_in_silico_perturbation(par, cell_types, datasets, n_jobs=10):
-    from ciim.src.common import save_dir
+    from ciim.src.common import SAVE_DIR
     # ---- Parallel Execution ----
     from joblib import Parallel, delayed
 
-    os.makedirs(f"{save_dir}/perturbation", exist_ok=True)
+    os.makedirs(f"{SAVE_DIR}/perturbation", exist_ok=True)
     
     adata_dict = {
         (ds, ct): retrieve_feature_data(dataset=ds, cell_type=ct, smoothened=True, feature_type='gene_expression')
@@ -432,11 +432,11 @@ def wrapper_in_silico_perturbation(par, cell_types, datasets, n_jobs=10):
     
     return df_all
 def wrapper_in_silico_single_perturbation(tfs, par, cell_types, datasets, n_jobs=10):
-    from ciim.src.common import save_dir
+    from ciim.src.common import SAVE_DIR
     # ---- Parallel Execution ----
     from joblib import Parallel, delayed
 
-    os.makedirs(f"{save_dir}/perturbation", exist_ok=True)
+    os.makedirs(f"{SAVE_DIR}/perturbation", exist_ok=True)
     adata_dict = {
         (ds, ct): retrieve_feature_data(dataset=ds, cell_type=ct, smoothened=True, feature_type='gene_expression')
         for ct in cell_types
@@ -450,7 +450,7 @@ def wrapper_in_silico_single_perturbation(tfs, par, cell_types, datasets, n_jobs
 
     tasks = [
         delayed(run_in_silico)(
-            dataset=dataset, cell_type=cell_type, adata_dict=adata_dict, net_dict=net_dict, tfs=[tf], pathways=pathways, log2fc_genewise=True, temp_dir=f"{save_dir}/perturbation/temp",
+            dataset=dataset, cell_type=cell_type, adata_dict=adata_dict, net_dict=net_dict, tfs=[tf], pathways=pathways, log2fc_genewise=True, temp_dir=f"{SAVE_DIR}/perturbation/temp",
             **par
         )
         for cell_type in cell_types

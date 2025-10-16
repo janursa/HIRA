@@ -15,7 +15,7 @@ import scipy
 from scipy.stats import spearmanr, linregress
 from pandas.api.types import CategoricalDtype
 
-from ciim.src.common import base_dir, save_dir, colors_blind, datasets_all ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
+from ciim.src.common import base_dir, SAVE_DIR, colors_blind, datasets_all ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
 from ciim.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data
 from ciim.src.utils.util import retrieve_net, retrieve_adata
 
@@ -214,53 +214,6 @@ def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_v
     plot_perturbation_effect_donors(df_pivot_renamed, figsize=(1.8, 1.7), ax=ax)
     ax.set_title(f"{case_tf} ", fontsize=10,  pad=15)
 
-def plot_term_genes(pathway_scores, cell_type, term):
-    pathway_scores_t = pathway_scores[
-        (pathway_scores['Term'] == term) &
-        (pathway_scores['cell_type'] == cell_type)
-    ]
-    if pathway_scores_t.empty:
-        print(f"No data found for cell type '{cell_type}' and term '{term}'")
-        return
-    df = (
-        pathway_scores_t
-        .groupby('trend')['Genes']
-        .apply(lambda x: ', '.join(x))
-        .reset_index(name='Genes')
-        .set_index('trend')
-    )
-    pp_dict = {}
-    every_n_words = 5
-    for trend in df.index:
-        genes = df.loc[trend, 'Genes'].split(';')
-        if trend == 'Increase in aging':
-            wrapped = ', \n'.join(
-                [', '.join(genes[i:i + every_n_words]) for i in range(0, len(genes), every_n_words)]
-            )
-        else:
-            wrapped = ', '.join(genes)
-        pp_dict[trend] = wrapped
-
-    # Actual plot
-    from matplotlib.lines import Line2D
-    alpha = 0.5
-    plt.figure(figsize=(0, 0))
-    color_legend = [
-        Line2D([0], [0], marker='o', color='none', markerfacecolor=color,
-               markersize=10, label=pp_dict[trend], alpha=alpha)
-        for trend, color in palette_trend_2.items()
-        if trend in pp_dict
-    ]
-
-    legend = plt.legend(
-        title=f'{cell_type}: {term}',
-        title_fontsize=10,
-        fontsize=10,
-        handles=color_legend,
-        loc=(1, .1),
-        frameon=False
-    )
-    legend.get_title().set_fontweight('bold')
 def plot_ctr_condition_distribution(cell_types, genes, treatment, ctr, dataset, stats=None, 
                                     type='bulk', feature_type='tf_activity', map_names={}):
     
@@ -589,7 +542,6 @@ def dotplot_category_color(df, ax,
 
 def plot_feature_values_per_datasets(cell_type, features, type, datasets, feature_type='gene_expression', age_limit=[20, 75], cluster=False, figsize=None):
     import matplotlib.pyplot as plt
-    import seaborn as sns
     from ciim.src.common import surrogate_names
 
     n_datasets = len(datasets)
@@ -630,7 +582,7 @@ def plot_feature_values_per_datasets(cell_type, features, type, datasets, featur
                             ax=ax, 
                             show_cbar=show_cbar)
         if i != 0:
-            # ax.set_yticklabels([])
+            ax.set_yticklabels([])
             ax.set_ylabel('')
         ax.set_title(surrogate_names[dataset], pad=10, fontsize=10, fontweight='bold')
     # plt.tight_layout()
@@ -1101,6 +1053,7 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
 
     # - format the data
     stats_t = retrieve_stats_features(type, feature_type, cell_type=cell_type, datasets=datasets, condition='healthy')
+    # print(stats_t)
     
     if 'tf' in stats_t.columns:
         stats_t = stats_t.rename(columns={'tf': 'source'})
@@ -1124,6 +1077,9 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     c = pd.concat(c_store)
     c_median = c.groupby([feature_col])['centrality'].median().reset_index()
     c_std = c.groupby([feature_col])['centrality'].std().reset_index(name='centrality_std')
+
+    # print(c_median)
+    # print(stats_t)
     stats_t = stats_t.merge(c_median, left_on=feature_col, right_on=feature_col, how='left')
     stats_t = stats_t.merge(c_std, left_on=feature_col, right_on=feature_col, how='left')
     
@@ -1141,9 +1097,10 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
         stats_t = stats_t.sort_values('centrality', ascending=False)
     else:
         if feature_type == 'tf_activity':
+            pass
             # - check if the features are in the tf_all list
-            tf_all = np.loadtxt(f"{base_dir}/prior/tf_all.csv", dtype=str)
-            features = [tf for tf in features if tf in tf_all]
+            # tf_all = np.loadtxt(f"{base_dir}/prior/tf_all.csv", dtype=str)
+            # features = [tf for tf in features if tf in tf_all]
 
         # - check if the features are in the stats (remove those that are not present in at least one dataset)
         stats_t = stats_t[stats_t[feature_col].isin(features)]
@@ -2443,7 +2400,7 @@ class DotPlotTFtarget:
         data_all = data_all[data_all['target'].isin(top_targets)]
         return data_all
 
-def plot_overlap(stats_drugs, aging_stats_sig, cell_types, cfg, plots_dir, agreement="opposite", figsize=None):
+def plot_overlap(stats_drugs, aging_stats_sig, cell_types, cfg, PLOTS_DIR, agreement="opposite", figsize=None):
     comparisions = cfg["comparisons"]
     show_sig_tfs = cfg["show_sig_tfs"]
 

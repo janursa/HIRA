@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from scipy import stats
 
-from ciim.src.common import save_dir, surrogate_names, palette_datasets_pretty
+from ciim.src.common import SAVE_DIR, surrogate_names, palette_datasets_pretty
 from ciim.src.feature_association.helper import retrieve_sig_stats
 from ciim.src.feature_association.helper import get_consensus_net
 from ciim.src.common import datasets_all, colors_blind
@@ -187,7 +187,7 @@ def determine_overlap_with_risk_genes(cell_type):
 
 def plot_pathway_set(score_shift_summary, geneset, gene_score_shift_col, cell_type, col_name='tf', xlabel='TFs', temp_dir=None):
     if temp_dir is None:
-        temp_dir = save_dir / 'insilico_perturbation' / 'biological_analysis' / 'figures'
+        temp_dir = SAVE_DIR / 'insilico_perturbation' / 'biological_analysis' / 'figures'
         os.makedirs(temp_dir, exist_ok=True)
     genesets = get_genesets(geneset)
     df_summary_opengenes_s = score_shift_summary[score_shift_summary['pathway'].isin(genesets)]

@@ -11,10 +11,22 @@ import json
 import scanpy as sc
 import matplotlib.pyplot as plt
 from collections import defaultdict
-from task_grn_inference.src.utils.util import read_gmt
-from ciim.src.common import base_dir, save_dir, prior_dir, datasets_all, mapping_minor_2_major
+from ciim.src.common import base_dir, SAVE_DIR, PRIOR_DIR, datasets_all, mapping_minor_2_major
 
-
+def read_gmt(file_path: str) -> dict[str, list[str]]:
+    """Reas gmt file and returns a dict of gene"""
+    gene_sets = {}
+    with open(file_path, "r") as file:
+        for line in file:
+            parts = line.strip().split("\t")
+            gene_set_name = parts[0]
+            gene_set_description = parts[1]
+            genes = parts[2:]
+            gene_sets[gene_set_name] = {
+                "description": gene_set_description,
+                "genes": genes,
+            }
+    return gene_sets
 def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20): 
     base_path = f"{base_dir}/datasets/"
     if 'bulk' in type:
@@ -96,10 +108,10 @@ def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20):
     return adata
 
 def retrieve_net(dataset, cell_type, only_promotor_based=False, c_t=5):  
-    from ciim.src.common import save_dir
+    from ciim.src.common import SAVE_DIR
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
-    net = pd.read_csv(f"{save_dir}/grns/{dataset}/net_{cell_type_major}_all_agegroups_all_batches.csv")
+    net = pd.read_csv(f"{SAVE_DIR}/grns/{dataset}/net_{cell_type_major}_all_agegroups_all_batches.csv")
     gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
     net = net[net['target'].isin(gene_names)]
     if False:
@@ -158,92 +170,6 @@ def get_consensus_net(datasets=datasets_all, cell_type='CD8T', min_degree=3):
     )
     
     return net_mean_z
-def get_opengenes_sets():
-    df = pd.read_csv(f'{prior_dir}/gene-aging-mechanisms.tsv', sep='\t')
-    reported_genes = df.index.unique().to_list()
-    # Flattened reverse map
-    reverse_map = defaultdict(list)
-    for idx, row in df.iterrows():
-        for cell in row:
-            if cell is None or pd.isna(cell) or cell == '':
-                continue
-            try:
-                cell.strip()
-            except:
-                print(cell)
-            for item in cell.split(','):
-                k = item.strip('\'"')
-                k = k[0].upper() + k[1:]
-                reverse_map[k].append(idx)
-
-    # Convert to regular dict if needed
-    reverse_map = dict(reverse_map)
-    del reverse_map['Transcriptional alterations']
-
-    return reverse_map
-def calculate_genes_scores(adata, genes, key='gene_score', min_genes=5):
-    genes = [g for g in genes if g in adata.var_names]
-    if len(genes) < min_genes:
-        raise ValueError("Privided genes list is empty.")
-    sc.tl.score_genes(adata, gene_list=genes, score_name=key, use_raw=False)
-    return adata
-def get_hallmark():
-    if False:
-        geneset_file = f'{base_dir}/prior/h.all.v2024.1.Hs.symbols.gmt'
-        genesets_all = read_gmt(geneset_file) 
-        genesets_all = {' '.join(key.split('_')[1:]):gs['genes'] for key, gs in genesets_all.items()}
-    else:
-        geneset_file = f'{prior_dir}/MSigDB_Hallmark_2020.json'
-        if os.path.exists(geneset_file):
-            with open(geneset_file, 'r') as f:
-                genesets_all = json.load(f)
-        else:
-            from gseapy import get_library_name, get_library
-            genesets_all = get_library(name='MSigDB_Hallmark_2020')
-            with open(geneset_file, 'w') as f:
-                json.dump(genesets_all, f, indent=4)
-    return genesets_all
-def get_essential_hallmark():
-    hallmark_sets = get_hallmark()
-    essential_keywords = ['DNA repair', 'Apoptosis', 'MTORC1', 'G2M', 'E2F', 
-                        'Oxidative phosphorylation', 'MYC', 'P53']
-    essential_pathways = {k: v for k, v in hallmark_sets.items() if any(keyword.lower() in k.lower() for keyword in essential_keywords)}
-    return essential_pathways
-def get_essential_genes():
-    df = pd.read_csv(f'{base_dir}/prior/CRISPRInferredCommonEssentials.csv')
-    essential_genes = df['Essentials'].str.extract(r'^(\S+)')[0].tolist()
-    essential_gene_set = set(essential_genes)
-    return  {'DepMap': list(essential_gene_set)}
-def get_genesets(pathway=None):
-    if pathway == 'hallmark':
-        genesets_all = get_hallmark()
-    elif pathway == 'essential_hallmark':
-        genesets_all = get_essential_hallmark()
-    elif pathway == 'opengenes':
-        genesets_all = get_opengenes_sets()
-    elif pathway == 'essential':
-        genesets_all = get_essential_genes()
-    elif pathway is None:
-        halmark_sets = get_hallmark()
-        opengenes = get_opengenes_sets()
-        essential = get_essential_genes()
-
-        genesets_all = {**halmark_sets,  **opengenes, **essential}
-    else:
-        raise ValueError(f"Unsupported pathway type: {pathway}. Choose 'hallmark' or 'opengenes' or 'essential' or 'essential_hallmark'.")
-    return genesets_all
-def get_gene2pathway():
-    genesets_dict = get_genesets()
-    target_genes = np.unique(np.concatenate(list(genesets_dict.values())))
-
-    # Create a DataFrame for pathway annotations
-    pathway_assignments = []
-    for pathway, genes in genesets_dict.items():
-        for gene in genes:
-            pathway_assignments.append((gene, pathway))
-
-    pathway_df = pd.DataFrame(pathway_assignments, columns=['gene', 'pathway']).set_index('gene')
-    return pathway_df
 
 
 def add_root_sample(adata):
@@ -314,26 +240,6 @@ def run_pseudotime_analysis(adata, seed=32):
         # sc.pl.umap(adata, color=['dpt_pseudotime', 'age'], cmap='viridis', show=True, size=3*(adata.obs['cell_count'] / adata.obs['cell_count'].max() * 100))
         # sc.pl.pca(adata, color=['dpt_pseudotime', 'age'], cmap='viridis', show=True, size=3*(adata.obs['cell_count'] / adata.obs['cell_count'].max() * 100))
     return adata
-def get_canonical_pathways():
-    geneset_file = '/home/jnourisa/projs/ongoing/ciim/input/prior/h.all.v2024.1.Hs.symbols.gmt'
-    genesets_all = read_gmt(geneset_file) 
-    genesets_all = {key: gs['genes'] for key, gs in genesets_all.items()}
-
-    # Create a list of gene-to-pathway mappings (one-to-one mapping)
-    gene_to_pathway_list = [
-        (gene, pathway)
-        for pathway, genes in genesets_all.items()
-        for gene in genes
-    ]
-
-    # Convert the list to a DataFrame
-    df_pathway = pd.DataFrame(gene_to_pathway_list, columns=["gene", "pathway"])
-    df_pathway = df_pathway.set_index("gene")
-    df_pathway['pathway'] = df_pathway['pathway'].str.replace('HALLMARK_','')
-    df_pathway['pathway'] = df_pathway['pathway'].str.replace('_',' ')
-    df_pathway['pathway'] = df_pathway['pathway'].str.title()
-
-    return df_pathway
 
 def stability_selection_booststrap(X, y, n_bootstrap=100, top_k=10):
     """
@@ -503,115 +409,6 @@ def basic_qc(adata, min_genes_per_cell = 200, max_genes_per_cell = 5000, min_cel
 import pandas as pd
 from scipy.stats import hypergeom
 import numpy as np
-
-def run_ora_local(gene_list, background_genes, gene_sets, min_size=5, max_size=500):
-    """
-    Perform Over-Representation Analysis (ORA).
-
-    Parameters:
-    - gene_list: set or list of input genes
-    - background_genes: set or list of background genes (universe)
-    - gene_sets: dict of pathway_name -> set/list of genes
-    - min_size: minimum gene set size to consider
-    - max_size: maximum gene set size to consider
-
-    Returns:
-    - pd.DataFrame with columns: Term, Overlap, P-value, Adjusted P-value (FDR), Gene Ratio, Genes
-    """
-
-    gene_list = set(gene_list)
-    background_genes = set(background_genes)
-
-    results = []
-
-    M = len(background_genes)  # total genes in background
-    n = len(gene_list & background_genes)  # overlap between input genes and background
-
-    for term, term_genes in gene_sets.items():
-        term_genes = set(term_genes)
-        term_genes = term_genes & background_genes  # restrict to universe
-
-        N = len(term_genes)
-        if N < min_size or N > max_size:
-            continue
-
-        k = len(gene_list & term_genes)  # hits in gene list
-        if k == 0:
-            continue
-
-        # Hypergeometric test: P(X ≥ k)
-        pval = hypergeom.sf(k - 1, M, N, n)
-
-        # Collect data
-        results.append({
-            "Term": term,
-            "Gene Set Size": N,
-            "Hits": k,
-            "P-value": pval,
-            "Gene Ratio": k / n,
-            "Genes": list(gene_list & term_genes),
-        })
-
-    # Compile and adjust p-values
-    df = pd.DataFrame(results)
-    if not df.empty:
-        df['FDR'] = np.minimum(1.0, df['P-value'] * len(df))  # Benjamini-Hochberg correction (simplified)
-        df = df.sort_values("P-value")
-    return df
-def pathway_analysis_wrapper(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hallmark_2020']):
-    import gseapy as gp
-    # from ciim.src.utils.util import get_genesets
-    from gseapy import barplot, dotplot
-    # all_genes = np.loadtxt(f"{base_dir}/prior/tf_all.csv", dtype=str).tolist()
-    all_genes = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
-    # gene_sets =  get_genesets()
-    res2d_store = []
-    for cell_type in df['cell_type'].unique():
-    # for cell_type in ['CD8T']:
-        for trend in df['trend'].unique():
-        # for trend in ['Decrease in aging']:
-            mask = (df['cell_type'] == cell_type) & (df['trend'] == trend)
-            if mask.sum() == 0:
-                continue
-            stats_df = df[mask]
-            # - prepare
-            stats_df = stats_df[['tf', pvalue_col]]
-            all_tfs = stats_df['tf'].unique().tolist()
-            genes = stats_df[stats_df[pvalue_col]<0.05]['tf'].unique().tolist()
-            if True:
-                rr = gp.enrichr(gene_list=list(genes),
-                                gene_sets=gene_sets, #, 'KEGG_2021_Human'
-                                organism='human', 
-                                outdir=None, 
-                                cutoff=1
-                                # background=list(tf_all),
-                                )
-                res2d = rr.res2d
-                res2d.rename(columns={'Adjusted P-value': 'FDR'}, inplace=True)
-            else:
-                res2d = run_ora_local(genes, background_genes=all_genes, gene_sets=gene_sets, min_size=1, max_size=500)
-                res2d['Term'] = (
-                res2d['Term']
-                    .str.replace('HALLMARK_', '', regex=False)
-                    .str.replace('_', ' ', regex=False)
-                    # .str.title()
-                )
-
-            filter_col = 'FDR' #'FDR q-val'
-            res2d = res2d[res2d[filter_col]<0.05]
-            
-            if res2d.shape[0] == 0:
-                continue
-            print(res2d.shape)
-            res2d['cell_type'] = cell_type
-            res2d['trend'] = trend
-            res2d_store.append(res2d)
-    if len(res2d_store) == 0:
-        return None
-    
-    res2d_all = pd.concat(res2d_store)
-    return res2d_all
-
 
 
 def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_age'):

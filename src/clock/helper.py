@@ -1,5 +1,5 @@
 
-from ciim.src.common import clock_save_dir
+from ciim.src.common import CLOCKS_DIR
 import pandas as pd
 import numpy as np
 import anndata as ad
@@ -17,17 +17,17 @@ def save_function(model, gene_names, cell_type, data_type, feature_type, reg_typ
     import os
     import joblib
     import numpy as np
-    os.makedirs(clock_save_dir, exist_ok=True)
+    os.makedirs(CLOCKS_DIR, exist_ok=True)
     if reg_type == 'NN':
         import os
         import shutil
-        model_dir = os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}")
+        model_dir = os.path.join(CLOCKS_DIR, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}")
         if os.path.exists(model_dir) and os.path.isdir(model_dir):
             shutil.rmtree(model_dir)
         model.save(model_dir, save_anndata=True)
     else:
-        joblib.dump(model, os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}_model.pkl"))
-    np.savetxt(f'{clock_save_dir}/feature_names_{cell_type}_{data_type}_{feature_type}_{version}.txt', gene_names, fmt='%s')
+        joblib.dump(model, os.path.join(CLOCKS_DIR, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}_model.pkl"))
+    np.savetxt(f'{CLOCKS_DIR}/feature_names_{cell_type}_{data_type}_{feature_type}_{version}.txt', gene_names, fmt='%s')
 
 def retrieve_function(reg_type, cell_type, data_type, feature_type, version):
     import os
@@ -39,8 +39,8 @@ def retrieve_function(reg_type, cell_type, data_type, feature_type, version):
         model = cpa.CPA.load(dir_path=save_path_train)
         gene_names = model.adata.var_names
     else:
-        model = joblib.load(os.path.join(clock_save_dir, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}_model.pkl"))
-        gene_names = np.loadtxt(f'{clock_save_dir}/feature_names_{cell_type}_{data_type}_{feature_type}_{version}.txt', dtype=str)
+        model = joblib.load(os.path.join(CLOCKS_DIR, f"{cell_type}_{data_type}_{feature_type}_{reg_type}_{version}_model.pkl"))
+        gene_names = np.loadtxt(f'{CLOCKS_DIR}/feature_names_{cell_type}_{data_type}_{feature_type}_{version}.txt', dtype=str)
     return model, gene_names
 
 def evaluate_groupwise_median(obs):
@@ -208,11 +208,11 @@ def predict_age(adata, cell_type, feature_type='tf_activity', data_type='bulk', 
         adata.obs['predicted_age'] = predicted_age.copy()
     return adata
 def merge_adata(datasets, feature_type, cell_type, data_type, age_limit=0):
-    from ciim.src.common import save_dir
+    from ciim.src.common import SAVE_DIR
     adata_store = []
     for dataset in datasets:
         # adata = prepare_input(dataset, cell_type, feature_type=feature_type, data_type=data_type)
-        adata = ad.read_h5ad(f"{save_dir}/{feature_type}_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
+        adata = ad.read_h5ad(f"{SAVE_DIR}/{feature_type}_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
         adata = adata[(adata.obs['age']>=age_limit)].copy()
 
         adata = adata[adata.obs['is_control']]

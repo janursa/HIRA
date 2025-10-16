@@ -18,15 +18,15 @@ if platform.system() == 'Linux':
 else:
     base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
     task_grn_benchmark_dir = '/Users/jno24/Documents/projs/ongoing/task_grn_inference/'
-save_dir = f'{base_dir}/output/'
-clock_save_dir = f"{save_dir}/clock/"
-plots_dir = f"{save_dir}/plots/"
-prior_dir = f"{base_dir}/prior/"
+SAVE_DIR = f'{base_dir}/output/'
+CLOCKS_DIR = f"{SAVE_DIR}/clock/"
+PLOTS_DIR = f"{SAVE_DIR}/plots/"
+PRIOR_DIR = f"{base_dir}/prior/"
 
-os.makedirs(save_dir, exist_ok=True)
-os.makedirs(clock_save_dir, exist_ok=True)
-os.makedirs(plots_dir, exist_ok=True)
-os.makedirs(f"{plots_dir}/insilico_perturbation/", exist_ok=True)
+os.makedirs(SAVE_DIR, exist_ok=True)
+os.makedirs(CLOCKS_DIR, exist_ok=True)
+os.makedirs(PLOTS_DIR, exist_ok=True)
+os.makedirs(f"{PLOTS_DIR}/insilico_perturbation/", exist_ok=True)
 
 surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All batches', 
                     '34-':'35 below', '35_44':'35-45', '45_54':'45-55', '55_64':'55-65', '65_75':'65-75',

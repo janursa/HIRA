@@ -1,34 +1,26 @@
-import matplotlib.pyplot as plt
 import numpy as np
-import matplotlib.patches as mpatches
 from scipy.stats import linregress, spearmanr
-from sklearn.linear_model import Ridge
-from sklearn.preprocessing import StandardScaler
-from sklearn.utils import resample
-from sklearn.metrics import r2_score
 import pandas as pd
 import os
 import scipy
 
 import scanpy as sc
 import anndata as ad
-import scipy.sparse as sp
 from statsmodels.stats.multitest import multipletests
-from pandas.api.types import CategoricalDtype
 from ciim.src.common import datasets_e, datasets_a, surrogate_names, datasets_all
-from scipy.stats import mannwhitneyu
 from tqdm import tqdm
-from ciim.src.common import cell_types,base_dir, save_dir, mapping_major_2_minor, mapping_minor_2_major, minor_cell_types
+from ciim.src.common import cell_types, SAVE_DIR, minor_cell_types
 from scipy.sparse import issparse
-from ciim.src.utils.util import retrieve_adata, get_consensus_net, retrieve_net
+from ciim.src.utils.util import retrieve_adata, get_consensus_net
 import warnings
 warnings.filterwarnings("ignore")
 
 
 def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datasets=None, condition=None):
-    from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
+    from ciim.src.common import SAVE_DIR, datasets_e, datasets_a, datasets_all
     
-    stats = pd.read_csv(f'{save_dir}/{feature_type}/stats_features_{type}.csv')
+    stats = pd.read_csv(f'{SAVE_DIR}/{feature_type}/stats_features_{type}.csv')
+    # print(stats)
     if cell_type is not None: 
         if cell_type not in stats['cell_type'].unique():
             raise ValueError(f'Given cell type "{cell_type}" not in {stats["cell_type"].unique()}')
@@ -52,12 +44,12 @@ def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datas
 
 def retrieve_feature_data(dataset, smoothened=False, cell_type=None, type='bulk', feature_type='tf_activity', condition='healthy'):
     
-    from ciim.src.common import save_dir, datasets_e, datasets_a, datasets_all
+    from ciim.src.common import SAVE_DIR, datasets_e, datasets_a, datasets_all
     if smoothened:
-        file_path = f'{save_dir}/{feature_type}_smoothed/{dataset}_{cell_type}_{type}.h5ad'
+        file_path = f'{SAVE_DIR}/{feature_type}_smoothed/{dataset}_{cell_type}_{type}.h5ad'
         
     else:
-        file_path = f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad'
+        file_path = f'{SAVE_DIR}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad'
     if os.path.exists(file_path) == False:
         raise ValueError(f'File {file_path} does not exist')
 
@@ -71,12 +63,12 @@ def retrieve_feature_data(dataset, smoothened=False, cell_type=None, type='bulk'
     return adata
 
 def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activity'):
-    # print('writing here: ', f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
-    adata.write_h5ad(f'{save_dir}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
+    # print('writing here: ', f'{SAVE_DIR}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
+    adata.write_h5ad(f'{SAVE_DIR}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
 
 def retrieve_sig_stats(type='bulk', feature_type='tf_activity', race='both', filter_inconsistent=True, cell_type=None):
-    from ciim.src.common import save_dir
-    stats_all = pd.read_csv(f'{save_dir}/{feature_type}/stats_all_{type}.csv')
+    from ciim.src.common import SAVE_DIR
+    stats_all = pd.read_csv(f'{SAVE_DIR}/{feature_type}/stats_all_{type}.csv')
     
     mask = (stats_all['condition']=='healthy') & (stats_all['meta_p_adj'] < 0.05) 
 
@@ -98,13 +90,13 @@ def retrieve_sig_stats(type='bulk', feature_type='tf_activity', race='both', fil
 
 
 def retrieve_sig_net(type='bulk', race='both', cell_type=None):
-    df = pd.read_csv(f'{save_dir}/sig_nets/sig_nets_{type}_{race}.csv')
+    df = pd.read_csv(f'{SAVE_DIR}/sig_nets/sig_nets_{type}_{race}.csv')
     if cell_type is not None:
         df = df[df['cell_type'] == cell_type]
     return df
 
 def determine_sig_network(type, race='both', min_degree=3):
-    os.makedirs(f'{save_dir}/sig_nets', exist_ok=True)
+    os.makedirs(f'{SAVE_DIR}/sig_nets', exist_ok=True)
     stats_tfs = retrieve_sig_stats(type, feature_type='tf_activity')
     stats_targets = retrieve_sig_stats(type, feature_type='gene_expression')
     if race == 'european':
@@ -143,8 +135,8 @@ def determine_sig_network(type, race='both', min_degree=3):
         nets_stats_store.append(nets_stats)
     nets_stats = pd.concat(nets_stats_store)
 
-    os.makedirs(f'{save_dir}/sig_nets', exist_ok=True)
-    nets_stats.to_csv(f'{save_dir}/sig_nets/sig_nets_{type}_{race}.csv')
+    os.makedirs(f'{SAVE_DIR}/sig_nets', exist_ok=True)
+    nets_stats.to_csv(f'{SAVE_DIR}/sig_nets/sig_nets_{type}_{race}.csv')
 
 
 def bin_feature_values(adata):
@@ -189,8 +181,8 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
         mask_ctr = adata.obs[condition_col] == ctr_group
         mask_condition = adata.obs[condition_col] == condition
         
-        control_group = adata.X[mask_ctr, :]
-        case_group = adata.X[mask_condition, :]
+        control_group = adata.X[mask_ctr.values, :]
+        case_group = adata.X[mask_condition.values, :]
         if (np.sum(mask_condition) < 3) or (np.sum(mask_ctr) < 3):
             print('Not enough samples for', condition, ' vs ', ctr_group)
             return None
@@ -453,7 +445,6 @@ def wrapper_tf_activity(par):
     datasets = par['datasets']
     cell_type_col = par['cell_type_resolution']
     print('Calculating TF activity...')
-    stats_store = []
     for dataset in datasets:
         print(dataset, data_type)
         adata = retrieve_adata(dataset, data_type)
@@ -746,25 +737,16 @@ def calculate_tf_activity(adata, net, tf_all=None):
     if tf_all is not None:
         net = net[net['source'].isin(tf_all)]
 
-    if False: # run decoupler
-        mat = pd.DataFrame(
-            data=adata.X.todense(),  
-            columns=adata.var_names,  
-            index=adata.obs.index  
-        )
+    if True: # run decoupler
+        import decoupler as dc
 
-        tf_acts, tf_pvals = decoupler.run_ulm(mat, net, source='source', target='target', weight='weight', use_raw=False)
-        # - formatize
-        tf_acts = tf_acts.reset_index().melt(id_vars='index', var_name='source', value_name='activity')
-     
-        # obs = adata.obs[cols]
-        obs = adata.obs.copy()
-        obs = obs.reset_index()
+        dc.mt.ulm(adata, net, tmin=5)
+        tf_acts_X = adata.obsm['score_ulm']
+        var = pd.DataFrame({'source': tf_acts_X.columns})
+        var.index = var['source']
         
-        tf_acts['index'] = tf_acts['index'].astype(str)
-        obs['index'] = obs['index'].astype(str)
-        tf_acts = tf_acts.merge(obs, on='index', how='left').drop('index', axis=1)
-        assert tf_acts.shape[0]==tf_acts.shape[0]
+        tf_acts_adata = ad.AnnData(X=tf_acts_X.values, obs=adata.obs, var=var)
+
     else: # run my implementation
         n_targets_t = 1
         if True:
@@ -774,20 +756,21 @@ def calculate_tf_activity(adata, net, tf_all=None):
             net = net[net['source'].isin(tfs)]
         tf_acts = tf_activity_local(net, adata, tf_all)
     
-    if 'index' in tf_acts.columns:
-        tf_acts = tf_acts.drop('index', axis=1)
-    
-    assert tf_acts.shape[0] != 0, 'Empty'
-    assert 'sample' in tf_acts.columns, 'sample not in tf_acts' 
-    if False:
-        tf_acts['sample'] = tf_acts['sample'].astype(int)
-    tf_acts['age'] = pd.to_numeric(tf_acts['age'], errors='coerce')
+        if 'index' in tf_acts.columns:
+            tf_acts = tf_acts.drop('index', axis=1)
+        
+        assert tf_acts.shape[0] != 0, 'Empty'
+        assert 'sample' in tf_acts.columns, 'sample not in tf_acts' 
 
-    # - create anndata
-    X_df = tf_acts.pivot(index='sample', columns='source', values='activity')
-    obs_df = tf_acts.drop_duplicates(subset='sample').set_index('sample')[[c for c in tf_acts.columns if c not in ['source', 'activity', 'sample']]]
-    obs_df = obs_df.loc[X_df.index]
-    var_df = pd.DataFrame(index=X_df.columns)
-    var_df['source'] = var_df.index
-    tf_acts_adata = ad.AnnData(X=X_df.values, obs=obs_df, var=var_df)
+        tf_acts['age'] = pd.to_numeric(tf_acts['age'], errors='coerce')
+
+        # - create anndata
+        X_df = tf_acts.pivot(index='sample', columns='source', values='activity')
+        obs_df = tf_acts.drop_duplicates(subset='sample').set_index('sample')[[c for c in tf_acts.columns if c not in ['source', 'activity', 'sample']]]
+        obs_df = obs_df.loc[X_df.index]
+        var_df = pd.DataFrame(index=X_df.columns)
+        var_df['source'] = var_df.index
+        tf_acts_adata = ad.AnnData(X=X_df.values, obs=obs_df, var=var_df)
+        print(tf_acts_adata)
+        aaa
     return tf_acts_adata
