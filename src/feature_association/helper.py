@@ -3,6 +3,7 @@ from scipy.stats import linregress, spearmanr
 import pandas as pd
 import os
 import scipy
+from concurrent.futures import ThreadPoolExecutor
 
 import scanpy as sc
 import anndata as ad
@@ -166,15 +167,21 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
     name_mapping = {'normal': 'healthy', 'systemic lupus erythematosus': 'SLE'}
     stats_all = []
     if 'SLE' in dataset:
-        # case 1: association with age in healhty and disease samples
-        for group in conditions:
+        # case 1: association with age in healthy and disease samples
+        def process_condition_group(group):
             adata_sub = adata[adata.obs[condition_col] == group]
             stats_df = association_with_age(adata_sub, association_type=association_type)
             
             stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
             stats_df['condition'] = name_mapping.get(group, group)
             
-            stats_all.append(stats_df)
+            return stats_df
+        
+        # Parallelize condition group processing
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            condition_results = list(executor.map(process_condition_group, conditions))
+        
+        stats_all.extend(condition_results)
         
     # case 2: condition vs ctrl 
     def stats_condition_vs_ctr(adata, condition):  
@@ -186,13 +193,14 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
         if (np.sum(mask_condition) < 3) or (np.sum(mask_ctr) < 3):
             print('Not enough samples for', condition, ' vs ', ctr_group)
             return None
-        results = []
-        for i, gene in enumerate(adata.var_names):
+        
+        def process_gene(i_gene):
+            i, gene = i_gene
             values_case = case_group[:, i]
             values_control = control_group[:, i]
 
             if np.sum(values_case) == 0 and np.sum(values_control) == 0:
-                continue  
+                return None
 
             if issparse(values_case):
                 values_case = values_case.todense().A.flatten()
@@ -225,16 +233,22 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
                 raise ValueError('Unknown test type')
             if np.isnan(pval):
                 print(f'NaN p-value, {dataset} {gene} {condition} vs {ctr_group}')
-                continue
-                # raise ValueError(f'NaN p-value, {dataset} {gene} {condition} vs {ctr_group}')
+                return None
             
-            results.append({
+            return {
                 "tf": gene,
                 "p_value": pval,
                 "slope_condition":  coef ,
                 'ctrl': ctr_group,
                 'condition': name_mapping.get(condition, condition)
-            }) 
+            }
+        
+        # Parallelize gene processing
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            results = list(executor.map(process_gene, enumerate(adata.var_names)))
+        
+        # Filter out None results
+        results = [r for r in results if r is not None]
         results = pd.DataFrame(results)
         return results
     if 'SLE' in dataset:
@@ -591,9 +605,7 @@ def association_with_age(adata, association_type, gene_col='tf'):
     (Benjamini-Hochberg). Includes safeguards and prints diagnostics when
     values are invalid.
     '''
-    p_value_store = []
-
-    for gene in adata.var_names:
+    def process_gene(gene):
         mask_gene = adata.var_names == gene
         adata_sub = adata[:, mask_gene]
 
@@ -629,11 +641,15 @@ def association_with_age(adata, association_type, gene_col='tf'):
             if abs(slope) > 1:
                 print(f"[CHECK] {gene}: unusually high slope = {slope:.3f} ({association_type})")
 
-        p_value_store.append({
+        return {
             gene_col: gene,
             'p_value': float(p_value),
             'slope': float(slope)
-        })
+        }
+
+    # Parallelize gene processing
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        p_value_store = list(executor.map(process_gene, adata.var_names))
 
     stats_df = pd.DataFrame(p_value_store)
 
