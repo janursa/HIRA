@@ -244,7 +244,7 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
             }
         
         # Parallelize gene processing
-        with ThreadPoolExecutor(max_workers=20) as executor:
+        with ThreadPoolExecutor(max_workers=2) as executor:
             results = list(executor.map(process_gene, enumerate(adata.var_names)))
         
         # Filter out None results
