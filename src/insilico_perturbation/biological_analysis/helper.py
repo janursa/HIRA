@@ -7,7 +7,7 @@ from scipy import stats
 
 from ciim.src.common import SAVE_DIR, surrogate_names, palette_datasets_pretty
 from ciim.src.feature_association.helper import retrieve_sig_stats
-from ciim.src.feature_association.helper import get_consensus_net
+from ciim.src.feature_association.helper import retrieve_net_consensus
 from ciim.src.common import datasets_all, colors_blind
 from ciim.src.utils.util import get_genesets
 import warnings
@@ -107,7 +107,7 @@ def determine_overlap_with_risk_genes(cell_type):
     opengenes_pathways = get_genesets('opengenes')
     essential_genes = get_genesets('essential')
     essential_hallmark = get_genesets('essential_hallmark')
-    net = get_consensus_net(cell_type=cell_type)
+    net = retrieve_net_consensus(cell_type=cell_type)
 
     # -- Flatten gene sets --
     genes_opengenes = set().union(*opengenes_pathways.values())
@@ -211,7 +211,7 @@ def plot_pathway_set(score_shift_summary, geneset, gene_score_shift_col, cell_ty
 
     # - Baseline gene score + n overlap with targets
     df_baseline_score = df_summary_opengenes_s.groupby(['pathway'])['baseline_gene_score'].mean().reset_index(name='baseline_gene_score')
-    targets = get_consensus_net(cell_type=cell_type)['target'].unique().tolist()
+    targets = retrieve_net_consensus(cell_type=cell_type)['target'].unique().tolist()
     n_overlap = {p: len(np.intersect1d(targets, gs)) for p, gs in genesets.items()}
     n_overlap  = pd.DataFrame(list(n_overlap.items()), columns=['pathway', 'n_overlap'])
     df_merged = df_baseline_score.merge(n_overlap, on='pathway', how='left')

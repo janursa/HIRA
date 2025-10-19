@@ -78,12 +78,12 @@ def _df_to_adata(df):
 #     '''
 #     For tf_activity, it gets the consensus net and calculates the tf activity'''
 #     from ciim.src.feature_association.helper import calculate_tf_activity
-#     from ciim.src.utils.util import retrieve_adata, get_consensus_net
+#     from ciim.src.utils.util import retrieve_adata, retrieve_net_consensus
 #     from ciim.src.common import mapping_minor_2_major, datasets_all, minor_cell_types
 #     from scipy.sparse import issparse
 
 #     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-#     net = get_consensus_net(datasets_all, cell_type_major)
+#     net = retrieve_net_consensus(datasets_all, cell_type_major)
     
 #     adata = retrieve_adata(dataset=dataset, cell_type=cell_type_major, type=data_type)
     
@@ -107,7 +107,7 @@ def _df_to_adata(df):
 #     return adata
 
 def format_data(datasets, cell_type=None, data_type='bulk', only_ctr=False, only_targets=False):
-    from ciim.src.utils.util import retrieve_adata, get_consensus_net
+    from ciim.src.utils.util import retrieve_adata, retrieve_net_consensus
     import anndata as ad
     
     adata_store = []
@@ -127,7 +127,7 @@ def format_data(datasets, cell_type=None, data_type='bulk', only_ctr=False, only
     common_genes = set.intersection(*(set(a.var_names) for a in adata_store))
     adata_train = adata_train[:, list(common_genes)]
     if cell_type is not None:
-        # net = get_consensus_net(cell_type=cell_type)
+        # net = retrieve_net_consensus(cell_type=cell_type)
         # adata_train = adata_train[adata_train.obs['cell_type'] == cell_type, adata_train.var_names.isin(net['target'].unique())].copy()
         adata_train = adata_train[adata_train.obs['cell_type'] == cell_type, :].copy()
 
@@ -148,7 +148,7 @@ def format_data(datasets, cell_type=None, data_type='bulk', only_ctr=False, only
         from ciim.src.common import datasets_all
         assert cell_type is not None, "cell_type must be specified to filter for target genes"
         # min_degree = min(len(aging_clock_train_datasets), 4)
-        net = get_consensus_net(datasets_all, cell_type, min_degree=3)
+        net = retrieve_net_consensus(datasets_all, cell_type, min_degree=3)
         target_genes = net['target'].unique()
         adata_train = adata_train[:, adata_train.var_names.isin(target_genes)].copy()
 
