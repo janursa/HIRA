@@ -9,15 +9,20 @@ import os
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 
-import platform
+try:
+    base_dir = os.environ["CIIM_DATA_DIR"]
+    task_grn_benchmark_dir = os.environ["TASK_GRN_BENCHMARK_DIR"]
+except KeyError:
+    import platform
 
-if platform.system() == 'Linux':
-    base_dir = '/vol/projects/jnourisa/'
-    # base_dir = '/home/jnourisa/projs/ongoing/ciim/'
-    task_grn_benchmark_dir = '/home/jnourisa/projs/ongoing/task_grn_inference/'
-else:
-    base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
-    task_grn_benchmark_dir = '/Users/jno24/Documents/projs/ongoing/task_grn_inference/'
+    if platform.system() == 'Linux':
+        base_dir = '/vol/projects/jnourisa/'
+        # base_dir = '/home/jnourisa/projs/ongoing/ciim/'
+        task_grn_benchmark_dir = '/home/jnourisa/projs/ongoing/task_grn_inference/'
+    else:
+        base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
+        task_grn_benchmark_dir = '/Users/jno24/Documents/projs/ongoing/task_grn_inference/'
+
 SAVE_DIR = f'{base_dir}/output/'
 CLOCKS_DIR = f"{SAVE_DIR}/clock/"
 PLOTS_DIR = f"{SAVE_DIR}/plots/"
