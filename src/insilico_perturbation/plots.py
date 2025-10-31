@@ -7,7 +7,7 @@ from scipy import stats
 
 from ciim.src.common import SAVE_DIR, surrogate_names, palette_datasets_pretty
 from ciim.src.feature_association.helper import retrieve_sig_stats
-from ciim.src.feature_association.helper import get_consensus_net
+from ciim.src.feature_association.helper import retrieve_net_consensus
 from ciim.src.common import datasets_all, colors_blind
 
     

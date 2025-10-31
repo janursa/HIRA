@@ -241,22 +241,34 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset):
         pvals = []
         positions = []
 
+        print(f"\n{cell_type} - Average age differences by age group:")
+        print(f"{'Age Group':<12} {'Mean Difference':<15} {'P-value':<10} {'N_Control':<10} {'N_Disease':<10}")
+        print("-" * 70)
+
         for age_bin in age_bin_order:
             for group in [ctr, cond]:
                 vals = obs_ct[(obs_ct['condition'] == group) & (obs_ct['age_bin'] == age_bin)]['predicted_age']
                 for v in vals:
                     plot_data.append({'age_bin': age_bin, 'condition': group, 'predicted_age': v})
 
-            # Store p-values for later FDR correction
+            # Store p-values for later FDR correction and calculate mean differences
             cond_vals = obs_ct[(obs_ct['condition'] == cond) & (obs_ct['age_bin'] == age_bin)]['predicted_age']
             ctr_vals = obs_ct[(obs_ct['condition'] == ctr) & (obs_ct['age_bin'] == age_bin)]['predicted_age']
+            
             if len(cond_vals) >= 3 and len(ctr_vals) >= 3:
                 tstat, pval = ttest_ind(cond_vals, ctr_vals, equal_var=False)
+                mean_diff = cond_vals.mean() - ctr_vals.mean()
                 pvals.append(pval)
                 positions.append(age_bin)
+                print(f"{age_bin:<12} {mean_diff:>+8.2f} yrs    {pval:<10.3e} {len(ctr_vals):<10} {len(cond_vals):<10}")
             else:
                 pvals.append(np.nan)
                 positions.append(age_bin)
+                if len(cond_vals) > 0 and len(ctr_vals) > 0:
+                    mean_diff = cond_vals.mean() - ctr_vals.mean()
+                    print(f"{age_bin:<12} {mean_diff:>+8.2f} yrs    {'N/A':<10} {len(ctr_vals):<10} {len(cond_vals):<10} (insufficient data)")
+                else:
+                    print(f"{age_bin:<12} {'N/A':<15} {'N/A':<10} {len(ctr_vals):<10} {len(cond_vals):<10} (no data)")
 
         plot_df = pd.DataFrame(plot_data)
         plot_df_c = plot_df.copy()

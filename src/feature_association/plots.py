@@ -1031,11 +1031,11 @@ def plot_gene_score_association_with_age(cell_type, datasets, type, features=Non
 
     return fig
 def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_type='tf_activity', sizes=(50, 100), 
-                              top_features=20, min_degree=4, filter_meta_significant=False, race='european', width=3,
-                             margins_ax1={'x': 0.1, 'y': 0.1}, margins_ax2={'x': 0.1, 'y': 0.1}, show_size_legend = False):
+                              top_features=20, min_degree=4, filter_meta_significant=False, race='european', 
+                              show_size_legend=False):
+
     from ciim.src.utils.plots import dotplot
-    from matplotlib.colors import TwoSlopeNorm
-    from ciim.src.common import cmap_trend, palette_trend_2, surrogate_names
+    from ciim.src.common import cmap_trend, surrogate_names
     from ciim.src.feature_association.helper import retrieve_stats_features, retrieve_sig_stats
     from ciim.src.utils.util import retrieve_net
     import matplotlib.gridspec as gridspec
@@ -1043,6 +1043,15 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     import numpy as np
     import matplotlib.pyplot as plt
     import seaborn as sns
+    
+    # Calculate base dimensions based on data size
+    n_datasets = len(datasets)
+    # Estimate number of features for initial sizing (will be refined later)
+    estimated_n_features = top_features if features is None else len(features) if features else top_features
+    
+    # Base dimensions calculated from data characteristics - tighter width, looser height
+    base_width = max(1.5, min(3.5, 1.0 + n_datasets * 0.2))  # Tighter width range: 1.5-3.5 instead of 1.8-4
+    base_height = max(0.12, min(0.25, 0.2 - estimated_n_features * 0.002))  # Smaller height per row for many features
 
     if feature_type == 'tf_activity':
         feature_col = 'source'
@@ -1105,6 +1114,7 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
         # - check if the features are in the stats (remove those that are not present in at least one dataset)
         stats_t = stats_t[stats_t[feature_col].isin(features)]
         features = [tf for tf in features if tf in stats_t[feature_col].unique()]
+        features = list(set(features))  # remove duplicates
         stats_t[feature_col] = pd.Categorical(stats_t[feature_col], categories=features, ordered=True)
         stats_t = stats_t.sort_values(feature_col)  
     stats_t['neg_log10_adj_pval'] = -np.log10(stats_t['p_value_adj'])
@@ -1115,34 +1125,121 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
         print(f'No data for {cell_type} {feature_col}')
         raise ValueError(f'No data for {cell_type} {feature_col}')
         
+    # Calculate automated layout parameters
+    n_features = len(features)
+    # Update base_height now that we know the actual number of features
+    # Use logarithmic scaling for many features - more generous spacing (looser)
+    if n_features <= 10:
+        base_height = 0.1  # More generous height for very small number of features
+    elif n_features <= 20:
+        base_height = 0.16  # More generous height for small number of features
+    elif n_features <= 50:
+        base_height = 0.12  # More generous for medium number of features
+    else:
+        # For large feature sets, ensure minimum spacing between dots while keeping reasonable total height
+        base_height = max(0.08, 0.20 / np.log10(n_features))  # Increased minimum to prevent dot overlap
+    
+    
+    # Automated figure sizing with better scaling for many features - smaller width scaling
+    width_factor = max(1, min(1.5, n_datasets / 8))  # Even smaller width scaling
+    
+    # Use square root scaling for height to prevent excessive stretching - more conservative
+    if n_features <= 10:
+        height_factor = 1
+    elif n_features <= 50:
+        height_factor = max(1, np.sqrt(n_features / 15))  # More conservative scaling
+    elif n_features <= 100:
+        height_factor = max(1, np.sqrt(n_features / 30))  # Even more conservative for medium-large sets
+    else:
+        # Very gentle scaling for large feature sets - much less aggressive
+        height_factor = max(1, np.log10(n_features) * 1)  # Increased from 0.1 to 0.5 for better spacing
+    fig_width = base_width * width_factor + 1.5  # Reduced legend space from 2 to 1.5
+    fig_height = base_height * n_features * height_factor + 1.5  # Reduced title/label space from 2 to 1.5
+        
+    # Automated margin calculation - scalable based on features and datasets
+    # X-axis margins: Scale with number of datasets (more datasets need tighter spacing)
+    x_margin_base = 0.15  # Reduced base margin for x-axis 
+    x_margin_scale = max(0.1, min(0.20, x_margin_base / np.sqrt(n_datasets)))
+    
+    # Y-axis margins: Scale with number of features - balanced for large sets
+    y_margin_base = 0.10  # Reduced base margin for y-axis
+    if n_features <= 10:
+        y_margin_scale = 1
+    elif n_features <= 20:
+        y_margin_scale = .5
+    elif n_features <= 100:
+        y_margin_scale = max(0.02, min(0.10, y_margin_base / np.log10(n_features)))
+    else:
+        # For large feature sets, use moderate margins since we increased base_height
+        y_margin_scale = .01
+    
+    # Additional scaling based on figure size - more balanced
+    width_correction = min(1.3, fig_width / 4)  # Balanced width correction
+    height_correction = min(1.3, fig_height / 10)  # Balanced height correction
+    
+    margins_ax1 = {
+        'x': x_margin_scale * width_correction,
+        'y': y_margin_scale * height_correction
+    }
+    margins_ax2 = {
+        'x': x_margin_scale * width_correction * 0.8,  # Slightly tighter for centrality plot
+        'y': y_margin_scale * height_correction
+    }
+    
+    # Automated legend positioning based on number of features
+    if n_features <= 5:
+        size_legend_loc = None
+        cbar_height = '15%'
+        cbar_width = "60%"
+        bbox_to_anchor_cbar = (1.25, -0.3, 1, 1)
+        wspace = 0.15
+    elif n_features <= 10:
+        size_legend_loc = None
+        cbar_height = '12%'
+        cbar_width = "50%"
+        bbox_to_anchor_cbar = (1.25, -0.4, 1, 1)
+        wspace = 0.12
+    elif n_features <= 20:
+        size_legend_loc = None
+        cbar_height = '8%'
+        cbar_width = "45%"
+        bbox_to_anchor_cbar = (1.2, -0.5, 1, 1)
+        wspace = 0.1
+    elif n_features <= 50:
+        bbox_to_anchor_cbar = (1.2, -0.4, 1, 1)
+        size_legend_loc = (0.95, -0.5, 1, 1)
+        cbar_height = '6%'
+        cbar_width = "40%"
+        wspace = 0.09
+    elif n_features <= 100:
+        bbox_to_anchor_cbar = (1.2, -0.3, 1, 1)
+        size_legend_loc = (0.95, -0.4, 1, 1)
+        cbar_height = '5%'
+        cbar_width = "40%"
+        wspace = 0.08
+    else:
+        bbox_to_anchor_cbar = (1.2, -0.6, 1, 1)
+        size_legend_loc = (0.97, -0.7, 1, 1)
+        cbar_height = '1%'
+        cbar_width = "40%"
+        wspace = 0.1
+        
+    # Adjust grid width ratios based on data
+    centrality_width = min(0.6, max(0.3, 0.4 + n_features * 0.01))
+    legend_width = min(0.5, max(0.3, 0.3 + n_features * 0.005))
+    width_ratios = [1, centrality_width, legend_width]
+        
+        
     # - main plot
     df = stats_t.copy()
-    fig = plt.figure(figsize=(width, .15*len(features)+1.5))
+    fig = plt.figure(figsize=(fig_width, fig_height))
     
-    gs = gridspec.GridSpec(1, 3, width_ratios=[1, 0.5, .4])  # middle space reserved for legend
+    gs = gridspec.GridSpec(1, 3, width_ratios=width_ratios)
     
     ax = fig.add_subplot(gs[0])
     ax_legend = fig.add_subplot(gs[-1])
     ax_legend.set_axis_off()
     
-    if len(features) < 7:
-        size_legend_loc = None
-        cbar_height='10%'
-        cbar_width = "50%"
-        bbox_to_anchor_cbar=(1.25, -.5, 1, 1)
-    elif len(features) < 15:
-        size_legend_loc = None
-        cbar_height='10%'
-        cbar_width = "50%"
-        bbox_to_anchor_cbar=(1.25, -.5, 1, 1)
-
-    else:
-        bbox_to_anchor_cbar=(1.2, -.2, 1, 1)
-        size_legend_loc=(.95, -.4, 1, 1)
-        cbar_height='5%'
-        cbar_width="50%"
-    
-    # Ensure feature_col is a categorical with the desired order
     unique_features = df[feature_col].unique()
     df[feature_col] = pd.Categorical(df[feature_col], categories=unique_features, ordered=True)
     ordered_features = df[feature_col].cat.categories  
@@ -1175,63 +1272,44 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     ax.set_ylabel('TFs' if feature_col=='source' else 'Genes')
     title = 'TF activity' if feature_col=='source' else 'Gene expression'
     ax.set_title(f'{title} - {cell_type}', pad=10, fontsize=10, fontweight='bold')
+    
     # ------------ centrality
     c = c[c[feature_col].isin(features)]
     c[feature_col] = pd.Categorical(c[feature_col], categories=ordered_features, ordered=True)
     ax = fig.add_subplot(gs[1])
-    if True:
-        sns.barplot(
-            data=df,
-            x='centrality',
-            y=feature_col,
-            ax=ax,
-            color='#56B4E9',
-            alpha=0.7,
-            ci=None,  # turn off seaborn's built-in error estimation
-            errorbar=('sd', df['centrality_std']),  # pass your own std values
-            errwidth=1.2,
-            capsize=0.2
-        )
-    else:  
-        df['centrality'] = df['centrality'].fillna(0)
-        df['centrality_std'] = df['centrality_std'].fillna(0)
-
-        # Set feature_col as ordered categorical
-        df[feature_col] = pd.Categorical(df[feature_col], categories=ordered_features, ordered=True)
-
-        # y-axis: category codes (reverse for top-to-bottom order)
-        y_vals = df[feature_col].cat.codes
-        y_vals = y_vals.max() - y_vals  # reverse if needed
-
-        # Labels
-        y_labels = df[feature_col].cat.categories[::-1]
-
-        # Create plot
-        ax = fig.add_subplot(gs[1])
-        ax.barh(
-            y=y_vals,
-            width=df['centrality'],
-            xerr=df['centrality_std'],
-            color='#56B4E9',
-            alpha=0.7,
-            capsize=2,
-        #     error_kw={
-        #     'elinewidth': 0.7,
-        #     'alpha': 0.7,         # error bar transparency
-        #     'capthick': 0.7       # thickness of cap lines (optional for style)
-        # }
-        )
-
-        # Set y-tick labels
-        ax.set_yticks(range(len(y_labels)))
-        ax.set_yticklabels(y_labels)
-
+    
+    sns.barplot(
+        data=df,
+        x='centrality',
+        y=feature_col,
+        ax=ax,
+        color='#56B4E9',
+        alpha=0.7,
+        ci=None,  # turn off seaborn's built-in error estimation
+        errorbar=('sd', df['centrality_std']),  # pass your own std values
+        errwidth=1.2,
+        capsize=0.2
+    )
     ax.spines[['top', 'right', 'left']].set_visible(False)
     ax.margins(**margins_ax2)
     ax.set_xlabel('Centrality\n(out-degree)' if feature_col=='source' else 'Centrality\n(in-degree)')
     ax.set_ylabel('')
     ax.set_yticks([])
-    plt.subplots_adjust(wspace=0.1)
+    
+    # Apply scalable figure-level margins and spacing
+    # Calculate outer margins based on plot dimensions and content
+    left_margin = max(0.08, min(0.2, 0.1 + 0.02 * np.log10(n_features)))  # More space for y-labels
+    right_margin = max(0.85, min(0.95, 0.9 - 0.01 * n_datasets))  # Space for legends
+    bottom_margin = max(0.1, min(0.25, 0.15 + 0.02 * np.log10(n_datasets)))  # Space for x-labels
+    top_margin = max(0.9, min(0.98, 0.95 - 0.005 * n_features))  # Space for title
+    
+    plt.subplots_adjust(
+        left=left_margin,
+        right=right_margin, 
+        bottom=bottom_margin,
+        top=top_margin,
+        wspace=wspace
+    )
 
     return fig
 
@@ -2046,6 +2124,86 @@ def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net
         palette_evidence ={d: color for d, color in zip(refs, set2_colors)}
         plot_net_nx(evidence, figsize=figsize_collectri, draw_evidence=True, palette_evidence=palette_evidence, offset_evidence=offset_evidence_collectri, arc_offset=arc_offset)
         plt.title(f"{cell_type_major} - CollecTRI", fontsize=14, pad=20, weight='bold')
+    return fig
+
+def wrapper_draw_tf_target_programs(cell_type, datasets, tfs, n_targets=10, only_promotor_based=False, min_consensus=3):
+    """
+    Draw network showing TF target programs - each TF with its top targets based on regulatory weights.
+    
+    Parameters:
+    - cell_type: Cell type to analyze
+    - datasets: List of datasets to use
+    - tfs: List of transcription factors
+    - n_targets: Maximum number of targets to show per TF
+    - only_promotor_based: Whether to use only promoter-based regulations
+    """
+    # Load networks from all datasets
+    net_store = []
+    for dataset in datasets:
+        cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
+        net = retrieve_net(dataset=dataset, cell_type=cell_type_major, only_promotor_based=only_promotor_based)
+        # z score for weight
+        net['weight'] = (net['weight'] - net['weight'].mean()) / net['weight'].std()
+        net['dataset'] = dataset
+        net_store.append(net)
+    
+    if not net_store:
+        raise ValueError("No network data found for the given datasets")
+    
+    net = pd.concat(net_store, ignore_index=True)
+    
+    # Filter edges based on minimum consensus across datasets
+    net = net.groupby(['source', 'target']).filter(lambda x: len(x) >= min_consensus)
+
+    # Filter for TFs as sources only
+    net = net[net['source'].isin(tfs)]
+    
+    if net.empty:
+        raise ValueError(f"No regulatory relationships found for TFs: {tfs}")
+    
+    # For each TF, get top targets based on absolute regulatory weights
+    selected_edges = []
+    all_nodes = set(tfs)  # Start with TFs
+    
+    for tf in tfs:
+        tf_edges = net[net['source'] == tf].copy()
+        if not tf_edges.empty:
+            # Calculate absolute weights and get top targets
+            tf_edges['abs_weight'] = tf_edges['weight'].abs()
+            # Group by target and take mean absolute weight across datasets
+            tf_targets = tf_edges.groupby('target')['abs_weight'].mean().sort_values(ascending=False)
+            
+            # Select top n_targets
+            top_targets = tf_targets.head(n_targets).index.tolist()
+            all_nodes.update(top_targets)
+            
+            # Add edges for these top targets
+            tf_selected_edges = tf_edges[tf_edges['target'].isin(top_targets)]
+            selected_edges.append(tf_selected_edges)
+    
+    if not selected_edges:
+        raise ValueError("No edges found for the selected TFs")
+    
+    # Combine all selected edges
+    filtered_net = pd.concat(selected_edges, ignore_index=True)
+    
+
+    # Calculate figure size based on number of nodes
+    n_nodes = len(all_nodes)
+    figsize = (max(6, n_nodes * 0.4), max(6, n_nodes * 0.4))
+    
+    # Create the plot
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    plot_net_nx(filtered_net, ax=ax, figsize=figsize, draw_evidence=True, 
+                palette_evidence=palette_datasets, offset_evidence=0.11, arc_offset=0.05)
+    
+    # Update title to reflect TF target programs
+    tf_names = ", ".join(tfs[:3])  # Show first 3 TFs
+    if len(tfs) > 3:
+        tf_names += f" and {len(tfs)-3} more"
+    
+    plt.title(f"{cell_type_major} - Target Programs\n{tf_names}", fontsize=14, pad=20, weight='bold')
+    
     return fig
 
 def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", y_label="Genes", figsize=(2.5, 3), 

@@ -9,15 +9,20 @@ import os
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 
-import platform
+try:
+    base_dir = os.environ["CIIM_DATA_DIR"]
+    task_grn_benchmark_dir = os.environ["TASK_GRN_BENCHMARK_DIR"]
+except KeyError:
+    import platform
 
-if platform.system() == 'Linux':
-    base_dir = '/vol/projects/jnourisa/'
-    # base_dir = '/home/jnourisa/projs/ongoing/ciim/'
-    task_grn_benchmark_dir = '/home/jnourisa/projs/ongoing/task_grn_inference/'
-else:
-    base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
-    task_grn_benchmark_dir = '/Users/jno24/Documents/projs/ongoing/task_grn_inference/'
+    if platform.system() == 'Linux':
+        base_dir = '/vol/projects/jnourisa/'
+        # base_dir = '/home/jnourisa/projs/ongoing/ciim/'
+        task_grn_benchmark_dir = '/home/jnourisa/projs/ongoing/task_grn_inference/'
+    else:
+        base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
+        task_grn_benchmark_dir = '/Users/jno24/Documents/projs/ongoing/task_grn_inference/'
+
 SAVE_DIR = f'{base_dir}/output/'
 CLOCKS_DIR = f"{SAVE_DIR}/clock/"
 PLOTS_DIR = f"{SAVE_DIR}/plots/"
@@ -31,15 +36,22 @@ os.makedirs(f"{PLOTS_DIR}/insilico_perturbation/", exist_ok=True)
 surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All batches', 
                     '34-':'35 below', '35_44':'35-45', '45_54':'45-55', '55_64':'55-65', '65_75':'65-75',
 
-                    'data1': 'C1: European', 'data7_allTPs_jalil': 'C2: European', 'data12': 'C3: European',
-                    'data13_Korean': 'C4: Korean', 'data13_Japanese': 'C4: Japanese',
+                    'data1': 'C1: European', 
+                    'data7_allTPs_jalil': 'C2: European', 
+                    'data12': 'C3: Chinease',
+                    'data13_Korean': 'C4: Korean', 
+                    'data13_Japanese': 'C4: Japanese',
+                    'SLE_Asian': 'C5: Asian',
+                    'SLE_European': 'C5: European',
                     'op': 'OPSCA',
                     'parsebioscience': 'Parse Bioscience',
                     
-                    'SLE_Asian': 'C5: Asian',
+                    
+
+
                     'SLE_Asian_normal': 'C5: Asian Healthy',
                     'SLE_Asian_systemic lupus erythematosus': 'C5: Asian SLE',
-                    'SLE_European': 'C5: European',
+                    
                     'SLE_European_normal': 'C5: European Healthy',
                     'SLE_European_systemic lupus erythematosus': 'C5: European SLE',
                     'CXCL9': 'CXCL9',

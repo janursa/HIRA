@@ -8,7 +8,7 @@ from scipy import stats
 from ciim.src.common import SAVE_DIR, surrogate_names, palette_datasets_pretty
 from ciim.src.feature_association.helper import retrieve_sig_stats
 from ciim.src.common import datasets_all
-from ciim.src.utils.util import get_genesets, get_consensus_net
+from ciim.src.utils.util import get_genesets, retrieve_net_consensus
 import warnings
 from ciim.src.feature_association.helper import retrieve_feature_data 
 from ciim.src.utils.util import calculate_genes_scores
@@ -412,7 +412,7 @@ def wrapper_in_silico_perturbation(par, cell_types, datasets, n_jobs=10):
         for ds in datasets
     }
     net_dict = {
-        ct: get_consensus_net(datasets=datasets_all, cell_type=ct)
+        ct: retrieve_net_consensus(datasets=datasets_all, cell_type=ct)
         for ct in cell_types
     }
     pathways = get_genesets()
@@ -443,7 +443,7 @@ def wrapper_in_silico_single_perturbation(tfs, par, cell_types, datasets, n_jobs
         for ds in datasets
     }
     net_dict = {
-        ct: get_consensus_net(datasets=datasets_all, cell_type=ct)
+        ct: retrieve_net_consensus(datasets=datasets_all, cell_type=ct)
         for ct in cell_types
     }
     pathways = get_genesets()

@@ -136,11 +136,11 @@ def retrieve_nets(datasets, cell_type, only_promotor_based=False):
     nets = pd.concat(net_store, ignore_index=True)
     return nets
 
-def get_consensus_net(datasets=datasets_all, cell_type='CD8T', min_degree=3):
+def retrieve_net_consensus(datasets=datasets_all, cell_type='CD8T', min_degree=3, only_promotor_based=False):
     from scipy.stats import zscore
     net_store = []
     for dataset in datasets:
-        net = retrieve_net(dataset, cell_type)
+        net = retrieve_net(dataset, cell_type, only_promotor_based=only_promotor_based)
         net['dataset'] = dataset
         net_store.append(net)
 

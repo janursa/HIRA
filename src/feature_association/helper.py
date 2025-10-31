@@ -12,7 +12,7 @@ from ciim.src.common import datasets_e, datasets_a, surrogate_names, datasets_al
 from tqdm import tqdm
 from ciim.src.common import cell_types, SAVE_DIR, minor_cell_types
 from scipy.sparse import issparse
-from ciim.src.utils.util import retrieve_adata, get_consensus_net
+from ciim.src.utils.util import retrieve_adata, retrieve_net_consensus
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -122,7 +122,7 @@ def determine_sig_network(type, race='both', min_degree=3):
             continue
         
         # - get the nets
-        net = get_consensus_net(datasets, cell_type, min_degree=min_degree)
+        net = retrieve_net_consensus(datasets, cell_type, min_degree=min_degree)
         sig_tfs = stats_tfs_t['tf'].unique()
         sig_targets = stats_targets_t['target'].unique()
         net = net[(net['source'].isin(sig_tfs)) & (net['target'].isin(sig_targets))]
@@ -466,7 +466,7 @@ def wrapper_tf_activity(par):
         cell_types_l = [ct for ct in cell_types_l if ct in cell_types]
         for cell_type in tqdm(cell_types_l, desc='cell types'):
             adata_t = adata[adata.obs[cell_type_col]==cell_type]
-            net = get_consensus_net(datasets=datasets_all, cell_type=cell_type)
+            net = retrieve_net_consensus(datasets=datasets_all, cell_type=cell_type)
             if adata_t.shape[0] < 10:
                 continue
             tf_acts = calculate_tf_activity(adata_t, net)
@@ -493,7 +493,7 @@ def wrapper_gene_score(par):
     stats_store = []
     for cell_type in tqdm(cell_types, desc='cell types'):
         # ----------- calculate tf activity for all datasets
-        net = get_consensus_net(cell_type=cell_type) #TOGO 
+        net = retrieve_net_consensus(cell_type=cell_type) #TOGO 
         net_genes = net['target'].unique()
         for dataset in datasets:
             adata = adata_dict[dataset][adata_dict[dataset].obs['cell_type']==cell_type]
