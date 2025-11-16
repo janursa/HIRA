@@ -38,7 +38,7 @@ surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All 
 
                     'data1': 'C1: European', 
                     'data7_allTPs_jalil': 'C2: European', 
-                    'data12': 'C3: Chinease',
+                    'data12': 'C3: Chinese',
                     'data13_Korean': 'C4: Korean', 
                     'data13_Japanese': 'C4: Japanese',
                     'SLE_Asian': 'C5: Asian',
@@ -46,9 +46,6 @@ surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All 
                     'op': 'OPSCA',
                     'parsebioscience': 'Parse Bioscience',
                     
-                    
-
-
                     'SLE_Asian_normal': 'C5: Asian Healthy',
                     'SLE_Asian_systemic lupus erythematosus': 'C5: Asian SLE',
                     
