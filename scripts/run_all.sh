@@ -88,7 +88,7 @@ for dataset in $datasets; do
                 args="  
                         --dataset_file $DATASET_FILE \
                         --save_grns_dir $SAVE_GRNS_DIR \
-                        --max_workers $MAX_WORKERS \
+                        --num_workers $MAX_WORKERS \
                         --data_type $data_type \
                         --cell_type_granularity $CELL_TYPE_GRANULARITY \
                         "

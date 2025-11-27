@@ -3,6 +3,7 @@
 .R*
 # related to files
 .pybiomart.sqlite
+downloads/
 input/
 logs/
 params*

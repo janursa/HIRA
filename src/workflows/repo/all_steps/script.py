@@ -50,7 +50,7 @@ parser.add_argument('--bulk_dataset_file',
     help="Processed dataset file after filtering, bulked"
     )
 
-parser.add_argument('--max_workers', 
+parser.add_argument('--num_workers', 
     type=int,
     required=False,
     default=10,
@@ -95,7 +95,7 @@ par = {
         'min_genes_per_cell': 10, 
         'max_genes_per_cell': 5000, 
         'min_cells_per_gene': 2500,
-        'max_workers': args.max_workers,
+        'num_workers': args.num_workers,
         'force': args.force,
         'save_grns_dir': args.save_grns_dir,
         'temp_dir': 'output/grns/temp/'
@@ -202,7 +202,7 @@ def infer_grns_all(par):
 
     print('number of tasks: ', len(tasks))
     # - run tasks 
-    with ProcessPoolExecutor(max_workers=par['max_workers']) as executor:
+    with ProcessPoolExecutor(num_workers=par['num_workers']) as executor:
         for result in executor.map(partial(wrapper_grn, par=par), tasks):
             pass
 

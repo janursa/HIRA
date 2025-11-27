@@ -178,7 +178,7 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
             return stats_df
         
         # Parallelize condition group processing
-        with ThreadPoolExecutor(max_workers=20) as executor:
+        with ThreadPoolExecutor(num_workers=20) as executor:
             condition_results = list(executor.map(process_condition_group, conditions))
         
         stats_all.extend(condition_results)
@@ -244,7 +244,7 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
             }
         
         # Parallelize gene processing
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             results = list(executor.map(process_gene, enumerate(adata.var_names)))
         
         # Filter out None results
@@ -648,7 +648,7 @@ def association_with_age(adata, association_type, gene_col='tf'):
         }
 
     # Parallelize gene processing
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(num_workers=20) as executor:
         p_value_store = list(executor.map(process_gene, adata.var_names))
 
     stats_df = pd.DataFrame(p_value_store)

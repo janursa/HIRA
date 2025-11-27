@@ -418,7 +418,7 @@ def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_a
         fixed_effects=['condition']
         group_key='plate_name'
     elif dataset == 'parsebioscience':
-        fixed_effects=['condition', 'cell_type_minor']
+        fixed_effects=['condition']
         group_key='donor_id'
     elif dataset == 'CXCL9':
         fixed_effects=['condition']
