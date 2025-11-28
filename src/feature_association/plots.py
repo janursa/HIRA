@@ -878,7 +878,7 @@ def plot_gene_score_association_with_age(cell_type, datasets, type, features=Non
     from ciim.src.utils.plots import dotplot
     from matplotlib.colors import TwoSlopeNorm
     from ciim.src.common import cmap_trend, palette_trend_2, surrogate_names
-    from ciim.src.feature_association.helper import retrieve_stats_features, retrieve_sig_stats, retrieve_net
+    from ciim.src.feature_association.helper import retrieve_stats_features, retrieve_sig_stats
     import matplotlib.gridspec as gridspec
     import pandas as pd
     import numpy as np
@@ -1047,7 +1047,7 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     # Calculate base dimensions based on data size
     n_datasets = len(datasets)
     # Estimate number of features for initial sizing (will be refined later)
-    estimated_n_features = top_features if features is None else len(features) if features else top_features
+    estimated_n_features = top_features if features is None else len(features) if features is not None else top_features
     
     # Base dimensions calculated from data characteristics - tighter width, looser height
     base_width = max(1.5, min(3.5, 1.0 + n_datasets * 0.2))  # Tighter width range: 1.5-3.5 instead of 1.8-4

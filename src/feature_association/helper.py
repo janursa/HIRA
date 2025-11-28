@@ -178,7 +178,7 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
             return stats_df
         
         # Parallelize condition group processing
-        with ThreadPoolExecutor(num_workers=20) as executor:
+        with ThreadPoolExecutor(max_workers=20) as executor:
             condition_results = list(executor.map(process_condition_group, conditions))
         
         stats_all.extend(condition_results)
@@ -648,7 +648,7 @@ def association_with_age(adata, association_type, gene_col='tf'):
         }
 
     # Parallelize gene processing
-    with ThreadPoolExecutor(num_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=20) as executor:
         p_value_store = list(executor.map(process_gene, adata.var_names))
 
     stats_df = pd.DataFrame(p_value_store)
@@ -790,3 +790,26 @@ def calculate_tf_activity(adata, net, tf_all=None):
         print(tf_acts_adata)
         aaa
     return tf_acts_adata
+
+
+def filter_for_consistent_trends(df):
+    """
+    Filter dataframe to keep only TFs with consistent trend direction across all cell types.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with columns: cell_type, tf, slope
+    
+    Returns
+    -------
+    pd.DataFrame
+        Filtered dataframe with only consistent trends
+    """
+    consistent_groups = (
+        df.groupby(['cell_type', 'tf'])['slope']
+        .apply(lambda x: np.sign(x).nunique() == 1)
+    )
+    valid_tuples = consistent_groups[consistent_groups].index
+    filtered_df = df.set_index(['cell_type', 'tf']).loc[valid_tuples].reset_index()
+    return filtered_df

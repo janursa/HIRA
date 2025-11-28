@@ -274,3 +274,61 @@ def gsea_func(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hallmark_2020'], f
     res2d_all["neg_log10_adj_pval"] = -np.log10(res2d_all["FDR"])
     return res2d_all
 
+
+def wrapper_gsea(stats, palette=None, **kwargs):
+    """
+    Wrapper function for GSEA analysis with visualization.
+    
+    Parameters
+    ----------
+    stats : pd.DataFrame
+        Statistics dataframe with columns including 'cell_type', 'trend'
+    palette : dict, optional
+        Color palette for trends
+    **kwargs : dict
+        Additional arguments passed to gsea_func
+    
+    Returns
+    -------
+    tuple
+        (fig, ax) matplotlib figure and axes objects
+    """
+    import matplotlib.pyplot as plt
+    from ciim.src.feature_association.plots import dotplot_category_color
+    
+    if palette is None:
+        from ciim.src.common import palette_trend_2
+        palette = palette_trend_2
+    
+    # Handle feature_type parameter (convert to feature_col for gsea_func)
+    if 'feature_type' in kwargs:
+        feature_type = kwargs.pop('feature_type')
+        if 'feature_col' not in kwargs:
+            kwargs['feature_col'] = 'target' if feature_type == 'gene_expression' else 'tf'
+    
+    pathway_scores = gsea_func(stats, **kwargs)
+    n_terms = pathway_scores['Term'].nunique()
+    cell_types = pathway_scores['cell_type'].unique()
+    fig, ax = plt.subplots(1, 1, figsize=(len(cell_types)*.12+1, 1+.15*n_terms), sharey=True, sharex=True)
+
+    pathway_scores['cell_type'] = pd.Categorical(pathway_scores['cell_type'], categories=cell_types, ordered=True)
+    show_color_legend = True
+    show_size_legend = True
+
+    dotplot_category_color(pathway_scores, 
+                ax, 
+                color_col='trend', 
+                size_col='neg_log10_adj_pval', 
+                x='cell_type', 
+                y='Term', 
+                palette=palette, sizes=(50, 250),
+                show_color_legend=show_color_legend, 
+                show_size_legend=show_size_legend,
+                size_legend_title='Significance',
+                color_legend_title='Pathway activity',
+                size_legend_loc=(1.2, 0.35),
+                color_legend_loc=(1.02, 0.75),
+                y_label='',
+                alpha=0.5)
+    
+    return fig, ax
