@@ -12,12 +12,10 @@ from ciim.src.feature_association.helper import wrapper_association_with_age_con
 DATASET_CONFIG = {
     "op": {
         "test_type": "mixed-effect",
-        "name_mapping": OrderedDict({
-            "Ruxolitinib": "Ruxolitinib",
-            "LY2090314": "LY2090314",
-        }),
-        "comparisons": ["Ruxolitinib"],
+        "name_mapping": "all",  # Special value to include all perturbations
+        "comparisons": "all",   # Will be populated with all drugs
         "show_sig_tfs": True,
+        "control_name": "Dimethyl Sulfoxide",
     },
     "CXCL9": {
         "test_type": "mixed-effect",

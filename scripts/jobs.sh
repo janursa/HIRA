@@ -1,0 +1,1 @@
+bash scripts/run_reversal_pipeline.sh op "CD4T CD8T" tf_activity 2>&1 | head -100 
