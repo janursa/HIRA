@@ -433,8 +433,20 @@ def wrapper_association_with_age_condition(par, features=None, test_type='unpair
                             ctr_group='Dimethyl Sulfoxide', association_type=par['association_type'], conditions=all_conditions)
                             # ctr_group='Dimethyl Sulfoxide', association_type=par['association_type'], conditions=['Ruxolitinib'])
             elif dataset=='parsebioscience':
-                stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col='condition', 
-                            ctr_group='PBS', association_type=par['association_type'], conditions=['IL-10'])
+                print(adata_sub)
+                if 'condition' in adata_sub.obs.columns:
+                    pertub_col = 'condition'
+                elif 'perturbation' in adata_sub.obs.columns:
+                    pertub_col = 'perturbation'
+                else:
+                    raise ValueError('No condition or perturbation column in parsebioscience dataset')
+
+                # Get all unique perturbations except control
+                all_conditions = adata_sub.obs[pertub_col].unique()
+                all_conditions = [c for c in all_conditions if c != 'PBS']
+                
+                stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col=pertub_col, 
+                            ctr_group='PBS', association_type=par['association_type'], conditions=all_conditions)
             
             else:
                 stats = association_with_age(adata_sub, association_type=par['association_type'])

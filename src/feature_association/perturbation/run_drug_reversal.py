@@ -160,7 +160,7 @@ def run_reversal_analysis(
     rejuvenating = filter_rejuvenating_drugs(
         results_df,
         p_threshold=0.05,
-        min_reversal_score=0.2,
+        min_reversal_score=0.0,
         min_common_tfs=3
     )
     

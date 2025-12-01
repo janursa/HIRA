@@ -175,7 +175,7 @@ def classify_drug_effect(
     effect_type: str,
     reversal_score: float,
     p_threshold: float = 0.05,
-    score_threshold: float = 0.2
+    score_threshold: float = 0
 ) -> str:
     """
     Classify drug effect as rejuvenating, accelerating, or neutral.

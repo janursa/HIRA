@@ -29,9 +29,10 @@ DATASET_CONFIG = {
     },
     "parsebioscience": {
         "test_type": "mixed-effect",
-        "name_mapping": OrderedDict({}),
-        "comparisons": ["IL-10"],  # extend as needed
+        "name_mapping": "all",  # Include all cytokine perturbations
+        "comparisons": "all",   # Will be populated with all cytokines
         "show_sig_tfs": True,
+        "control_name": "PBS",  # Control condition name
     },
 }
 

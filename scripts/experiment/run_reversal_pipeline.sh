@@ -9,8 +9,6 @@
 source ~/.bash_profile
 conda activate py10
 
-# Navigate to project root
-cd "$(dirname "$0")/.." || exit 1
 
 echo "=========================================="
 echo "DRUG REVERSAL ANALYSIS PIPELINE"
@@ -34,7 +32,7 @@ echo ""
 echo "STEP 1: Computing drug statistics for all TFs..."
 echo "=========================================="
 
-bash scripts/compute_all_drug_stats.sh "$DATASET" "$CELL_TYPES" "$FEATURE_TYPE"
+# bash scripts/experiment/compute_all_drug_stats.sh "$DATASET" "$CELL_TYPES" "$FEATURE_TYPE"
 
 step1_exit=$?
 
@@ -49,7 +47,7 @@ echo ""
 echo "STEP 2: Running reversal analysis..."
 echo "=========================================="
 
-bash scripts/run_drug_reversal.sh "$DATASET" "$CELL_TYPES" "$FEATURE_TYPE"
+bash scripts/experiment/run_drug_reversal.sh "$DATASET" "$CELL_TYPES" "$FEATURE_TYPE"
 
 step2_exit=$?
 
@@ -66,8 +64,8 @@ echo "PIPELINE COMPLETE!"
 echo "=========================================="
 echo ""
 echo "Results saved to:"
-echo "  - Stats: base_folder/stats/stats_drugs_all_${DATASET}_${FEATURE_TYPE}.csv"
-echo "  - Reversal: base_folder/perturbations/reversal_stats_${DATASET}.csv"
+echo "  - Stats: base_folder/output/stats/stats_drugs_all_${DATASET}_${FEATURE_TYPE}.csv"
+echo "  - Reversal: base_folder/output/perturbations/reversal_stats_${DATASET}.csv"
 echo "  - Plots: output/plots/perturbations/"
 echo ""
 echo "=========================================="
