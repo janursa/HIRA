@@ -19,11 +19,26 @@ DATASET="${1:-op}"
 CELL_TYPES="${2:-CD4T CD8T}"
 FEATURE_TYPE="${3:-tf_activity}"
 
+# Check for --no-weighting flag in remaining arguments
+NO_WEIGHTING_FLAG=""
+shift 3  # Remove first 3 positional arguments
+for arg in "$@"; do
+    if [ "$arg" = "--no-weighting" ]; then
+        NO_WEIGHTING_FLAG="--no-weighting"
+        break
+    fi
+done
+
 echo ""
 echo "Configuration:"
 echo "  Dataset: $DATASET"
 echo "  Cell types: $CELL_TYPES"
 echo "  Feature type: $FEATURE_TYPE"
+if [ -n "$NO_WEIGHTING_FLAG" ]; then
+    echo "  Mode: Standard Fisher's exact test (no weighting)"
+else
+    echo "  Mode: Weighted (centrality + effect sizes)"
+fi
 echo ""
 echo "=========================================="
 
@@ -47,7 +62,7 @@ echo ""
 echo "STEP 2: Running reversal analysis..."
 echo "=========================================="
 
-bash scripts/experiment/run_drug_reversal.sh "$DATASET" "$CELL_TYPES" "$FEATURE_TYPE"
+bash scripts/experiment/run_drug_reversal.sh "$DATASET" "$CELL_TYPES" "$FEATURE_TYPE" $NO_WEIGHTING_FLAG
 
 step2_exit=$?
 

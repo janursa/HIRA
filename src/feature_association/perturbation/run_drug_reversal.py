@@ -31,7 +31,8 @@ def run_reversal_analysis(
     cell_types: list,
     feature_type: str = 'tf_activity',
     sig_threshold: float = 0.05,
-    use_all_drug_stats: bool = True
+    use_all_drug_stats: bool = True,
+    use_weighting: bool = True
 ):
     """
     Run complete drug reversal analysis.
@@ -48,6 +49,9 @@ def run_reversal_analysis(
         Significance threshold for individual TF changes
     use_all_drug_stats : bool
         If True, use stats_drugs_all file (all TFs), otherwise use standard file
+    use_weighting : bool
+        If True, uses centrality and effect size weighting with permutation test.
+        If False, uses standard Fisher's exact test without any weighting.
     
     Returns
     -------
@@ -61,7 +65,8 @@ def run_reversal_analysis(
     print(f"Feature type: {feature_type}")
     print(f"Cell types: {cell_types}")
     print(f"Significance threshold: {sig_threshold}")
-    print(f"Use all drug stats: {use_all_drug_stats}\n")
+    print(f"Use all drug stats: {use_all_drug_stats}")
+    print(f"Use weighting (centrality + effect sizes): {use_weighting}\n")
     
     # Load aging statistics
     print("Loading aging statistics...")
@@ -98,7 +103,8 @@ def run_reversal_analysis(
         drug_stats=drug_stats,
         cell_types=cell_types,
         dataset=dataset,
-        sig_threshold=sig_threshold
+        sig_threshold=sig_threshold,
+        use_weighting=use_weighting
     )
     
     if len(results_df) == 0:
@@ -217,6 +223,11 @@ def main():
         action='store_true',
         help='Use standard drug stats instead of all-TFs stats'
     )
+    parser.add_argument(
+        '--no-weighting',
+        action='store_true',
+        help='Use standard Fisher\'s exact test without centrality/effect size weighting'
+    )
     
     args = parser.parse_args()
     
@@ -226,7 +237,8 @@ def main():
         cell_types=args.cell_types,
         feature_type=args.feature_type,
         sig_threshold=args.sig_threshold,
-        use_all_drug_stats=not args.use_standard_stats
+        use_all_drug_stats=not args.use_standard_stats,
+        use_weighting=not args.no_weighting
     )
     
     return results_df
