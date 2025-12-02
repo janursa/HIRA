@@ -411,39 +411,104 @@ from scipy.stats import hypergeom
 import numpy as np
 
 
-def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_age'):
+def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_age', 
+                       formula=None, group_key=None, return_full_result=False, config=None):
+    """
+    Flexible mixed-effects model testing.
+    
+    Parameters
+    ----------
+    dataset : str
+        Dataset name (used to lookup config if not provided)
+    df : pd.DataFrame
+        Data containing samples
+    ctr : str
+        Control group name
+    treatment : str
+        Treatment group name
+    target_variable : str
+        Dependent variable name (default: 'predicted_age')
+    formula : str, optional
+        Custom R-style formula for the model. If None, uses config or defaults.
+        Examples:
+            - Simple: "target_variable ~ condition"
+            - With covariates: "target_variable ~ condition + followup_year"
+            - Interactions: "target_variable ~ condition * vaccinated * followup_day"
+    group_key : str, optional
+        Column name for random effects grouping. If None, uses config or defaults.
+    return_full_result : bool
+        If True, returns full statsmodels result object. If False, returns (pval, coef)
+    config : ConditionConfig, optional
+        Configuration object. If provided, uses config.mixed_effects_formula and config.mixed_effects_group
+    
+    Returns
+    -------
+    tuple or statsmodels result
+        If return_full_result=False: (p_value, coefficient) for 'condition' effect
+        If return_full_result=True: Full fitted model result object
+    """
     import warnings
     warnings.filterwarnings("ignore")
-    if dataset == 'op':
-        fixed_effects=['condition']
-        group_key='plate_name'
-    elif dataset == 'parsebioscience':
-        fixed_effects=['condition']
-        group_key='donor_id'
-    elif dataset == 'CXCL9':
-        fixed_effects=['condition']
-        group_key='donor_id'
-    else:
-        raise ValueError('Unknown dataset for mixed effects')
     import statsmodels.formula.api as smf
+    
+    # Priority: explicit args > config > raise error
+    if formula is None:
+        if config is not None and config.mixed_effects_formula is not None:
+            formula = config.mixed_effects_formula
+        else:
+            # Default fallback
+            formula = f"{target_variable} ~ condition"
+    
+    if group_key is None:
+        if config is not None and config.mixed_effects_group is not None:
+            group_key = config.mixed_effects_group
+        else:
+            raise ValueError(f"group_key not provided and no config available for dataset '{dataset}'")
 
+    # Filter to comparison groups
     df = df[df['condition'].isin([ctr, treatment])].copy()
+    
+    # Diagnostic: Check data quality before modeling
+    n_groups = df[group_key].nunique()
+    n_ctr = df[df['condition'] == ctr].shape[0]
+    n_treat = df[df['condition'] == treatment].shape[0]
+    
+    if n_groups < 2:
+        print(f"DIAGNOSTIC: Insufficient groups for {treatment} vs {ctr}: only {n_groups} {group_key}(s)")
+        return (np.nan, np.nan) if not return_full_result else None
+    
+    if n_ctr < 2 or n_treat < 2:
+        print(f"DIAGNOSTIC: Insufficient samples for {treatment} vs {ctr}: ctr={n_ctr}, treat={n_treat}")
+        return (np.nan, np.nan) if not return_full_result else None
+    
+    # Check variance
+    var_ctr = df[df['condition'] == ctr][target_variable].var()
+    var_treat = df[df['condition'] == treatment][target_variable].var()
+    
+    if var_ctr == 0 or var_treat == 0:
+        print(f"DIAGNOSTIC: Zero variance for {treatment} vs {ctr}: var_ctr={var_ctr}, var_treat={var_treat}")
+        return (np.nan, np.nan) if not return_full_result else None
+    
+    # Encode condition as numeric for regression
     df['condition'] = pd.Categorical(df['condition'], categories=[ctr, treatment], ordered=True)
     df['condition'] = df['condition'].cat.codes  # 0 for ctr, 1 for treatment
-    # df['donor_age'] = df['donor_age'].astype('category')
-    # df['donor_age'] = df['donor_age'].cat.codes
-    # Construct formula dynamically
-    fixed_effects_s = ' + '.join(fixed_effects)
-    formula = f"{target_variable} ~ {fixed_effects_s}"
-    if group_key is None:
-        model = smf.mixedlm(formula, df)
-    else:
-        model = smf.mixedlm(formula, df, groups=df[group_key])
-    result = model.fit()
-    pval = result.pvalues['condition']
-    coef = result.params['condition']
     
-    return pval, coef
+    # Fit mixed model
+    try:
+        model = smf.mixedlm(formula, df, groups=df[group_key])
+        result = model.fit()
+        
+        if return_full_result:
+            return result
+        else:
+            # Extract p-value and coefficient for main condition effect
+            pval = result.pvalues['condition']
+            coef = result.params['condition']
+            return pval, coef
+            
+    except Exception as e:
+        print(f"ERROR fitting model for {treatment} vs {ctr}: {e}")
+        return (np.nan, np.nan) if not return_full_result else None
 
 def test_paired(df, ctr, treatment):
     import scipy.stats as stats

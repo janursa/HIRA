@@ -28,6 +28,10 @@ class ConditionConfig:
     # Statistical parameters
     test_type: str = 'unpaired'  # 'unpaired', 'mixed-effect', 'paired'
     
+    # Mixed-effects model parameters (used when test_type='mixed-effect')
+    mixed_effects_formula: Optional[str] = None  # R-style formula, e.g., "feature_values ~ condition"
+    mixed_effects_group: Optional[str] = None    # Random effects grouping variable, e.g., 'donor_id'
+    
     # Comparison mode
     comparison_mode: Literal['opposite', 'same', 'both'] = 'opposite'
     
@@ -37,6 +41,9 @@ class ConditionConfig:
     
     # Display
     display_name: Optional[str] = None
+    
+    # Plotting control
+    target_treatments: Optional[List[str]] = None  # Which conditions to plot in overlap analysis
     
     def __post_init__(self):
         if self.display_name is None:
@@ -87,8 +94,11 @@ DATASET_CONFIGS = {
         control_group='Dimethyl Sulfoxide',
         treatment_groups='all',  # Auto-detect all drugs
         test_type='mixed-effect',
+        mixed_effects_formula='feature_values ~ condition',
+        mixed_effects_group='plate_name',
         comparison_mode='opposite',  # Rejuvenating (opposite to aging)
         display_name='OP Compounds',
+        target_treatments=['Ruxolitinib']
     ),
     
     "CXCL9": ConditionConfig(
@@ -98,19 +108,25 @@ DATASET_CONFIGS = {
         control_group=None,  # Multiple controls handled specially
         treatment_groups=[
             '24 h RPMI + ruxolitinib',
-            '24 h LPS + ruxolitinib'
+            '24 h LPS + ruxolitinib',
+            '24 h LPS'
         ],
         test_type='mixed-effect',
+        mixed_effects_formula='feature_values ~ condition',
+        mixed_effects_group='donor_id',
         comparison_mode='opposite',
         display_name='Ruxolitinib',
         control_mapping={
             '24 h RPMI + ruxolitinib': '24 h RPMI',
-            '24 h LPS + ruxolitinib': '24 h LPS'
+            '24 h LPS + ruxolitinib': '24 h LPS',
+            '24 h LPS': '24 h RPMI'
         },
         name_mapping=OrderedDict({
             '24 h RPMI + ruxolitinib': 'Ruxolitinib (ctr: RPMI)',
             '24 h LPS + ruxolitinib': 'Ruxolitinib (ctr: LPS)',
-        })
+            '24 h LPS': 'LPS (ctr: RPMI)'
+        }),
+        target_treatments=['Ruxolitinib (ctr: RPMI)', 'Ruxolitinib (ctr: LPS)'],
     ),
     
     "parsebioscience": ConditionConfig(
@@ -120,8 +136,30 @@ DATASET_CONFIGS = {
         control_group='PBS',
         treatment_groups='all',  # Auto-detect all cytokines
         test_type='mixed-effect',
+        mixed_effects_formula='feature_values ~ condition',
+        mixed_effects_group='donor_id',
         comparison_mode='opposite',
         display_name='Cytokines',
+        target_treatments=['IL-10'],
+    ),
+    
+    # ========== AGING DATASETS (Longitudinal) ==========
+    "soundlife": ConditionConfig(
+        name="soundlife",
+        analysis_type='aging',
+        condition_column='age_group',  # 'young' vs 'old'
+        control_group='young',  # Baseline comparison group
+        treatment_groups=['old'],  # Compare older adults to young
+        test_type='mixed-effect',  # Account for repeated measures per donor
+        mixed_effects_formula='feature_values ~ condition',  # Simple age effect (can be extended)
+        mixed_effects_group='donor_id',  # Random intercept per donor
+        comparison_mode='same',  # Aging signatures (same direction as reference aging)
+        display_name='Sound Life (Aging)',
+        target_treatments=['old'],  # Focus on aging effects
+        name_mapping={
+            'young': 'Young (25-35y)',
+            'old': 'Older (55-65y)'
+        }
     ),
 }
 
