@@ -20,7 +20,7 @@ echo ""
 
 
 # Set test mode (set to true for testing with subset, false for full processing)
-TEST_MODE=true
+TEST_MODE=false
 
 # Build command
 CMD="python src/process_dataset/soundlife/script.py \
