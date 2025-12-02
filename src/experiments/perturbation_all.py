@@ -66,50 +66,41 @@ def plot_coverage_overlap(stats_sig, dataset, output_dir):
     aging_stats_sig = retrieve_sig_stats(type='bulk').drop_duplicates(subset=["cell_type", "tf"])
     aging_stats_sig = aging_stats_sig[["tf", "cell_type", "slope"]]
     
-    # Dataset-specific configurations
-    if dataset == 'CXCL9':
-        treatments = ['RPMI', 'LPS']
-    elif dataset == 'op':
-        treatments = ['Dimethyl Sulfoxide']  # Single control
-    elif dataset == 'parsebioscience':
-        treatments = ['PBS']
-    else:
-        print(f"  Warning: Unknown dataset {dataset}, skipping overlap plots")
-        return
+    target_treatments = get_config(dataset).target_treatments
+    assert target_treatments is not None, "Target treatments configuration is missing."
     
-    for treatment in treatments:
-        if dataset == 'CXCL9':
-            condition_filter = f'Ruxolitinib (ctr: {treatment})'
-        else:
-            condition_filter = stats_sig['condition'].unique()[0]  # Use first condition
-        
-        df_sub = stats_sig[stats_sig['condition'] == condition_filter]
-        
-        if len(df_sub) == 0:
-            print(f"  Warning: No data for condition {condition_filter}")
-            continue
-        
-        plot_overlap(
-            df_sub[['tf', 'cell_type', 'slope_condition']], 
-            aging_stats_sig[['tf', 'cell_type', 'slope']], 
-            col='cell_type', 
-            how='left', 
-            agreement='opposite', 
-            legend=True, 
-            figsize=(1.5, 2), 
-            legend_loc=(1, 0.5)
-        )
-        plt.title('')
-        plt.legend().remove()
-        
-        name = f'{dataset}_{treatment}'
-        output_path = os.path.join(output_dir, f'drug_aging_overlap_{name}.png')
-        plt.savefig(output_path, bbox_inches="tight", dpi=300, transparent=True)
-        plt.close()
-        print(f"  Saved: {output_path}")
+    for cell_type in stats_sig['cell_type'].unique():
+        print(f"  Processing cell type: {cell_type}")
+        for treatment in target_treatments:
+            
+            df_sub = stats_sig[(stats_sig['condition'] == treatment) & (stats_sig['cell_type'] == cell_type)]
+            aging_stats_sig_sub = aging_stats_sig[aging_stats_sig['cell_type'] == cell_type]
+            
+            if len(df_sub) == 0:
+                raise ValueError(f"No data for condition {treatment}")
+            
+            plot_overlap(
+                df_sub[['tf', 'cell_type', 'slope_condition']], 
+                aging_stats_sig_sub[['tf', 'cell_type', 'slope']], 
+                col='cell_type', 
+                how='left', 
+                agreement='opposite', 
+                legend=True, 
+                figsize=(1.5, 2), 
+                legend_loc=(1, 0.5)
+            )
+            plt.title('')
+            plt.legend().remove()
+            
+            name = f'{dataset}_{treatment}_{cell_type}'
+            output_path = os.path.join(output_dir, f'drug_aging_overlap_{name}.png')
+            output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
+            plt.savefig(output_path, bbox_inches="tight", dpi=300, transparent=True)
+            plt.close()
+            print(f"  Saved: {output_path}")
 
 
-def plot_overview_heatmap(stats, output_dir):
+def plot_overview_heatmap(stats, dataset, output_dir):
     """Generate overview heatmap of perturbation effects."""
     print("Generating overview heatmap...")
     
@@ -118,9 +109,10 @@ def plot_overview_heatmap(stats, output_dir):
     print(f"  Found {len(conditions)} condition(s): {', '.join(conditions)}")
     
     # Plot one heatmap per condition (or just first if many)
-    conditions_to_plot = conditions[:1] if len(conditions) > 2 else conditions
+    target_treatments = get_config(dataset).target_treatments
+    assert target_treatments is not None, "Target treatments configuration is missing."
     
-    for condition in conditions_to_plot:
+    for condition in target_treatments:
         stats_cond = stats[stats['condition'] == condition].copy()
         
         stats_cond['cell_type'] = pd.Categorical(stats_cond['cell_type'], categories=cell_types, ordered=True)
@@ -141,7 +133,7 @@ def plot_overview_heatmap(stats, output_dir):
         )
         
         # Clean condition name for filename
-        condition_clean = condition.replace('(', '').replace(')', '').replace(':', '').replace(' ', '_')
+        condition_clean = condition.replace('(', '').replace(')', '').replace(':', '').replace(' ', '_').replace(':', '_')
         output_path = os.path.join(output_dir, f'overview_perturbation_{condition_clean}.png')
         plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
@@ -154,6 +146,9 @@ def plot_aging_perturbation_comparison(stats, dataset, target_cell_types, top_ag
     
     palette_all = {**palette_trend, **palette_treatment}
     stats_df = stats.copy()
+
+    target_treatments = get_config(dataset).target_treatments
+    assert target_treatments is not None, "Target treatments configuration is missing."
     
     for cell_type in target_cell_types:
         print(f"  Processing cell type: {cell_type}")
@@ -164,7 +159,8 @@ def plot_aging_perturbation_comparison(stats, dataset, target_cell_types, top_ag
         aging_df['analysis'] = 'Age-associated'
         
         # Perturbation TFs
-        comparisons = stats_df['condition'].unique()
+        # comparisons = stats_df['condition'].unique()
+        comparisons = target_treatments
         stats_store = []
         for comparison in comparisons:
             stats_d = stats_df[
@@ -230,6 +226,7 @@ def plot_aging_perturbation_comparison(stats, dataset, target_cell_types, top_ag
         plt.title('')
         
         output_path = os.path.join(output_dir, f'aging_drug_trend_{cell_type}_{dataset}.png')
+        output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
         plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
         print(f"    Saved: {output_path}")
@@ -312,45 +309,144 @@ def plot_donor_level_effects(stats, dataset, target_cell_types, output_dir):
                 output_dir, 
                 f'donor_level_perturbation_effect_{comparison}_{cell_type}.png'
             )
+            output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
             plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
             plt.close()
             print(f"    Saved: {output_path}")
 
 
 def plot_pathway_analysis(stats, dataset, output_dir):
-    """Save significant TFs for pathway enrichment analysis."""
-    print("Saving significant TFs for pathway analysis...")
+    """Generate pathway enrichment analysis using GSEA and KDE plots."""
+    print("Generating pathway analysis...")
     
-    pathway_data_store = []
+    from ciim.src.pathway_analysis.util import gsea_func, pathway_kde_func
+    from ciim.src.pathway_analysis.plots import plot_pathway_kde
+    from ciim.src.feature_association.plots import dotplot_category_color
     
-    for ctr in stats['ctrl'].unique():
-        for treatment in stats['condition'].unique():
-            stats_sig = stats[
-                (stats['ctrl'] == ctr) & 
-                (stats['condition'] == treatment) & 
-                (stats['p_value_adj'] < 0.05)
-            ]
-            
-            if len(stats_sig) == 0:
-                continue
-            
-            stats_sig_copy = stats_sig.copy()
-            stats_sig_copy['ctrl'] = ctr
-            stats_sig_copy['condition'] = treatment
-            pathway_data_store.append(stats_sig_copy)
+    # Prepare stats for pathway analysis
+    stats_for_pathway = stats.copy()
+    stats_for_pathway = stats_for_pathway[stats_for_pathway['p_value_adj'] < 0.05]
     
-    if not pathway_data_store:
+    if len(stats_for_pathway) == 0:
         print("  Warning: No significant TFs found for pathway analysis")
-        return
+        return None
     
-    pathway_data_all = pd.concat(pathway_data_store)
+    # Save significant TFs
+    output_csv = os.path.join(output_dir, f'{dataset}_sig_tfs_for_pathway.csv')
+    stats_for_pathway.to_csv(output_csv, index=False)
+    print(f"  Saved significant TFs: {output_csv}")
     
-    # Save significant TFs for pathway analysis
-    output_path = os.path.join(output_dir, f'{dataset}_sig_tfs_for_pathway.csv')
-    pathway_data_all.to_csv(output_path, index=False)
-    print(f"  Saved: {output_path}")
+    # 1. GSEA enrichment analysis
+    print("\n  Running GSEA enrichment analysis...")
+    try:
+        pathway_scores = gsea_func(
+            stats_for_pathway,
+            pvalue_col='p_value_adj',
+            gene_sets=['MSigDB_Hallmark_2020'],
+            feature_col='tf'
+        )
+        
+        if pathway_scores is not None and len(pathway_scores) > 0:
+            print(f"    Found {len(pathway_scores)} significant pathway enrichments")
+            
+            # Plot GSEA dotplot
+            n_terms = pathway_scores['Term'].nunique()
+            cell_types = pathway_scores['cell_type'].unique()
+            
+            fig, ax = plt.subplots(
+                1, 1, 
+                figsize=(len(cell_types) * 0.12 + 1, 1 + 0.15 * n_terms), 
+                sharey=True, 
+                sharex=True
+            )
+            
+            pathway_scores['cell_type'] = pd.Categorical(
+                pathway_scores['cell_type'], 
+                categories=cell_types, 
+                ordered=True
+            )
+            
+            dotplot_category_color(
+                pathway_scores,
+                ax,
+                color_col='trend',
+                size_col='neg_log10_adj_pval',
+                x='cell_type',
+                y='Term',
+                palette=palette_treatment,
+                sizes=(50, 250),
+                show_color_legend=True,
+                show_size_legend=True,
+                size_legend_title='Significance',
+                color_legend_title='Pathway activity',
+                size_legend_loc=(1.2, 0.35),
+                color_legend_loc=(1.02, 0.75),
+                y_label='',
+                alpha=0.5
+            )
+            
+            output_path = os.path.join(output_dir, f'{dataset}_pathway_gsea.png')
+            plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+            plt.close()
+            print(f"    Saved GSEA plot: {output_path}")
+        else:
+            print("    No significant pathway enrichments found")
+            pathway_scores = None
     
-    return pathway_data_all
+    except Exception as e:
+        print(f"    Warning: GSEA analysis failed: {e}")
+        pathway_scores = None
+    
+    # 2. KDE pathway analysis
+    print("\n  Running KDE pathway analysis...")
+    try:
+        # Add 'slope' column required by pathway_kde_func
+        stats_for_pathway_kde = stats_for_pathway.copy()
+        stats_for_pathway_kde['slope'] = stats_for_pathway_kde['slope_condition']
+        
+        res_pathway_kde = pathway_kde_func(
+            stats_for_pathway_kde,
+            pathway='hallmark',
+            sets=None,
+            test='wilcoxon',
+            min_genes=10,
+            fdr_method='fdr_bh',
+            feature_col='tf'
+        )
+        
+        if len(res_pathway_kde) > 0:
+            print(f"    Found {len(res_pathway_kde)} significant pathways in KDE analysis")
+            
+            # Plot KDE - use the modified dataframe with 'slope' column
+            fig, skipped = plot_pathway_kde(
+                df_condition=stats_for_pathway_kde,
+                res_cond=res_pathway_kde,
+                df_aging=None,
+                res_aging=None,
+                sets=None,
+                cell_types=None,
+                max_height=0.2,
+                row_spacing=0.4,
+                cell_spacing=1,
+                min_genes=10,
+                feature_col='tf'
+            )
+            
+            output_path = os.path.join(output_dir, f'{dataset}_pathway_kde.png')
+            plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+            plt.close()
+            print(f"    Saved KDE plot: {output_path}")
+            
+            if skipped:
+                print(f"    Note: Some pathways were skipped due to insufficient genes")
+        else:
+            print("    No significant pathways found in KDE analysis")
+    
+    except Exception as e:
+        print(f"    Warning: KDE analysis failed: {e}")
+        res_pathway_kde = None
+    
+    return pathway_scores
 
 
 def main():
@@ -455,7 +551,7 @@ def main():
         'Increase after treatment' if x > 0 else 'Decrease after treatment' 
         for x in stats['slope_condition']
     ]
-    plot_overview_heatmap(stats, output_dir)
+    plot_overview_heatmap(stats, args.dataset, output_dir)
     
     # 3. Aging vs perturbation comparison
     plot_aging_perturbation_comparison(

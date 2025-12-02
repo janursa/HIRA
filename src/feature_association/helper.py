@@ -155,7 +155,7 @@ def bin_feature_values(adata):
 
 
 
-def determine_stats_condition(adata, association_type='spearman', ctr_group='normal', condition_col='condition', test_type='unpaired', conditions=None):
+def determine_stats_condition(adata, association_type='spearman', ctr_group='normal', condition_col='condition', test_type='unpaired', conditions=None, config=None):
     from scipy.stats import wilcoxon
     from scipy.sparse import issparse
     from scipy.stats import mannwhitneyu
@@ -227,7 +227,8 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
                 
                 df = pd.concat([obs_ctr, obs_case])
                                 
-                pval, coef = test_mixed_effects(dataset, df, ctr_group, condition, target_variable='feature_values')
+                pval, coef = test_mixed_effects(dataset, df, ctr_group, condition, 
+                                               target_variable='feature_values', config=config)
    
             else:
                 raise ValueError('Unknown test type')
@@ -510,7 +511,8 @@ def _compute_condition_stats_from_config(adata, config, test_type, association_t
                 condition_col=condition_col,
                 test_type=test_type,
                 conditions=[treatment],
-                association_type=association_type
+                association_type=association_type,
+                config=config
             )
             if config.name_mapping:
                 stats['condition'] = stats['condition'].replace(config.name_mapping)
@@ -524,7 +526,8 @@ def _compute_condition_stats_from_config(adata, config, test_type, association_t
             condition_col=condition_col,
             test_type=test_type,
             conditions=treatment_groups,
-            association_type=association_type
+            association_type=association_type,
+            config=config
         )
         if config.name_mapping:
             stats['condition'] = stats['condition'].replace(config.name_mapping)
