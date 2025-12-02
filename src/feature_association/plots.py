@@ -751,7 +751,7 @@ def plot_analysis_and_centrality(df, all_groups, palette_all, feature_col='tf', 
         fig.legend(ordered_handles, ordered_labels, loc='center left', bbox_to_anchor=(1.02, 0.8), frameon=False)
 
     
-def wrapper_drug_aging_overlap(
+def plot_overlap(
         stats_drug_sig, 
         aging_stats_sig, 
         how='inner',
@@ -2558,41 +2558,6 @@ class DotPlotTFtarget:
         data_all = data_all[data_all['target'].isin(top_targets)]
         return data_all
 
-def plot_overlap(stats_drugs, aging_stats_sig, cell_types, cfg, PLOTS_DIR, agreement="opposite", figsize=None):
-    comparisions = cfg["comparisons"]
-    show_sig_tfs = cfg["show_sig_tfs"]
-
-    if figsize is None:
-        figsize = (1 * len(comparisions), 1.5)
-    fig, axes = plt.subplots(1, len(comparisions), figsize=figsize, sharex=False, sharey=False)
-
-    for i, comp in enumerate(comparisions):
-        ax = axes[i] if len(comparisions) > 1 else axes
-        subset = stats_drugs if not show_sig_tfs else stats_drugs[stats_drugs["p_value_adj"] < 0.05]
-        stats_t = subset[subset["comparision"] == comp]
-
-        assert stats_t.shape[0] > 0, f"No TFs found for {comp}"
-        stats_t = stats_t[stats_t["cell_type"].isin(cell_types)]
-
-        legend = (i == len(comparisions) - 1)
-        wrapper_drug_aging_overlap(
-            stats_t[["tf", "cell_type", "slope_condition"]],
-            aging_stats_sig[["tf", "cell_type", "slope"]],
-            col="cell_type",
-            how="left",
-            agreement=agreement,
-            ax=ax,
-            legend=legend,
-            legend_loc=(1, 0.5),
-        )
-        # ax.set_title(comp, fontsize=12, fontweight="bold", pad=10)
-        if i > 0:
-            ax.set_ylabel("")
-            ax.spines["left"].set_visible(False)
-            ax.set_yticks([])
-        ax.set_xticks([])
-
-    
 # def plot_enrich(df, ax, palette, scale=50):
 #     sizes=None
 #     # Identify term-cell type pairs that have both Increase and Decrease

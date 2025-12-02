@@ -367,107 +367,169 @@ def wrapper_meta_analysis(par):
     print('Saving results to ', par['stats_all'])
     stats_all.to_csv(par['stats_all'], index=False)
 
-def wrapper_association_with_age_condition(par, features=None, test_type='unpaired', condition='healthy'):
-    # - calculate tf activity for all datasets
+def wrapper_association_with_age_condition(par, features=None, test_type=None, condition='healthy', config=None):
+    """
+    Wrapper function to compute association with age and condition.
+    
+    Now uses configuration objects to eliminate dataset-specific if-else chains.
+    
+    Parameters
+    ----------
+    par : dict
+        Parameters containing datasets, feature_type, type, cell_types, etc.
+    features : list, optional
+        List of features to analyze
+    test_type : str, optional
+        Statistical test type (will use config default if None)
+    condition : str
+        Condition filter for loading data
+    config : ConditionConfig, optional
+        Configuration object (will auto-load if None)
+    """
+    from ciim.src.feature_association.config import get_config
+    
     datasets = par['datasets']
     feature_type = par['feature_type']
     data_type = par['type']
     cell_types = par['cell_types']
 
-    print(f'Association {feature_type} with age/disease...')
+    print(f'Association {feature_type} with condition...')
     if 'minor' in data_type:
         cell_types_l = minor_cell_types
     else:
         cell_types_l = cell_types
+    
     stats_store = []
     for cell_type in tqdm(cell_types_l, desc='cell types'):
-        # ----------- calculate tf activity for all datasets
         for dataset in datasets:
+            # Get configuration for this dataset
+            if config is None:
+                try:
+                    cfg = get_config(dataset)
+                except ValueError:
+                    # Unknown dataset - use aging analysis
+                    cfg = None
+            else:
+                cfg = config
+            
+            # Load data
             try:
-                adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, type=data_type, feature_type=feature_type, condition=condition)
+                adata = retrieve_feature_data(
+                    dataset=dataset, 
+                    cell_type=cell_type, 
+                    type=data_type, 
+                    feature_type=feature_type, 
+                    condition=condition
+                )
                 adata = adata[:, adata.var_names.isin(features)] if features is not None else adata
             except ValueError as e:
                 print(e)
                 continue
-            # - add which cell type resolution to run the analysis
+            
+            # Filter by cell type
             adata_sub = adata[adata.obs[par['cell_type_resolution']]==cell_type]
             if adata_sub.shape[0] < 3:
                 print('Not enough samples for', cell_type, dataset)
                 continue
             
-            # - subset based on prior (only for target genes) -> add this to meta analysis
+            # Subset features
             genes = adata_sub.var_names
             adata_sub = adata_sub[:, adata_sub.var_names.isin(genes)]
 
             if issparse(adata_sub.X):
                 adata_sub.X = adata_sub.X.toarray()
-            if ('SLE' in dataset):
-                stats = determine_stats_condition(adata_sub, test_type=test_type, association_type=par['association_type'])
-            elif ('Covid' in dataset):
-                stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col='Max_WHO_Group', ctr_group='mild', association_type=par['association_type'])
-            elif dataset == 'CXCL9':
-                stats_store_l = []
-                stats = determine_stats_condition(adata_sub, ctr_group='24 h RPMI', condition_col='condition', test_type=test_type,
-                                                conditions=['24 h RPMI + ruxolitinib'])
-                stats_store_l.append(stats)
-                stats = determine_stats_condition(adata_sub, ctr_group='24 h LPS', condition_col='condition', test_type=test_type,  
-                                                conditions=['24 h LPS + ruxolitinib']#['24 h LPS + metformin', '24 h LPS + metformin + ruxolitinib', '24 h LPS + ruxolitinib'])
-                )
-                stats_store_l.append(stats)
-                
-                stats = pd.concat(stats_store_l)
-            elif dataset=='op':
-                print(adata_sub)
-                if 'condition' in adata_sub.obs.columns:
-                    pertub_col = 'condition'
-                elif 'perturbation' in adata_sub.obs.columns:
-                    pertub_col = 'perturbation'
-                else:
-                    raise ValueError('No condition or perturbation column in op dataset')
-
-                # Get all unique perturbations except control
-                all_conditions = adata_sub.obs[pertub_col].unique()
-                all_conditions = [c for c in all_conditions if c != 'Dimethyl Sulfoxide']
-                
-                stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col=pertub_col, 
-                            ctr_group='Dimethyl Sulfoxide', association_type=par['association_type'], conditions=all_conditions)
-                            # ctr_group='Dimethyl Sulfoxide', association_type=par['association_type'], conditions=['Ruxolitinib'])
-            elif dataset=='parsebioscience':
-                print(adata_sub)
-                if 'condition' in adata_sub.obs.columns:
-                    pertub_col = 'condition'
-                elif 'perturbation' in adata_sub.obs.columns:
-                    pertub_col = 'perturbation'
-                else:
-                    raise ValueError('No condition or perturbation column in parsebioscience dataset')
-
-                # Get all unique perturbations except control
-                all_conditions = adata_sub.obs[pertub_col].unique()
-                all_conditions = [c for c in all_conditions if c != 'PBS']
-                
-                stats = determine_stats_condition(adata_sub, test_type=test_type, condition_col=pertub_col, 
-                            ctr_group='PBS', association_type=par['association_type'], conditions=all_conditions)
             
-            else:
+            # Determine statistics based on configuration
+            if cfg is None:
+                # Aging analysis (no config)
                 stats = association_with_age(adata_sub, association_type=par['association_type'])
                 stats['condition'] = 'healthy'
+            else:
+                # Condition analysis using config
+                stats = _compute_condition_stats_from_config(
+                    adata_sub, 
+                    cfg, 
+                    test_type=test_type or cfg.test_type,
+                    association_type=par['association_type']
+                )
+            
             if stats is None or len(stats) == 0:
                 print('No stats for', cell_type, dataset)
                 continue
+                
             stats['dataset'] = dataset
             stats['cell_type'] = cell_type
-            
             stats_store.append(stats)
-    assert len(stats_store)>0, 'No stats calculated, something went wrong'
+    
+    assert len(stats_store) > 0, 'No stats calculated, something went wrong'
+    
     if len(stats_store) == 1:
-        stats_all = stats
+        stats_all = stats_store[0]
     else:
         stats_all = pd.concat(stats_store)
+    
     print(stats_all['cell_type'].unique())
+    
     if feature_type == 'gene_expression':
         stats_all.rename(columns={'tf': 'target'}, inplace=True)
 
     return stats_all
+
+
+def _compute_condition_stats_from_config(adata, config, test_type, association_type):
+    """
+    Compute condition statistics using configuration object.
+    
+    This replaces the large if-elif chain with config-driven logic.
+    """
+    from ciim.src.feature_association.config import ConditionConfig
+    
+    # Auto-detect condition column for datasets with variants
+    condition_col = config.condition_column
+    if hasattr(config, 'condition_column_variants'):
+        for variant in config.condition_column_variants:
+            if variant in adata.obs.columns:
+                condition_col = variant
+                break
+    
+    # Get treatment groups
+    if config.treatment_groups == 'all':
+        all_conditions = adata.obs[condition_col].unique()
+        treatment_groups = [c for c in all_conditions if c != config.control_group]
+    else:
+        treatment_groups = config.treatment_groups
+    
+    # Handle datasets with multiple controls (e.g., CXCL9)
+    if config.control_mapping is not None:
+        stats_list = []
+        for treatment in treatment_groups:
+            control = config.control_mapping[treatment]
+            stats = determine_stats_condition(
+                adata,
+                ctr_group=control,
+                condition_col=condition_col,
+                test_type=test_type,
+                conditions=[treatment],
+                association_type=association_type
+            )
+            if config.name_mapping:
+                stats['condition'] = stats['condition'].replace(config.name_mapping)
+            stats_list.append(stats)
+        stats = pd.concat(stats_list)
+    else:
+        # Standard case: single control group
+        stats = determine_stats_condition(
+            adata,
+            ctr_group=config.control_group,
+            condition_col=condition_col,
+            test_type=test_type,
+            conditions=treatment_groups,
+            association_type=association_type
+        )
+        if config.name_mapping:
+            stats['condition'] = stats['condition'].replace(config.name_mapping)
+    
+    return stats
 
 def wrapper_tf_activity(par):
     print('Loading data...')

@@ -12,13 +12,13 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from ciim.src.common import SAVE_DIR, PLOTS_DIR
 from ciim.src.feature_association.helper import retrieve_sig_stats
-from ciim.src.feature_association.perturbation.drug_reversal import (
+from ciim.src.overlap_analysis.drug_reversal import (
     analyze_drug_reversal,
     filter_rejuvenating_drugs,
     save_reversal_results,
     print_reversal_summary
 )
-from ciim.src.feature_association.perturbation.drug_reversal_plots import (
+from ciim.src.overlap_analysis.drug_reversal_plots import (
     plot_reversal_heatmap,
     plot_drug_ranking,
     plot_contingency_tables,
@@ -78,18 +78,41 @@ def run_reversal_analysis(
     
     # Load drug statistics
     print("Loading drug statistics...")
-    if use_all_drug_stats:
-        drug_stats_file = f"{SAVE_DIR}/stats/stats_drugs_all_{dataset}_{feature_type}.csv"
+    # Try unified stats format first: stats_{dataset}_{data_type}_{feature_type}_{test_type}.csv
+    # For perturbations, data_type is usually 'perturbed' and test_type is 'mannwhitneyu'
+    drug_stats_file = None
+    
+    # Check for unified format
+    import glob
+    pattern = f"{SAVE_DIR}/stats/stats_{dataset}_*_{feature_type}_*.csv"
+    matching_files = glob.glob(pattern)
+    
+    if matching_files:
+        # Use the first matching file (unified format)
+        drug_stats_file = matching_files[0]
+        print(f"  Using unified stats: {os.path.basename(drug_stats_file)}")
     else:
-        drug_stats_file = f"{SAVE_DIR}/stats/stats_drugs_{dataset}_{feature_type}.csv"
+        # Fall back to old format if exists
+        if use_all_drug_stats:
+            drug_stats_file = f"{SAVE_DIR}/stats/stats_drugs_all_{dataset}_{feature_type}.csv"
+        else:
+            drug_stats_file = f"{SAVE_DIR}/stats/stats_drugs_{dataset}_{feature_type}.csv"
     
     if not os.path.exists(drug_stats_file):
         raise FileNotFoundError(
             f"Drug statistics file not found: {drug_stats_file}\n"
-            f"Please run compute_all_drug_stats.py first."
+            f"Pattern tried: {pattern}\n"
+            f"Please run condition analysis first:\n"
+            f"  bash scripts/experiment/run_condition_analysis.sh --dataset {dataset} --feature-type {feature_type}"
         )
     
     drug_stats = pd.read_csv(drug_stats_file)
+    
+    # Handle column naming: unified format uses 'condition', old format uses 'comparision'
+    # Rename 'condition' to 'comparision' for backward compatibility with drug_reversal.py
+    if 'condition' in drug_stats.columns and 'comparision' not in drug_stats.columns:
+        drug_stats = drug_stats.rename(columns={'condition': 'comparision'})
+    
     print(f"  Loaded {len(drug_stats)} drug TF associations")
     print(f"  Unique drugs/comparisons: {drug_stats['comparision'].nunique()}")
     print(f"  Drugs: {drug_stats['comparision'].unique().tolist()}")

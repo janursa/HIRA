@@ -15,7 +15,7 @@ from ciim.src.feature_association.helper import (
     wrapper_gene_expression,
     wrapper_association_with_age_condition
 )
-from ciim.src.feature_association.perturbation.config import get_dataset_config
+from ciim.src.feature_association.config import get_config
 
 
 def compute_all_drug_stats(
@@ -65,7 +65,7 @@ def compute_all_drug_stats(
         return output_file
     
     # Get dataset configuration
-    cfg = get_dataset_config(dataset)
+    cfg = get_config(dataset)
     
     # Determine data type
     if feature_type == 'tf_activity':
