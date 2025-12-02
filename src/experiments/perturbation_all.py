@@ -59,6 +59,115 @@ def load_stats(dataset, data_type, feature_type):
     return stats, cfg
 
 
+def plot_aging_experiment_heatmap(stats_sig, dataset, output_dir):
+    """
+    Plot heatmap comparing TF activity/directions between aging and experimental conditions.
+    
+    Creates a heatmap where:
+    - Rows: TFs (unlabeled due to high number)
+    - First column: Natural aging slope values
+    - Subsequent columns: Experimental condition slope values (one per dataset/condition)
+    """
+    import seaborn as sns
+    from matplotlib.patches import Rectangle
+        
+    # Load aging stats
+    aging_stats_sig = retrieve_sig_stats(type='bulk').drop_duplicates(subset=["cell_type", "tf"])
+    
+    cfg = get_config(dataset)
+    target_treatments = cfg.target_treatments
+    assert target_treatments is not None, "Target treatments configuration is missing."
+    
+    for cell_type in stats_sig['cell_type'].unique():
+        print(f"  Processing cell type: {cell_type}")
+        
+        for treatment in target_treatments:
+            # Get experiment data
+            exp_df = stats_sig[
+                (stats_sig['condition'] == treatment) & 
+                (stats_sig['cell_type'] == cell_type)
+            ][['tf', 'slope_condition']].copy()
+            
+            # Get aging data for same cell type
+            aging_df = aging_stats_sig[
+                aging_stats_sig['cell_type'] == cell_type
+            ][['tf', 'slope']].copy()
+            
+            # Merge on TFs that are in the experiment (left join)
+            merged = exp_df.merge(aging_df, on='tf', how='left')
+            
+            if len(merged) == 0:
+                print(f"    Warning: No data for {treatment} in {cell_type}")
+                continue
+            
+            # Sort by experiment slope for better visualization
+            merged = merged.sort_values('slope_condition', ascending=False)
+            
+            # Prepare data matrix
+            data_matrix = merged[['slope', 'slope_condition']].values
+            
+            # Create heatmap
+            n_tfs = len(merged)
+            figsize = (2.5, max(6, n_tfs * 0.03))  
+            
+            fig, ax = plt.subplots(figsize=figsize)
+            
+            # Plot heatmap with diverging colormap
+            im = ax.imshow(
+                data_matrix,
+                aspect='auto',
+                # cmap='RdBu_r',
+                vmin=-max(abs(data_matrix.min()), abs(data_matrix.max())),
+                vmax=max(abs(data_matrix.min()), abs(data_matrix.max())),
+                interpolation='nearest'
+            )
+            
+            # Add vertical line to separate aging from experiment
+            ax.axvline(0.5, color='black', linewidth=2)
+            
+            # Set column labels
+            # treatment_short = treatment.replace('Older (55-65y)', 'Older 55-65y').replace(' ', '\n')
+            ax.set_xticks([0, 1])
+            # ax.set_xticklabels(['Natural\naging', treatment_short], fontsize=9)
+            ax.set_xlabel('')
+            
+            # Remove y-axis labels (too many TFs)
+            ax.set_yticks([])
+            ax.set_ylabel(f'TFs (n={n_tfs})', fontsize=9)
+            
+            # Add colorbar
+            cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            cbar.set_label('Slope (effect size)', rotation=270, labelpad=15, fontsize=9)
+            cbar.ax.tick_params(labelsize=8)
+            
+            # Title
+            ax.set_title(f'{cell_type}', 
+                        fontsize=10, weight='bold', pad=10)
+            
+            # Add agreement statistics as text
+            same_direction = (np.sign(merged['slope']) == np.sign(merged['slope_condition'])).sum()
+            total_with_aging = merged['slope'].notna().sum()
+            if total_with_aging > 0:
+                agreement_pct = (same_direction / total_with_aging) * 100
+                ax.text(
+                    0.02, 0.98, 
+                    f'Same direction:\n{same_direction}/{total_with_aging} ({agreement_pct:.0f}%)',
+                    transform=ax.transAxes,
+                    fontsize=8,
+                    verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+                )
+            
+            # Save
+            name = f'{dataset}_{treatment}_{cell_type}'
+            output_path = os.path.join(output_dir, f'aging_experiment_heatmap_{name}.png')
+            output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
+            plt.tight_layout()
+            plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+            plt.close()
+            print(f"    Saved: {output_path}")
+
+
 def plot_coverage_overlap(stats_sig, dataset, output_dir):
     """Plot overlap between perturbation and aging TFs."""
     print("Generating coverage/overlap plots...")
@@ -66,7 +175,8 @@ def plot_coverage_overlap(stats_sig, dataset, output_dir):
     aging_stats_sig = retrieve_sig_stats(type='bulk').drop_duplicates(subset=["cell_type", "tf"])
     aging_stats_sig = aging_stats_sig[["tf", "cell_type", "slope"]]
     
-    target_treatments = get_config(dataset).target_treatments
+    cfg = get_config(dataset)
+    target_treatments = cfg.target_treatments
     assert target_treatments is not None, "Target treatments configuration is missing."
     
     for cell_type in stats_sig['cell_type'].unique():
@@ -79,12 +189,28 @@ def plot_coverage_overlap(stats_sig, dataset, output_dir):
             if len(df_sub) == 0:
                 raise ValueError(f"No data for condition {treatment}")
             
+            # Calculate overlap statistics
+            merged = df_sub[['tf', 'slope_condition']].merge(
+                aging_stats_sig_sub[['tf', 'slope']], 
+                on='tf', 
+                how='inner'
+            )
+            
+            if len(merged) > 0:
+                same_direction = (np.sign(merged['slope_condition']) == np.sign(merged['slope'])).sum()
+                opposite_direction = (np.sign(merged['slope_condition']) == -np.sign(merged['slope'])).sum()
+                total_overlap = len(merged)
+                
+                print(f"    Overlap with aging TFs: {total_overlap}")
+                print(f"      Same direction: {same_direction} ({same_direction/total_overlap*100:.1f}%)")
+                print(f"      Opposite direction: {opposite_direction} ({opposite_direction/total_overlap*100:.1f}%)")
+            
             plot_overlap(
                 df_sub[['tf', 'cell_type', 'slope_condition']], 
                 aging_stats_sig_sub[['tf', 'cell_type', 'slope']], 
                 col='cell_type', 
                 how='left', 
-                agreement='opposite', 
+                agreement=cfg.comparison_mode, 
                 legend=True, 
                 figsize=(1.5, 2), 
                 legend_loc=(1, 0.5)
@@ -544,6 +670,10 @@ def main():
     # 1. Coverage/overlap plots
     if len(stats_sig) > 0:
         plot_coverage_overlap(stats_sig, args.dataset, output_dir)
+    
+    # 1b. Aging vs experiment heatmap
+    if len(stats_sig) > 0:
+        plot_aging_experiment_heatmap(stats_sig, args.dataset, output_dir)
     
     # 2. Overview heatmap
     stats['cell_type'] = pd.Categorical(stats['cell_type'], categories=cell_types, ordered=True)

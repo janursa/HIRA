@@ -155,7 +155,7 @@ DATASET_CONFIGS = {
         mixed_effects_group='donor_id',  # Random intercept per donor
         comparison_mode='same',  # Aging signatures (same direction as reference aging)
         display_name='Sound Life (Aging)',
-        target_treatments=['old'],  # Focus on aging effects
+        target_treatments=['Older (55-65y)'],  # Focus on aging effects
         name_mapping={
             'young': 'Young (25-35y)',
             'old': 'Older (55-65y)'
