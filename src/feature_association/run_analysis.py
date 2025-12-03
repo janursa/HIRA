@@ -30,10 +30,13 @@ def run_condition_analysis(
     """
     Run complete condition analysis pipeline.
     
+    Handles datasets with multiple configurations (e.g., different data subsets).
+    Results from multiple configs are concatenated.
+    
     Parameters
     ----------
     dataset : str
-        Dataset name (e.g., 'SLE_European', 'op', 'CXCL9')
+        Dataset name (e.g., 'SLE_European', 'op', 'CXCL9', 'soundlife')
     cell_types : List[str]
         Cell types to analyze
     feature_type : str
@@ -50,15 +53,19 @@ def run_condition_analysis(
     dict
         Results dictionary with 'condition_stats' and 'aging_stats'
     """
-    # Get configuration
-    config = get_config(dataset)
+    # Get configuration(s) - may be single or multiple
+    configs = get_config(dataset)
     
     print("\n" + "=" * 80)
-    print(f"CONDITION ANALYSIS: {config.display_name}")
-    print(f"Type: {config.analysis_type.upper()}")
+    print(f"CONDITION ANALYSIS: {configs[0].display_name}")
+    print(f"Type: {configs[0].analysis_type.upper()}")
     print(f"Dataset: {dataset}")
     print(f"Feature: {feature_type}")
     print(f"Cell types: {', '.join(cell_types)}")
+    if len(configs) > 1:
+        print(f"Number of configs: {len(configs)}")
+        for i, cfg in enumerate(configs, 1):
+            print(f"  [{i}] {cfg.config_label or f'config_{i}'}: {cfg.display_name}")
     print("=" * 80 + "\n")
     
     # Prepare parameters
@@ -71,7 +78,7 @@ def run_condition_analysis(
         'association_type': association_type
     }
     
-    # Step 1: Calculate features (if needed)
+    # Step 1: Calculate features (if needed) - only once for all configs
     if not skip_features:
         print("\n[1/3] Calculating features...")
         if feature_type == 'tf_activity':
@@ -84,20 +91,43 @@ def run_condition_analysis(
     else:
         print("\n[1/3] Skipping feature calculation (using cached data)")
     
-    # Step 2: Compute condition statistics
-    print("\n[2/3] Computing condition statistics...")
-    condition_stats = wrapper_association_with_age_condition(
-        par=par,
-        features=None,
-        test_type=config.test_type,
-        condition=None,
-        config=config
-    )
+    # Step 2: Compute condition statistics for each config
+    print(f"\n[2/3] Computing condition statistics ({len(configs)} config(s))...")
+    
+    all_condition_stats = []
+    
+    for i, config in enumerate(configs, 1):
+        config_label = config.config_label or f"config_{i}"
+        
+        if len(configs) > 1:
+            print(f"\n  [{i}/{len(configs)}] Running: {config_label} ({config.display_name})")
+        
+        condition_stats = wrapper_association_with_age_condition(
+            par=par,
+            features=None,
+            test_type=config.test_type,
+            condition=None,
+            config=config
+        )
+        
+        # Add config label to results for tracking
+        if len(configs) > 1:
+            condition_stats['config_label'] = config_label
+        
+        all_condition_stats.append(condition_stats)
+    
+    # Concatenate results from all configs
+    import pandas as pd
+    if len(all_condition_stats) > 1:
+        print(f"\n  Concatenating results from {len(all_condition_stats)} configs...")
+        condition_stats_combined = pd.concat(all_condition_stats, ignore_index=True)
+    else:
+        condition_stats_combined = all_condition_stats[0]
     
     # Save condition stats
     os.makedirs(f'{SAVE_DIR}/stats', exist_ok=True)
-    stats_file = f'{SAVE_DIR}/stats/stats_{dataset}_{data_type}_{feature_type}_{config.test_type}.csv'
-    condition_stats.to_csv(stats_file, index=False)
+    stats_file = f'{SAVE_DIR}/stats/stats_{dataset}_{data_type}_{feature_type}_{configs[0].test_type}.csv'
+    condition_stats_combined.to_csv(stats_file, index=False)
     print(f"✓ Condition stats saved: {stats_file}")
     
     # Step 3: Load aging reference
@@ -114,8 +144,8 @@ def run_condition_analysis(
     print("=" * 80 + "\n")
     
     return {
-        'config': config,
-        'condition_stats': condition_stats,
+        'configs': configs,
+        'condition_stats': condition_stats_combined,
         'aging_stats': aging_stats,
         'stats_file': stats_file
     }
