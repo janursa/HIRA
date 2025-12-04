@@ -427,6 +427,27 @@ def wrapper_association_with_age_condition(par, features=None, test_type=None, c
                 print(e)
                 continue
             
+            # Apply data filter from config if specified
+            if cfg is not None and cfg.data_filter is not None:
+                filter_mask = pd.Series(True, index=adata.obs.index)
+                for col, value in cfg.data_filter.items():
+                    # Handle special case: column.notnull for checking non-null values
+                    if col.endswith('.notnull'):
+                        actual_col = col.replace('.notnull', '')
+                        filter_mask &= adata.obs[actual_col].notnull()
+                    # Handle list values (isin)
+                    elif isinstance(value, list):
+                        filter_mask &= adata.obs[col].isin(value)
+                    # Handle single value (equality)
+                    else:
+                        filter_mask &= (adata.obs[col] == value)
+                
+                adata = adata[filter_mask].copy()
+                
+                if adata.shape[0] == 0:
+                    print(f'No samples after filtering for {cell_type}, {dataset}')
+                    continue
+            
             # Filter by cell type
             adata_sub = adata[adata.obs[par['cell_type_resolution']]==cell_type]
             if adata_sub.shape[0] < 3:

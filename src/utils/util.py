@@ -464,14 +464,21 @@ def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_a
             group_key = config.mixed_effects_group
         else:
             raise ValueError(f"group_key not provided and no config available for dataset '{dataset}'")
+    
+    # Determine the actual condition column name from config
+    condition_col = config.condition_column if (config is not None and hasattr(config, 'condition_column')) else 'condition'
+    
+    # Replace 'condition' placeholder in formula with actual column name if different
+    if condition_col != 'condition' and 'condition' in formula:
+        formula = formula.replace('C(condition)', f'C({condition_col})').replace(' condition ', f' {condition_col} ')
 
     # Filter to comparison groups
-    df = df[df['condition'].isin([ctr, treatment])].copy()
+    df = df[df[condition_col].isin([ctr, treatment])].copy()
     
     # Diagnostic: Check data quality before modeling
     n_groups = df[group_key].nunique()
-    n_ctr = df[df['condition'] == ctr].shape[0]
-    n_treat = df[df['condition'] == treatment].shape[0]
+    n_ctr = df[df[condition_col] == ctr].shape[0]
+    n_treat = df[df[condition_col] == treatment].shape[0]
     
     if n_groups < 2:
         print(f"DIAGNOSTIC: Insufficient groups for {treatment} vs {ctr}: only {n_groups} {group_key}(s)")
@@ -482,16 +489,18 @@ def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_a
         return (np.nan, np.nan) if not return_full_result else None
     
     # Check variance
-    var_ctr = df[df['condition'] == ctr][target_variable].var()
-    var_treat = df[df['condition'] == treatment][target_variable].var()
+    var_ctr = df[df[condition_col] == ctr][target_variable].var()
+    var_treat = df[df[condition_col] == treatment][target_variable].var()
     
     if var_ctr == 0 or var_treat == 0:
         print(f"DIAGNOSTIC: Zero variance for {treatment} vs {ctr}: var_ctr={var_ctr}, var_treat={var_treat}")
         return (np.nan, np.nan) if not return_full_result else None
     
-    # Encode condition as numeric for regression
-    df['condition'] = pd.Categorical(df['condition'], categories=[ctr, treatment], ordered=True)
-    df['condition'] = df['condition'].cat.codes  # 0 for ctr, 1 for treatment
+    # Prepare data for model: encode categorical variables
+    # For formulas using C(), statsmodels will handle encoding automatically
+    # But we need to ensure the condition column is properly typed
+    if df[condition_col].dtype == 'object' or df[condition_col].dtype.name == 'category':
+        df[condition_col] = pd.Categorical(df[condition_col], categories=[ctr, treatment], ordered=True)
     
     # Fit mixed model
     try:
@@ -502,8 +511,23 @@ def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_a
             return result
         else:
             # Extract p-value and coefficient for main condition effect
-            pval = result.pvalues['condition']
-            coef = result.params['condition']
+            # The coefficient name depends on the formula and encoding
+            coef_names = result.params.index.tolist()
+            
+            # Try to find the condition effect coefficient
+            # It could be named as the condition_col or C(condition_col)[T.treatment]
+            condition_coef_name = None
+            for name in coef_names:
+                if condition_col in name and name != 'Intercept':
+                    condition_coef_name = name
+                    break
+            
+            if condition_coef_name is None:
+                # Fallback: use the first non-intercept coefficient
+                condition_coef_name = [n for n in coef_names if n != 'Intercept'][0]
+            
+            pval = result.pvalues[condition_coef_name]
+            coef = result.params[condition_coef_name]
             return pval, coef
             
     except Exception as e:

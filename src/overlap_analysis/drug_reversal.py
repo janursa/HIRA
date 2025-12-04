@@ -362,7 +362,7 @@ def analyze_drug_reversal(
             
             # Store results with both weighted and standard columns for compatibility
             result_dict = {
-                'drug': drug,
+                'condition': drug,
                 'cell_type': cell_type,
                 'dataset': dataset,
                 'n_common': contingency['n_common'],
@@ -903,7 +903,7 @@ def analyze_drug_reversal_with_centrality(
                 continue
             
             result = {
-                'drug': drug,
+                'condition': drug,
                 'cell_type': cell_type,
                 'dataset': dataset
             }
