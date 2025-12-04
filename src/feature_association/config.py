@@ -122,7 +122,18 @@ DATASET_CONFIGS = {
         mixed_effects_group='plate_name',
         comparison_mode='opposite',  # Rejuvenating (opposite to aging)
         display_name='OP Compounds',
-        target_treatments=['Ruxolitinib']
+        target_treatments=['Ruxolitinib'],
+        # Clock analysis settings
+        clock_test_type='mixed_effect',
+        clock_group_key='plate_name',
+        clock_pvalue_correction='corrected',
+        clock_pvalue_threshold=0.05,
+        clock_experiments='auto',  # Auto-generate from data: (control, treatment) for all treatments
+        clock_mock_names=True,  # Mock compound names (keep top 1, rename others)
+        clock_plot_config={
+            'rejuvenating': {'figsize': (7.5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
+            'aging': {'figsize': (5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
+        },
     ),
     
     "CXCL9": ConditionConfig(
@@ -185,6 +196,22 @@ DATASET_CONFIGS = {
         comparison_mode='opposite',
         display_name='Cytokines',
         target_treatments=['IL-10'],
+        # Clock analysis settings
+        clock_test_type='mixed_effect',
+        clock_group_key='donor_id',
+        clock_pvalue_correction='corrected',
+        clock_pvalue_threshold=0.05,
+        clock_experiments='auto',  # Auto-generate from data
+        clock_plot_config={
+            'CD4T': {
+                'rejuvenating': {'figsize': (4, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
+                'aging': {'figsize': (10, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
+            },
+            'default': {
+                'rejuvenating': {'figsize': (7, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
+                'aging': {'figsize': (10, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
+            },
+        },
     ),
     
     # ========== AGING DATASETS (Longitudinal) ==========
@@ -245,7 +272,9 @@ DATASET_CONFIGS = {
             data_filter={
                 'subject.cmv': ['Negative']
             },
-            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'},
+            # Clock analysis configuration
+            clock_pretty_names={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
         ),
         
         # 4. Pure aging - CMV Positive only
@@ -452,6 +481,26 @@ DATASET_CONFIGS = {
         
         # ===== DISEASE (CMV) EFFECT ANALYSES =====
         
+        # CMV effect across ALL age groups (stratified analysis)
+        ConditionConfig(
+            name="soundlife",
+            analysis_type='disease',
+            condition_column='subject.cmv',
+            control_group='Negative',
+            treatment_groups=['Positive'],
+            test_type='mixed-effect',
+            mixed_effects_formula='feature_values ~ condition',  # 'condition' will be replaced with column name
+            mixed_effects_group='donor_id',
+            comparison_mode='opposite',
+            display_name='Sound Life (CMV Effect)',
+            config_label='cmv',
+            data_filter=None,  # No filtering - analyze all age groups
+            name_mapping={'Negative': 'CMV-', 'Positive': 'CMV+'},
+            # Clock analysis configuration
+            clock_test_type='unpaired',
+            clock_pvalue_threshold=0.05
+        ),
+        
         # CMV effect in YOUNG subjects
         ConditionConfig(
             name="soundlife",
@@ -468,7 +517,10 @@ DATASET_CONFIGS = {
             data_filter={
                 'age_group': 'young'
             },
-            name_mapping={'Negative': 'CMV-', 'Positive': 'CMV+'}
+            name_mapping={'Negative': 'CMV-', 'Positive': 'CMV+'},
+            # Clock analysis configuration
+            clock_test_type='unpaired',
+            clock_pvalue_threshold=0.05
         ),
         
         # CMV effect in OLD subjects
@@ -487,13 +539,16 @@ DATASET_CONFIGS = {
             data_filter={
                 'age_group': 'old'
             },
-            name_mapping={'Negative': 'CMV-', 'Positive': 'CMV+'}
+            name_mapping={'Negative': 'CMV-', 'Positive': 'CMV+'},
+            # Clock analysis configuration
+            clock_test_type='unpaired',
+            clock_pvalue_threshold=0.05
         ),
     ],
 }
 
 
-def get_config(dataset_name: str) -> List[ConditionConfig]:
+def get_config(dataset_name: str, config_label: Optional[str] = None) -> List[ConditionConfig]:
     """
     Get configuration(s) for a dataset.
     
@@ -504,6 +559,8 @@ def get_config(dataset_name: str) -> List[ConditionConfig]:
     ----------
     dataset_name : str
         Name of the dataset
+    config_label : str, optional
+        Specific config label to retrieve (for datasets with multiple configs)
     
     Returns
     -------
@@ -513,7 +570,7 @@ def get_config(dataset_name: str) -> List[ConditionConfig]:
     Raises
     ------
     ValueError
-        If dataset not found
+        If dataset not found or config_label not found
     """
     if dataset_name not in DATASET_CONFIGS:
         available = ', '.join(DATASET_CONFIGS.keys())
@@ -526,6 +583,16 @@ def get_config(dataset_name: str) -> List[ConditionConfig]:
     
     # Ensure we always return a list
     if isinstance(config, list):
+        # If config_label is specified, filter to that specific config
+        if config_label is not None:
+            matching_configs = [c for c in config if c.config_label == config_label]
+            if not matching_configs:
+                available_labels = [c.config_label for c in config if c.config_label]
+                raise ValueError(
+                    f"Config label '{config_label}' not found for dataset '{dataset_name}'. "
+                    f"Available labels: {', '.join(available_labels)}"
+                )
+            return matching_configs
         return config
     else:
         return [config]

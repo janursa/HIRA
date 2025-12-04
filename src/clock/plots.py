@@ -122,7 +122,7 @@ def plot_scatter_age_vs_predictedAge(df, dataset='', ax=None, hue='sex', palette
 #     ax.set_title(f"{disease_name}", fontsize=12, weight='bold', pad=15)
 #     plt.tight_layout()
 
-def wrapper_age_acceleration_disease(obs, disease_dataset, figsize=(4, 2.7)):
+def wrapper_age_acceleration_disease(obs, disease_dataset, figsize=(4, 2.7), config=None):
     import pandas as pd
     import seaborn as sns
     import matplotlib.pyplot as plt
@@ -130,7 +130,23 @@ def wrapper_age_acceleration_disease(obs, disease_dataset, figsize=(4, 2.7)):
     from statsmodels.stats.multitest import multipletests
     import numpy as np
 
-    if disease_dataset == 'Covid_50MHH':
+    # Get condition names from config or use hardcoded defaults
+    if config is not None:
+        # Map condition values using name_mapping if available
+        control_val = config.control_group
+        treatment_val = config.treatment_groups[0] if isinstance(config.treatment_groups, list) else config.treatment_groups
+        
+        # Apply name mapping if available
+        if config.name_mapping:
+            ctr = config.name_mapping.get(control_val, control_val)
+            cond = config.name_mapping.get(treatment_val, treatment_val)
+        else:
+            ctr = control_val
+            cond = treatment_val
+        
+        # Use display name from config
+        disease_name = config.display_name if config.display_name else disease_dataset
+    elif disease_dataset == 'Covid_50MHH':
         disease_name = 'COVID-19'
         ctr = 'Mild'
         cond = 'Severe'
@@ -138,6 +154,10 @@ def wrapper_age_acceleration_disease(obs, disease_dataset, figsize=(4, 2.7)):
         disease_name = 'SLE'
         ctr = 'Healthy'
         cond = 'SLE'
+    else:
+        disease_name = disease_dataset
+        ctr = 'Control'
+        cond = 'Treatment'
 
     obs_disease = obs[obs['dataset'] == disease_dataset].copy()
 
@@ -148,6 +168,21 @@ def wrapper_age_acceleration_disease(obs, disease_dataset, figsize=(4, 2.7)):
 
     df_pivot = obs_disease.pivot_table(index=['age', 'cell_type'], columns='condition', values='predicted_age')
     df_pivot = df_pivot.reset_index()
+    
+    # Check if expected condition values exist in pivot columns
+    # If not, try case-insensitive match
+    available_cols = [c for c in df_pivot.columns if c not in ['age', 'cell_type']]
+    if ctr not in df_pivot.columns:
+        # Try case-insensitive match
+        ctr_match = [c for c in available_cols if c.lower() == ctr.lower()]
+        if ctr_match:
+            ctr = ctr_match[0]
+    if cond not in df_pivot.columns:
+        # Try case-insensitive match
+        cond_match = [c for c in available_cols if c.lower() == cond.lower()]
+        if cond_match:
+            cond = cond_match[0]
+    
     df_pivot['age_shift'] = df_pivot[cond] - df_pivot[ctr]
     df_pivot = df_pivot[~df_pivot['age_shift'].isna()]
     df_pivot['cell_type'] = pd.Categorical(df_pivot['cell_type'], categories=cell_types, ordered=True)
@@ -205,8 +240,122 @@ def wrapper_age_acceleration_disease(obs, disease_dataset, figsize=(4, 2.7)):
     ax.axhline(0, linestyle='--', color='gray', linewidth=1)
     ax.set_title(f"{disease_name}", fontsize=12, weight='bold', pad=15)
     plt.tight_layout()
-def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset):
-    if disease_dataset == 'Covid_50MHH':
+
+
+def plot_age_acceleration_by_group(obs, dataset, config):
+    """
+    Plot age acceleration for a specific age group (used when data is already filtered by age_group).
+    Shows a simple bar plot comparing conditions within a single age group.
+    
+    Parameters
+    ----------
+    obs : pd.DataFrame
+        Observations filtered to specific age group
+    dataset : str
+        Dataset name
+    config : ConditionConfig
+        Configuration with condition mapping and display info
+    """
+    import pandas as pd
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    from scipy.stats import ttest_ind
+    import numpy as np
+    
+    # Get condition names from config
+    control_val = config.control_group
+    treatment_val = config.treatment_groups[0] if isinstance(config.treatment_groups, list) else config.treatment_groups
+    
+    # Apply name mapping if available
+    if config.name_mapping:
+        ctr = config.name_mapping.get(control_val, control_val)
+        cond = config.name_mapping.get(treatment_val, treatment_val)
+    else:
+        ctr = control_val
+        cond = treatment_val
+    
+    obs_disease = obs[obs['dataset'] == dataset].copy()
+    obs_disease['age'] = obs_disease['age'].astype(float)
+    obs_disease['cell_type'] = obs_disease['cell_type'].astype(str)
+    obs_disease['condition'] = obs_disease['condition'].astype(str)
+    
+    # Calculate age acceleration for each donor
+    df_pivot = obs_disease.pivot_table(index=['donor_id', 'age', 'cell_type'], columns='condition', values='predicted_age')
+    df_pivot = df_pivot.reset_index()
+    
+    # Check if both conditions exist
+    if ctr not in df_pivot.columns or cond not in df_pivot.columns:
+        print(f"Warning: Missing condition columns. Available: {df_pivot.columns.tolist()}")
+        return
+    
+    df_pivot['age_shift'] = df_pivot[cond] - df_pivot[ctr]
+    df_pivot = df_pivot[~df_pivot['age_shift'].isna()]
+    
+    cell_types_present = df_pivot['cell_type'].unique()
+    n_cell_types = len(cell_types_present)
+    
+    fig, ax = plt.subplots(figsize=(1.5 + 0.8 * n_cell_types, 2.5))
+    
+    # Bar plot showing age acceleration by cell type
+    sns.barplot(data=df_pivot, x='cell_type', y='age_shift', ax=ax, 
+                color='#56B4E9', alpha=0.7, errorbar='sd', capsize=0.1)
+    
+    # Add individual points
+    sns.stripplot(data=df_pivot, x='cell_type', y='age_shift', ax=ax,
+                  color='black', alpha=0.3, size=3)
+    
+    # Statistical tests
+    from statsmodels.stats.multitest import multipletests
+    pvals = []
+    for cell_type in cell_types_present:
+        group_data = df_pivot[df_pivot['cell_type'] == cell_type]['age_shift']
+        if len(group_data) > 2:
+            from scipy.stats import ttest_1samp
+            _, pval = ttest_1samp(group_data, 0)  # Test against 0 (no acceleration)
+        else:
+            pval = 1.0
+        pvals.append(pval)
+    
+    # Correct for multiple testing
+    if len(pvals) > 0:
+        _, pvals_fdr, _, _ = multipletests(pvals, method='fdr_bh')
+        for i, (cell_type, pval_fdr) in enumerate(zip(cell_types_present, pvals_fdr)):
+            star = '***' if pval_fdr < 0.001 else '**' if pval_fdr < 0.01 else '*' if pval_fdr < 0.05 else ''
+            if star:
+                y_max = df_pivot[df_pivot['cell_type'] == cell_type]['age_shift'].max()
+                ax.text(i, y_max + 1, star, ha='center', va='bottom', fontsize=12, weight='bold')
+    
+    ax.axhline(0, linestyle='--', color='gray', linewidth=1, alpha=0.5)
+    ax.set_ylabel("Age acceleration (years)")
+    ax.set_xlabel("")
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.margins(x=0.2, y=0.2)
+    
+    # Get age group label from config
+    age_group_label = config.data_filter.get('age_group', 'Unknown')
+    if isinstance(age_group_label, list):
+        age_group_label = age_group_label[0]
+    
+    title = f"{config.display_name}" if config.display_name else f"{dataset} - {age_group_label}"
+    ax.set_title(title, fontsize=11, weight='bold', pad=10)
+    plt.tight_layout()
+
+
+def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None):
+    # Get condition names from config or use hardcoded defaults
+    if config is not None:
+        # Map condition values using name_mapping if available
+        control_val = config.control_group
+        treatment_val = config.treatment_groups[0] if isinstance(config.treatment_groups, list) else config.treatment_groups
+        
+        # Apply name mapping if available
+        if config.name_mapping:
+            ctr = config.name_mapping.get(control_val, control_val)
+            cond = config.name_mapping.get(treatment_val, treatment_val)
+        else:
+            ctr = control_val
+            cond = treatment_val
+    elif disease_dataset == 'Covid_50MHH':
         disease_name = 'COVID-19'
         ctr = 'Mild'
         cond = 'Severe'
@@ -220,6 +369,17 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset):
     obs_disease = obs[obs['dataset'] == disease_dataset].copy()
     obs_disease['age'] = obs_disease['age'].astype(float)
     obs_disease['donor_age'] = obs_disease['donor_age'].astype(str)
+    
+    # Check if expected condition values exist in data, use case-insensitive match if needed
+    available_conditions = obs_disease['condition'].unique()
+    if ctr not in available_conditions:
+        ctr_match = [c for c in available_conditions if c.lower() == ctr.lower()]
+        if ctr_match:
+            ctr = ctr_match[0]
+    if cond not in available_conditions:
+        cond_match = [c for c in available_conditions if c.lower() == cond.lower()]
+        if cond_match:
+            cond = cond_match[0]
 
     cell_types = obs_disease['cell_type'].unique()
     n_cell_types = len(cell_types)
@@ -230,12 +390,30 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset):
         ax = axes[i] if len(cell_types) > 1 else axes
 
         obs_ct = obs_disease[obs_disease['cell_type'] == cell_type].copy()
-        obs_ct = obs_ct.groupby(['donor_age', 'age', 'condition'])['predicted_age'].median().reset_index()
-
-        age_bins = [20, 50, 80]
-        obs_ct['age_bin'] = pd.cut(obs_ct['age'], bins=age_bins, right=False)
-        obs_ct['age_bin'] = obs_ct['age_bin'].astype(str)
-        age_bin_order = [str(b) for b in pd.cut([21, 51], bins=age_bins, right=False).categories]
+        
+        # Check if age_group column exists (for soundlife CMV analysis)
+        if 'age_group' in obs_ct.columns:
+            # Convert age_group from Categorical to string to avoid creating empty combinations
+            obs_ct['age_group'] = obs_ct['age_group'].astype(str)
+            # Group by donor_age, age_group, and condition (NOT age - it's redundant with donor_age)
+            obs_ct = obs_ct.groupby(['donor_age', 'age_group', 'condition'])['predicted_age'].median().reset_index()
+            # Also need the age for plotting
+            # Get median age for each donor (they should all be the same anyway)
+            age_map = obs_disease[obs_disease['cell_type'] == cell_type].groupby('donor_age')['age'].median()
+            obs_ct['age'] = obs_ct['donor_age'].map(age_map)
+            # Use existing age_group column and map to pretty names
+            age_group_name_mapping = {'young': 'Young', 'old': 'Old'}
+            obs_ct['age_bin'] = obs_ct['age_group'].map(age_group_name_mapping)
+            # Set correct order: Young, Old
+            age_bin_order = ['Young', 'Old']
+        else:
+            # Standard groupby without age_group
+            obs_ct = obs_ct.groupby(['donor_age', 'age', 'condition'])['predicted_age'].median().reset_index()
+            # Bin ages manually (for SLE, COVID, etc.)
+            age_bins = [20, 50, 80]
+            obs_ct['age_bin'] = pd.cut(obs_ct['age'], bins=age_bins, right=False)
+            obs_ct['age_bin'] = obs_ct['age_bin'].astype(str)
+            age_bin_order = [str(b) for b in pd.cut([21, 51], bins=age_bins, right=False).categories]
 
         plot_data = []
         pvals = []
@@ -252,8 +430,8 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset):
                     plot_data.append({'age_bin': age_bin, 'condition': group, 'predicted_age': v})
 
             # Store p-values for later FDR correction and calculate mean differences
-            cond_vals = obs_ct[(obs_ct['condition'] == cond) & (obs_ct['age_bin'] == age_bin)]['predicted_age']
-            ctr_vals = obs_ct[(obs_ct['condition'] == ctr) & (obs_ct['age_bin'] == age_bin)]['predicted_age']
+            cond_vals = obs_ct[(obs_ct['condition'] == cond) & (obs_ct['age_bin'] == age_bin)]['predicted_age'].values
+            ctr_vals = obs_ct[(obs_ct['condition'] == ctr) & (obs_ct['age_bin'] == age_bin)]['predicted_age'].values
             
             if len(cond_vals) >= 3 and len(ctr_vals) >= 3:
                 tstat, pval = ttest_ind(cond_vals, ctr_vals, equal_var=False)
@@ -273,8 +451,12 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset):
         plot_df = pd.DataFrame(plot_data)
         plot_df_c = plot_df.copy()
         plot_df_c['condition'] = plot_df_c['condition'].apply(lambda name: surrogate_names.get(name, name))
+        
+        # Use None for palette if config is provided (let seaborn auto-generate)
+        palette_to_use = None if config is not None else palette_disease
+        
         sns.barplot(data=plot_df_c, x='age_bin', y='predicted_age', hue='condition', width=0.5,
-                    ax=ax, palette=palette_disease, ci='sd', errorbar='sd', capsize=0.1, linewidth=.1, alpha=.8, errcolor='black', errwidth=1.5)
+                    ax=ax, palette=palette_to_use, ci='sd', errorbar='sd', capsize=0.1, linewidth=.1, alpha=.8, errcolor='black', errwidth=1.5)
         # sns.stripplot(data=plot_df_c, x='age_bin', y='predicted_age', hue='condition',
         #             ax=ax, palette=palette_disease, alpha=.7)
 

@@ -28,12 +28,14 @@ from ciim.src.common import (
     surrogate_names,
     colors_blind
 )
+from ciim.src.feature_association.config import get_config
 from ciim.src.utils.util import test_mixed_effects, test_paired, test_unpaired
 from ciim.src.clock.plots import (
     wrapper_age_acceleration_disease,
     wrapper_plot_age_acceleration_disease_bins,
     plot_group_strip,
-    plot_experiment
+    plot_experiment,
+    plot_scatter_age_vs_predictedAge
 )
 
 # Import from GRNimmuneClock package
@@ -106,9 +108,44 @@ def get_all_predictions(cell_types, datasets, feature_type='gene_expression',
     return obs
 
 
-def get_experiment_setup(dataset, obs_pert):
+def apply_data_filter(obs, config):
     """
-    Get experiment setup (control-treatment pairs) for a dataset.
+    Apply data filters from config to observation dataframe.
+    
+    Parameters
+    ----------
+    obs : pd.DataFrame
+        Observations dataframe
+    config : ConditionConfig
+        Configuration with data_filter specifications
+        
+    Returns
+    -------
+    pd.DataFrame
+        Filtered observations
+    """
+    if config.data_filter is None:
+        return obs
+    
+    filtered_obs = obs.copy()
+    for column, values in config.data_filter.items():
+        if column not in filtered_obs.columns:
+            print(f"Warning: Filter column '{column}' not found in data. Skipping filter.")
+            continue
+        
+        # Handle both single value and list of values
+        if not isinstance(values, list):
+            values = [values]
+        
+        filtered_obs = filtered_obs[filtered_obs[column].isin(values)]
+        print(f"  Filtered by {column}: {values} -> {len(filtered_obs)} samples remaining")
+    
+    return filtered_obs
+
+
+def get_experiment_setup(dataset, obs_pert, config):
+    """
+    Get experiment setup (control-treatment pairs) for a dataset from config.
     
     Parameters
     ----------
@@ -116,46 +153,35 @@ def get_experiment_setup(dataset, obs_pert):
         Dataset name
     obs_pert : pd.DataFrame
         Observations dataframe
+    config : ConditionConfig
+        Dataset configuration
         
     Returns
     -------
     tuple
-        (experiments, pvalue_show_type, pretty_names)
+        (experiments, pvalue_show_type, pretty_names, test_type, group_key, mock_names, plot_config)
     """
-    pretty_names = {}
+    # Get settings from config
+    pvalue_show_type = config.clock_pvalue_correction if config.clock_pvalue_correction else 'corrected'
+    pretty_names = config.clock_pretty_names if config.clock_pretty_names else {}
+    test_type = config.clock_test_type if config.clock_test_type else 'mixed_effect'
+    group_key = config.clock_group_key if config.clock_group_key else 'donor_id'
+    mock_names = config.clock_mock_names if hasattr(config, 'clock_mock_names') else False
+    plot_config = config.clock_plot_config if config.clock_plot_config else {}
     
-    if dataset == 'CXCL9':
-        pvalue_show_type = 'raw'
+    # Get experiments
+    if config.clock_experiments == 'auto' or config.clock_experiments is None:
+        # Auto-generate experiments from control group
+        control = config.control_group
         experiments = [
-            ('24 h RPMI', '24 h LPS'),
-            ('24 h RPMI', '24 h RPMI + ruxolitinib'),
-            ('24 h LPS', '24 h LPS + ruxolitinib'),
-        ]
-        pretty_names = {
-            '24 h LPS': 'LPS \n (ctr: RPMI)',
-            '24 h LPS + ruxolitinib': 'Ruxolitinib \n (ctr: LPS)',
-            '24 h RPMI': 'RPMI',
-            '24 h RPMI + ruxolitinib': 'Ruxolitinib \n (ctr: RPMI)',
-        }
-    elif dataset == 'op':
-        pvalue_show_type = 'corrected'
-        experiments = [
-            ('Dimethyl Sulfoxide', treatment) 
+            (control, treatment) 
             for treatment in obs_pert['condition'].unique() 
-            if treatment != 'Dimethyl Sulfoxide'
-        ]
-    elif dataset == 'parsebioscience':
-        pvalue_show_type = 'corrected'
-        ctr = 'PBS'
-        experiments = [
-            (ctr, treatment) 
-            for treatment in obs_pert['condition'].unique() 
-            if treatment != ctr
+            if treatment != control
         ]
     else:
-        raise ValueError(f"Dataset {dataset} not recognized for perturbation experiments.")
+        experiments = config.clock_experiments
     
-    return experiments, pvalue_show_type, pretty_names
+    return experiments, pvalue_show_type, pretty_names, test_type, group_key, mock_names, plot_config
 
 
 def perform_statistical_tests(obs_pert, experiments, dataset, test_type='mixed_effect', 
@@ -281,7 +307,7 @@ def prepare_plot_inputs(obs_pert, cell_type, experiments, pval_map, p_value_t=0.
     return df_all, rejuvenating, aging
 
 
-def analyze_disease(obs, dataset, output_dir, cell_types):
+def analyze_disease(obs, dataset, output_dir, cell_types, config=None):
     """
     Analyze disease dataset for age acceleration.
     
@@ -295,10 +321,24 @@ def analyze_disease(obs, dataset, output_dir, cell_types):
         Output directory for plots
     cell_types : list
         Cell types to analyze
+    config : ConditionConfig, optional
+        Dataset configuration (for dynamic condition mapping)
     """
     print("\n" + "="*60)
     print(f"Disease Analysis: {dataset}")
     print("="*60)
+    
+    # If config specifies a different condition_column, use that instead of 'condition'
+    if config and config.condition_column != 'condition':
+        if config.condition_column in obs.columns:
+            print(f"Using {config.condition_column} as condition column")
+            obs = obs.copy()
+            obs['condition'] = obs[config.condition_column].astype(str)
+            # Apply name mapping if available
+            if config.name_mapping:
+                obs['condition'] = obs['condition'].map(lambda x: config.name_mapping.get(x, x))
+        else:
+            print(f"Warning: Condition column '{config.condition_column}' not found in data")
     
     # Overall age acceleration plot
     print("Generating age acceleration plot...")
@@ -306,7 +346,8 @@ def analyze_disease(obs, dataset, output_dir, cell_types):
     wrapper_age_acceleration_disease(
         obs_filtered, 
         disease_dataset=dataset, 
-        figsize=(3, 2.5)
+        figsize=(3, 2.5),
+        config=config
     )
     plt.title('')
     output_path = os.path.join(output_dir, f'clock_{dataset}.png')
@@ -321,7 +362,7 @@ def analyze_disease(obs, dataset, output_dir, cell_types):
             continue
             
         print(f"Generating age-stratified plot for {cell_type}...")
-        wrapper_plot_age_acceleration_disease_bins(obs_ct, disease_dataset=dataset)
+        wrapper_plot_age_acceleration_disease_bins(obs_ct, disease_dataset=dataset, config=config)
         output_path = os.path.join(output_dir, f'clock_{dataset}_bins_{cell_type}.png')
         plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
@@ -329,15 +370,159 @@ def analyze_disease(obs, dataset, output_dir, cell_types):
     
     # Age-stratified analysis - all cell types
     print("Generating combined age-stratified plot...")
-    wrapper_plot_age_acceleration_disease_bins(obs_filtered, disease_dataset=dataset)
+    wrapper_plot_age_acceleration_disease_bins(obs_filtered, disease_dataset=dataset, config=config)
     output_path = os.path.join(output_dir, f'clock_{dataset}_bins.png')
     plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
     plt.close()
     print(f"  Saved: {output_path}")
 
 
+def analyze_aging(obs, dataset, output_dir, cell_types, config):
+    """
+    Analyze aging dataset comparing young vs old groups.
+    
+    Shows scatter plots of predicted age vs actual age for each age group,
+    with Spearman correlation calculated for each.
+    
+    Parameters
+    ----------
+    obs : pd.DataFrame
+        Observations with predictions
+    dataset : str
+        Dataset name
+    output_dir : str
+        Output directory for plots
+    cell_types : list
+        Cell types to analyze
+    config : ConditionConfig
+        Dataset configuration with age group info
+    """
+    from scipy.stats import spearmanr
+    
+    print("\n" + "="*60)
+    print(f"Aging Analysis: {dataset}")
+    if config.config_label:
+        print(f"Configuration: {config.config_label}")
+    print("="*60)
+    
+    # Get age group column from config
+    age_group_column = config.condition_column  # Should be 'age_group'
+    
+    # Get pretty names from config
+    pretty_names = config.clock_pretty_names if config.clock_pretty_names else {}
+    
+    # Map age groups to pretty names for plotting
+    if pretty_names:
+        obs = obs.copy()
+        obs['age_group_display'] = obs[age_group_column].map(lambda x: pretty_names.get(x, x))
+        hue_column = 'age_group_display'
+    else:
+        hue_column = age_group_column
+    
+    # Generate scatter plots for each cell type
+    for cell_type in cell_types:
+        obs_ct = obs[obs['cell_type'] == cell_type].copy()
+        if len(obs_ct) == 0:
+            print(f"  No data for {cell_type}, skipping...")
+            continue
+        
+        print(f"\nGenerating aging scatter plot for {cell_type}...")
+        
+        # Calculate Spearman correlation for each age group
+        correlations = {}
+        for age_group in obs_ct[age_group_column].unique():
+            obs_group = obs_ct[obs_ct[age_group_column] == age_group]
+            if len(obs_group) > 2:  # Need at least 3 points for correlation
+                corr, pval = spearmanr(obs_group['age'], obs_group['predicted_age'])
+                display_name = pretty_names.get(age_group, age_group)
+                correlations[display_name] = {'r': corr, 'p': pval, 'n': len(obs_group)}
+        
+        # Print correlations
+        print(f"  Spearman correlations for {cell_type}:")
+        for group_name, stats in correlations.items():
+            print(f"    {group_name}: r={stats['r']:.3f}, p={stats['p']:.3e}, n={stats['n']}")
+        
+        # Create scatter plot
+        fig, ax = plt.subplots(1, 1, figsize=(3.5, 2.5))
+        plot_scatter_age_vs_predictedAge(
+            obs_ct, 
+            dataset=dataset, 
+            ax=ax, 
+            hue=hue_column,
+            palette=None,  # Let seaborn auto-generate palette
+            s=30, 
+            alpha=0.7
+        )
+        
+        # Add correlation info to legend or title
+        if len(correlations) > 0:
+            corr_text = ' | '.join([f"{name}: r={s['r']:.2f}" for name, s in correlations.items()])
+            ax.set_title(f"{cell_type}\n{corr_text}", fontsize=9, pad=10)
+        else:
+            ax.set_title(cell_type, fontsize=10, pad=10)
+        
+        # Save plot
+        config_suffix = f"_{config.config_label}" if config.config_label else ""
+        output_path = os.path.join(output_dir, f'clock_{dataset}{config_suffix}_aging_{cell_type}.png')
+        plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+        plt.close()
+        print(f"  Saved: {output_path}")
+    
+    # Combined plot with all cell types
+    print(f"\nGenerating combined aging scatter plot...")
+    n_cell_types = len([ct for ct in cell_types if len(obs[obs['cell_type'] == ct]) > 0])
+    
+    if n_cell_types > 0:
+        fig, axes = plt.subplots(1, n_cell_types, figsize=(3.5 * n_cell_types, 2.5), 
+                                sharey=True, squeeze=False)
+        axes = axes.flatten()
+        
+        for idx, cell_type in enumerate(cell_types):
+            obs_ct = obs[obs['cell_type'] == cell_type].copy()
+            if len(obs_ct) == 0:
+                continue
+            
+            ax = axes[idx]
+            plot_scatter_age_vs_predictedAge(
+                obs_ct, 
+                dataset=dataset, 
+                ax=ax, 
+                hue=hue_column,
+                palette=None,  # Let seaborn auto-generate palette
+                s=30, 
+                alpha=0.7
+            )
+            
+            # Calculate and add correlation
+            correlations = {}
+            for age_group in obs_ct[age_group_column].unique():
+                obs_group = obs_ct[obs_ct[age_group_column] == age_group]
+                if len(obs_group) > 2:
+                    corr, pval = spearmanr(obs_group['age'], obs_group['predicted_age'])
+                    display_name = pretty_names.get(age_group, age_group)
+                    correlations[display_name] = corr
+            
+            if len(correlations) > 0:
+                corr_text = ' | '.join([f"{name}: r={r:.2f}" for name, r in correlations.items()])
+                ax.set_title(f"{cell_type}\n{corr_text}", fontsize=9, pad=10)
+            else:
+                ax.set_title(cell_type, fontsize=10, pad=10)
+            
+            # Only show legend on last plot
+            if idx < len(cell_types) - 1:
+                if ax.get_legend():
+                    ax.get_legend().remove()
+        
+        config_suffix = f"_{config.config_label}" if config.config_label else ""
+        output_path = os.path.join(output_dir, f'clock_{dataset}{config_suffix}_aging_combined.png')
+        plt.tight_layout()
+        plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+        plt.close()
+        print(f"  Saved: {output_path}")
+
+
 def analyze_perturbation(obs_pert, dataset, output_dir, experiments, pval_map, 
-                         p_value_t, pretty_names=None, mock_names=False):
+                         p_value_t, config, pretty_names=None, mock_names=False):
     """
     Analyze perturbation dataset for rejuvenating/accelerating effects.
     
@@ -355,6 +540,8 @@ def analyze_perturbation(obs_pert, dataset, output_dir, experiments, pval_map,
         P-value mapping
     p_value_t : float
         P-value threshold
+    config : ConditionConfig
+        Dataset configuration
     pretty_names : dict, optional
         Name mapping for display
     mock_names : bool
@@ -363,6 +550,9 @@ def analyze_perturbation(obs_pert, dataset, output_dir, experiments, pval_map,
     print("\n" + "="*60)
     print(f"Perturbation Analysis: {dataset}")
     print("="*60)
+    
+    # Get plot config
+    plot_config = config.clock_plot_config if config.clock_plot_config else {}
     
     for cell_type in obs_pert['cell_type'].unique():
         df_all, rejuvenating, aging = prepare_plot_inputs(
@@ -373,54 +563,36 @@ def analyze_perturbation(obs_pert, dataset, output_dir, experiments, pval_map,
         print(f"  Rejuvenating: {len(rejuvenating)}")
         print(f"  Aging: {len(aging)}")
         
-        # Configure plot parameters based on dataset
-        if dataset == 'op':
-            rej_figsize = (7.5, 3)
-            rej_margins = (0.05, 0.2)
-            rej_ha = 'right'
-            rej_bbox = (1, 1)
-            
-            age_figsize = (5, 3)
-            age_margins = (0.05, 0.2)
-            age_ha = 'right'
-            age_bbox = (1, 1)
-        elif dataset == 'CXCL9':
-            rej_figsize = (4, 3)
-            rej_margins = (0.12, 0.2)
-            rej_ha = 'right'
-            rej_bbox = (1, 1.2)
-            
-            age_figsize = (7, 3)
-            age_margins = (0.12, 0.2)
-            age_ha = 'right'
-            age_bbox = (1, 1.2)
-        elif dataset == 'parsebioscience':
-            if cell_type == 'CD4T':
-                rej_figsize = (4, 3)
-                rej_margins = (0.12, 0.2)
-                age_figsize = (10, 3)
-                age_margins = (0.12, 0.2)
-            else:
-                rej_figsize = (7, 3)
-                rej_margins = (0.12, 0.2)
-                age_figsize = (10, 3)
-                age_margins = (0.12, 0.2)
-            rej_ha = 'right'
-            rej_bbox = (1, 1.2)
-            age_ha = 'right'
-            age_bbox = (1, 1.2)
+        # Get plot parameters from config or use defaults
+        if cell_type in plot_config:
+            cell_plot_config = plot_config[cell_type]
+        elif 'default' in plot_config:
+            cell_plot_config = plot_config['default']
         else:
-            rej_figsize = age_figsize = (7, 3)
-            rej_margins = age_margins = (0.1, 0.2)
-            rej_ha = age_ha = 'right'
-            rej_bbox = age_bbox = (1, 1)
+            cell_plot_config = {
+                'rejuvenating': {'figsize': (7, 3), 'margins': (0.1, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
+                'aging': {'figsize': (7, 3), 'margins': (0.1, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
+            }
+        
+        rej_config = cell_plot_config.get('rejuvenating', {})
+        age_config = cell_plot_config.get('aging', {})
+        
+        rej_figsize = rej_config.get('figsize', (7, 3))
+        rej_margins = rej_config.get('margins', (0.1, 0.2))
+        rej_ha = rej_config.get('ha', 'right')
+        rej_bbox = rej_config.get('bbox_to_anchor', (1, 1))
+        
+        age_figsize = age_config.get('figsize', (7, 3))
+        age_margins = age_config.get('margins', (0.1, 0.2))
+        age_ha = age_config.get('ha', 'right')
+        age_bbox = age_config.get('bbox_to_anchor', (1, 1))
         
         # Plot rejuvenating effects
         if len(rejuvenating) > 0:
-            name_mapping = pretty_names if pretty_names else None
+            name_mapping = pretty_names if pretty_names else {}
             
             # Handle mock names for OP dataset
-            if mock_names and dataset == 'op':
+            if mock_names:
                 rejuvenating_sorted = sorted(
                     rejuvenating, 
                     key=lambda x: pval_map.get((cell_type, x[0], x[1]), (1.0, 0))[1]
@@ -454,7 +626,7 @@ def analyze_perturbation(obs_pert, dataset, output_dir, experiments, pval_map,
             plot_group_strip(
                 df_all, aging, "Acceleration", cell_type, pval_map,
                 figsize=age_figsize, margins=age_margins, ha=age_ha, 
-                bbox_to_anchor=age_bbox, name_mapping=pretty_names
+                bbox_to_anchor=age_bbox, name_mapping=pretty_names if pretty_names else {}
             )
             plt.title(cell_type, pad=15)
             output_path = os.path.join(
@@ -590,15 +762,18 @@ def plot_specific_perturbations(obs_pert, dataset, cell_types, pval_map,
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Aging Clock Analysis - Post-prediction analysis for disease and perturbation datasets',
+        description='Aging Clock Analysis - Post-prediction analysis for disease, perturbation, and aging datasets',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Disease analysis
-  python clock_analysis.py --dataset SLE_European --analysis-type disease
+  # Disease analysis (CMV effect)
+  python clock_analysis.py --dataset soundlife --config-label cmv_young --analysis-type disease
   
-  # Perturbation analysis
-  python clock_analysis.py --dataset CXCL9 --analysis-type perturbation --test-type mixed_effect
+  # Aging analysis (young vs old)
+  python clock_analysis.py --dataset soundlife --config-label aging_cmv_neg --analysis-type aging
+  
+  # Perturbation analysis (all settings from config)
+  python clock_analysis.py --dataset CXCL9 --analysis-type perturbation
   
   # Custom cell types
   python clock_analysis.py --dataset op --analysis-type perturbation --cell-types CD4T CD8T
@@ -610,14 +785,20 @@ Examples:
         '--dataset',
         type=str,
         required=True,
-        help='Dataset name (e.g., SLE_European, CXCL9, op, parsebioscience)'
+        help='Dataset name (e.g., SLE_European, CXCL9, op, parsebioscience, soundlife)'
     )
     parser.add_argument(
         '--analysis-type',
         type=str,
-        choices=['disease', 'perturbation'],
+        choices=['disease', 'perturbation', 'aging'],
         required=True,
-        help='Type of analysis: disease or perturbation'
+        help='Type of analysis: disease, perturbation, or aging'
+    )
+    parser.add_argument(
+        '--config-label',
+        type=str,
+        default=None,
+        help='Config label for datasets with multiple configurations (e.g., aging_cmv_neg, cmv_young)'
     )
     
     # Model configuration
@@ -654,24 +835,13 @@ Examples:
         default=['CD4T', 'CD8T'],
         help='Cell types to analyze (default: CD4T CD8T)'
     )
-    parser.add_argument(
-        '--test-type',
-        type=str,
-        default='mixed_effect',
-        choices=['paired', 'unpaired', 'mixed_effect'],
-        help='Statistical test type for perturbations (default: mixed_effect)'
-    )
-    parser.add_argument(
-        '--group-key',
-        type=str,
-        default='donor_id',
-        help='Column name for random effects grouping in mixed effects (default: donor_id)'
-    )
+    
+    # Optional overrides (if not specified, use config)
     parser.add_argument(
         '--p-value-threshold',
         type=float,
-        default=0.05,
-        help='P-value threshold for significance (default: 0.05)'
+        default=None,
+        help='P-value threshold for significance (default: from config)'
     )
     
     # Optional flags
@@ -686,11 +856,6 @@ Examples:
         action='store_true',
         help='Skip dataset-specific detailed plots'
     )
-    parser.add_argument(
-        '--mock-names',
-        action='store_true',
-        help='Mock compound names (OP dataset only: keep top 1, rename others)'
-    )
     
     args = parser.parse_args()
     
@@ -698,15 +863,29 @@ Examples:
     output_dir = args.output_dir if args.output_dir else PLOTS_DIR
     os.makedirs(output_dir, exist_ok=True)
     
+    # Load configuration
+    try:
+        configs = get_config(args.dataset, config_label=args.config_label)
+        config = configs[0]  # Use first config (most datasets have only one)
+    except ValueError as e:
+        print(f"Error: {e}")
+        return
+    
+    # Override config with command-line arguments if provided
+    p_value_threshold = args.p_value_threshold if args.p_value_threshold else config.clock_pvalue_threshold
+    
     print("="*60)
     print(f"Aging Clock Analysis - {args.analysis_type.capitalize()}")
     print("="*60)
     print(f"Dataset: {args.dataset}")
+    if args.config_label:
+        print(f"Config label: {args.config_label}")
     print(f"Analysis type: {args.analysis_type}")
     print(f"Feature type: {args.feature_type}")
     print(f"Data type: {args.data_type}")
     print(f"Model version: {args.version}")
     print(f"Cell types: {', '.join(args.cell_types)}")
+    print(f"P-value threshold: {p_value_threshold}")
     print(f"Output directory: {output_dir}")
     print("="*60)
     
@@ -727,28 +906,44 @@ Examples:
     
     print(f"Loaded {len(obs)} predictions")
     print(f"Conditions: {obs['condition'].unique()}")
+    
+    # Apply data filters if specified in config
+    if config.data_filter:
+        print("\nApplying data filters...")
+        obs = apply_data_filter(obs, config)
+        print(f"After filtering: {len(obs)} predictions")
+        if len(obs) == 0:
+            print("Error: No data remaining after filtering.")
+            return
+    
     print()
     
     # Run analysis based on type
     if args.analysis_type == 'disease':
-        analyze_disease(obs, args.dataset, output_dir, args.cell_types)
+        analyze_disease(obs, args.dataset, output_dir, args.cell_types, config)
+    
+    elif args.analysis_type == 'aging':
+        analyze_aging(obs, args.dataset, output_dir, args.cell_types, config)
     
     elif args.analysis_type == 'perturbation':
         # Prepare perturbation data
         obs_pert = obs.copy()
         obs_pert['test_group'] = obs_pert['donor_age'].copy()
         
-        # Filter out specific conditions if needed
+        # Filter out specific conditions if needed (e.g., Belinostat for CXCL9)
         if args.dataset == 'CXCL9':
             obs_pert = obs_pert[~obs_pert['condition'].isin(['Belinostat'])]
         
-        # Get experiment setup
-        experiments, pvalue_show_type, pretty_names = get_experiment_setup(
-            args.dataset, obs_pert
+        # Get experiment setup from config
+        experiments, pvalue_show_type, pretty_names, test_type, group_key, mock_names, plot_config = get_experiment_setup(
+            args.dataset, obs_pert, config
         )
         
         print(f"Number of experiments: {len(experiments)}")
         print(f"P-value correction: {pvalue_show_type}")
+        print(f"Test type: {test_type}")
+        print(f"Group key: {group_key}")
+        print(f"Mock names: {mock_names}")
         
         # Perform statistical tests
         print("\nPerforming statistical tests...")
@@ -756,9 +951,9 @@ Examples:
             obs_pert, 
             experiments, 
             args.dataset,
-            test_type=args.test_type,
+            test_type=test_type,
             pvalue_show_type=pvalue_show_type,
-            group_key=args.group_key
+            group_key=group_key
         )
         
         # Generate plots
@@ -768,9 +963,10 @@ Examples:
             output_dir, 
             experiments, 
             pval_map,
-            args.p_value_threshold,
+            p_value_threshold,
+            config,
             pretty_names=pretty_names,
-            mock_names=args.mock_names
+            mock_names=mock_names
         )
         
         # Generate specific perturbation plots
@@ -782,7 +978,7 @@ Examples:
                 pval_map,
                 pretty_names, 
                 output_dir,
-                test_type=args.test_type
+                test_type=test_type
             )
     
     print("\n" + "="*60)
