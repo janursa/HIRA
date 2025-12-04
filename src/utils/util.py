@@ -74,6 +74,12 @@ def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20):
     if 'sex' in adata.obs.columns:
         adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
 
+    # Map subject.ageGroup to age_group for soundlife dataset
+    if dataset == 'soundlife' and 'subject.ageGroup' in adata.obs.columns:
+        adata.obs['age_group'] = adata.obs['subject.ageGroup'].apply(
+            lambda x: 'young' if 'Young' in str(x) else ('old' if 'Older' in str(x) else None)
+        )
+
     if dataset not in ['ibd']:
         adata.obs.rename({'perturbation': 'condition', 'disease': 'condition', 'treatment': 'condition', 'Max_WHO_Group': 'condition'}, axis=1, inplace=True)
     

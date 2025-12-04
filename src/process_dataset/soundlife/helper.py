@@ -35,7 +35,52 @@ def format_columns(adata):
     # Create donor_age identifier (donor_id + age)
     adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + '_' + adata.obs['age'].astype(str)
     
+    # Map age_group from subject.ageGroup
+    # "Sound Life Young Adult" -> "young"
+    # "Sound Life Older Adult" -> "old"
+    adata.obs['age_group'] = adata.obs['subject.ageGroup'].apply(
+        lambda x: 'young' if 'Young' in str(x) else ('old' if 'Older' in str(x) else None)
+    )
+    
+    # Extract vaccinated, year, and day from sample.visitName
+    # Examples: "Flu Year 1 Day 0", "Immune Variation Day 7", "Flu Year 2 Stand-Alone"
+    def parse_visit_name(visit_name):
+        visit_str = str(visit_name)
+        
+        # Extract vaccinated (yes if "Flu Year", no if "Immune Variation")
+        if 'Flu Year' in visit_str:
+            vaccinated = 'yes'
+            # Extract year number (e.g., "Flu Year 1" -> "1", "Flu Year 2" -> "2")
+            import re
+            year_match = re.search(r'Flu Year (\d+)', visit_str)
+            year = year_match.group(1) if year_match else None
+        elif 'Immune Variation' in visit_str:
+            vaccinated = 'no'
+            year = None
+        else:
+            vaccinated = None
+            year = None
+        
+        # Extract day (e.g., "Day 0", "Day 7", "Day 90", or None for "Stand-Alone")
+        import re
+        day_match = re.search(r'Day (\d+)', visit_str)
+        day = day_match.group(1) if day_match else None
+        
+        return pd.Series({'vaccinated': vaccinated, 'year': year, 'day': day})
+    
+    # Apply parsing to all visitNames
+    parsed = adata.obs['visitName'].apply(parse_visit_name)
+    adata.obs['vaccinated'] = parsed['vaccinated']
+    adata.obs['year'] = parsed['year']
+    adata.obs['day'] = parsed['day']
+    
     print(f'Added standardized columns. Total columns: {len(adata.obs.columns)}')
+    print(f'Age group distribution:')
+    print(adata.obs['age_group'].value_counts(dropna=False))
+    print(f'Vaccinated distribution:')
+    print(adata.obs['vaccinated'].value_counts(dropna=False))
+    print(f'Year distribution:')
+    print(adata.obs['year'].value_counts(dropna=False))
     
     return adata
 

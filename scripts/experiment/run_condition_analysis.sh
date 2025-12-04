@@ -4,15 +4,11 @@
 # Replaces separate disease and perturbation scripts.
 #
 
-set -e  # Exit on error
-
-# Activate environment
-source ~/.bash_profile
+# Activate environment (allow bashrc errors to be ignored)
+source ~/.bash_profile || true
 conda activate py10
 
-# Navigate to project root
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR/.." || exit 1
+set -e  # Exit on error from this point forward
 
 # Default values
 DATASET=""
