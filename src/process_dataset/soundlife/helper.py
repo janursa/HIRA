@@ -141,20 +141,89 @@ def qc_check(adata):
     return adata
 
 
-def process_single_file(file_path, output_path, test_mode=False):
+def create_metacells(adata, metacell_size=100):
+    """
+    Create metacells by splitting each group into chunks of metacell_size cells.
+    This increases sample size by creating multiple pseudobulk samples per group.
+    
+    Args:
+        adata: AnnData object with raw counts in layers['counts']
+        metacell_size: Number of cells to aggregate per metacell
+        
+    Returns:
+        adata_metacell: AnnData with metacell pseudobulk data
+    """
+    print(f'Creating metacells with size {metacell_size}...')
+    
+    from task_grn_inference.src.process_data.helper_data import sum_by
+    
+    # Create grouping by cell_type, donor_id, visitName (same as regular bulk)
+    covariates = ['cell_type', 'donor_id', 'visitName']
+    adata.obs['group_id'] = ''
+    for covariate in covariates:
+        adata.obs['group_id'] += '_' + adata.obs[covariate].astype(str)
+    
+    # Within each group, assign metacell IDs
+    metacell_ids = []
+    for group_name, group_df in adata.obs.groupby('group_id'):
+        n_cells = len(group_df)
+        # Create metacell indices (0, 0, 0, ..., 1, 1, 1, ..., 2, 2, 2, ...)
+        metacell_indices = np.arange(n_cells) // metacell_size
+        metacell_ids.extend(metacell_indices)
+    
+    adata.obs['metacell_id'] = metacell_ids
+    
+    # Create unique identifier for each metacell
+    adata.obs['metacell_sum_by'] = adata.obs['group_id'] + '_mc' + adata.obs['metacell_id'].astype(str)
+    adata.obs['metacell_sum_by'] = adata.obs['metacell_sum_by'].astype('category')
+    
+    # Calculate cell counts per metacell
+    cell_count_df = adata.obs.groupby('metacell_sum_by').size().reset_index(name='cell_count')
+    
+    # Perform pseudobulking per metacell
+    adata_metacell = sum_by(adata, 'metacell_sum_by', unique_mapping=True)
+    print(f'After metacell sum_by, shape: {adata_metacell.shape}')
+    
+    # Merge cell count if not already present
+    if 'cell_count' not in adata_metacell.obs.columns:
+        adata_metacell.obs = adata_metacell.obs.reset_index()
+        adata_metacell.obs = adata_metacell.obs.rename(columns={'index': 'sum_by_index'})
+        adata_metacell.obs = adata_metacell.obs.merge(
+            cell_count_df, 
+            left_on='metacell_sum_by', 
+            right_on='metacell_sum_by', 
+            how='left'
+        )
+    
+    # Filter by cell count threshold (keep metacells with at least 100 cells)
+    # This allows the last metacell in each group to be kept if it has at least 100 cells
+    cell_count_t = 100
+    print(f'Filtering metacells with < {cell_count_t} cells')
+    low_cells = adata_metacell.obs['cell_count'] < cell_count_t
+    print(f'Dropping {low_cells.sum()} metacells with less than {cell_count_t} cells')
+    adata_metacell = adata_metacell[~low_cells].copy()
+    
+    print(f'Final metacell shape: {adata_metacell.shape}')
+    print(f'Number of metacells: {adata_metacell.n_obs}')
+    
+    return adata_metacell
+
+
+def process_single_file(file_path, output_path, test_mode=False, output_path_metacell=None):
     """
     Process a single SoundLife .h5ad file:
     1. Read data
     2. Format columns
     3. Apply QC
     4. Map cell types
-    5. Pseudobulk
+    5. Pseudobulk (regular bulk and metacell)
     6. Save
     
     Args:
         file_path: Path to input .h5ad file
         output_path: Path to save pseudobulked output
         test_mode: If True, subset data to 2 donors and 2 visits for testing
+        output_path_metacell: Path to save metacell pseudobulked output (optional)
     """
     import time
     
@@ -249,8 +318,28 @@ def process_single_file(file_path, output_path, test_mode=False):
     print(f'Number of bulk samples: {adata_bulk.n_obs}')
     
     # Save individual pseudobulked file
-    print(f'Saving to: {output_path}')
+    print(f'Saving regular bulk to: {output_path}')
     adata_bulk.write(output_path)
+    
+    # Generate metacell pseudobulk if output path is provided
+    if output_path_metacell is not None:
+        print('\n' + '='*80)
+        print('CREATING METACELLS')
+        print('='*80)
+        
+        # Create a copy of adata for metacell processing (before it's deleted)
+        # We need to work with the QC'd and cell-type-mapped data
+        adata_for_metacell = adata.copy()
+        
+        # Create metacells (150 cells per metacell by default)
+        adata_metacell = create_metacells(adata_for_metacell, metacell_size=150)
+        
+        print(f'Saving metacell bulk to: {output_path_metacell}')
+        adata_metacell.write(output_path_metacell)
+        
+        del adata_for_metacell
+        del adata_metacell
+        gc.collect()
     
     # Clean up memory
     del adata

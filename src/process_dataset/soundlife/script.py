@@ -29,6 +29,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--output_metacell',
+    type=str,
+    default='/vol/projects/jnourisa/datasets/bulk/soundlife_metacell.h5ad',
+    help="Output path for final merged metacell data"
+)
+
+parser.add_argument(
     '--temp_dir',
     type=str,
     default='/home/jnourisa/projs/ongoing/ciim/src/process_dataset/soundlife/temp',
@@ -117,6 +124,7 @@ if __name__ == '__main__':
     print('='*80)
     
     pseudobulked_files = []
+    metacell_files = []
     
     for i, input_file in enumerate(input_files, 1):
         print(f'\n[{i}/{len(input_files)}] Processing file...')
@@ -125,9 +133,19 @@ if __name__ == '__main__':
         base_name = os.path.basename(input_file).replace('.h5ad', '_bulk.h5ad')
         output_file = os.path.join(args.temp_dir, base_name)
         
-        # Process and pseudobulk (with test mode flag)
-        process_single_file(input_file, output_file, test_mode=args.test)
+        # Create output filename for metacell data
+        base_name_metacell = os.path.basename(input_file).replace('.h5ad', '_metacell.h5ad')
+        output_file_metacell = os.path.join(args.temp_dir, base_name_metacell)
+        
+        # Process and pseudobulk (with test mode flag and metacell output)
+        process_single_file(
+            input_file, 
+            output_file, 
+            test_mode=args.test,
+            output_path_metacell=output_file_metacell
+        )
         pseudobulked_files.append(output_file)
+        metacell_files.append(output_file_metacell)
         
         print(f'Completed {i}/{len(input_files)} files')
     
@@ -138,16 +156,27 @@ if __name__ == '__main__':
     
     merged_adata = merge_pseudobulked_files(pseudobulked_files)
     
+    # Merge all metacell files
+    print('\n' + '='*80)
+    print('STEP 2b: Merging all metacell files')
+    print('='*80)
+    
+    merged_adata_metacell = merge_pseudobulked_files(metacell_files)
+    
     # Normalize the merged data
     print('\n' + '='*80)
     print('STEP 3: Normalizing merged data')
     print('='*80)
     
+    print('\nNormalizing regular bulk data...')
     merged_adata = normalize(merged_adata)
+    
+    print('\nNormalizing metacell data...')
+    merged_adata_metacell = normalize(merged_adata_metacell)
     
     # Display summary statistics
     print('\n' + '='*80)
-    print('SUMMARY STATISTICS')
+    print('SUMMARY STATISTICS - REGULAR BULK')
     print('='*80)
     print(f'\nFinal bulk data shape: {merged_adata.shape}')
     print(f'  - Samples: {merged_adata.n_obs}')
@@ -171,21 +200,46 @@ if __name__ == '__main__':
     print('\nAge statistics:')
     print(merged_adata.obs['age'].describe())
     
+    # Display summary statistics for metacell data
+    print('\n' + '='*80)
+    print('SUMMARY STATISTICS - METACELL')
+    print('='*80)
+    print(f'\nFinal metacell data shape: {merged_adata_metacell.shape}')
+    print(f'  - Samples (metacells): {merged_adata_metacell.n_obs}')
+    print(f'  - Genes: {merged_adata_metacell.n_vars}')
+    
+    print('\nColumn names in .obs:')
+    print(merged_adata_metacell.obs.columns.tolist())
+    
+    print('\nCell type distribution:')
+    print(merged_adata_metacell.obs['cell_type'].value_counts())
+    
+    print('\nDonor count:')
+    print(f"  Unique donors: {merged_adata_metacell.obs['donor_id'].nunique()}")
+    
     # Save final merged and normalized bulk data
     print('\n' + '='*80)
-    print('STEP 4: Saving final bulk data')
+    print('STEP 4: Saving final bulk and metacell data')
     print('='*80)
     
     # Create output directory if needed
     output_dir = os.path.dirname(args.output_bulk)
     os.makedirs(output_dir, exist_ok=True)
     
-    print(f'\nSaving to: {args.output_bulk}')
+    print(f'\nSaving regular bulk to: {args.output_bulk}')
     merged_adata.write(args.output_bulk)
+    
+    print(f'Saving metacell bulk to: {args.output_metacell}')
+    merged_adata_metacell.write(args.output_metacell)
     
     print('\n' + '='*80)
     print('PROCESSING COMPLETE!')
     print('='*80)
     print(f'\nFinal bulk data saved to: {args.output_bulk}')
+    print(f'Final metacell data saved to: {args.output_metacell}')
     print(f'Temporary pseudobulked files stored in: {args.temp_dir}')
     print('\nYou can now use this data in your aging analysis pipeline.')
+    print(f'\nComparison:')
+    print(f'  Regular bulk samples: {merged_adata.n_obs}')
+    print(f'  Metacell samples: {merged_adata_metacell.n_obs}')
+    print(f'  Sample size increase: {merged_adata_metacell.n_obs / merged_adata.n_obs:.2f}x')
