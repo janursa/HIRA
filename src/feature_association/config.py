@@ -49,6 +49,23 @@ class ConditionConfig:
     # Plotting control
     target_treatments: Optional[List[str]] = None  # Which conditions to plot in overlap analysis
     
+    # ========== CLOCK ANALYSIS SPECIFIC ==========
+    # Statistical testing for clock predictions
+    clock_test_type: Optional[str] = None  # 'paired', 'unpaired', 'mixed_effect'
+    clock_group_key: Optional[str] = None  # For mixed effects in clock analysis (e.g., 'donor_id')
+    clock_pvalue_correction: Optional[str] = 'corrected'  # 'raw' or 'corrected' (FDR)
+    clock_pvalue_threshold: float = 0.05  # Significance threshold
+    
+    # Experiment pairs for perturbation datasets (list of tuples)
+    clock_experiments: Optional[List[tuple]] = None  # [(control, treatment), ...]
+    
+    # Display options for clock plots
+    clock_pretty_names: Optional[Dict[str, str]] = None  # Rename conditions for clock plots
+    clock_mock_names: bool = False  # Mock compound names (keep top 1, rename others)
+    
+    # Plot configuration for perturbations
+    clock_plot_config: Optional[Dict[str, any]] = None  # Dataset-specific plot parameters
+    
     def __post_init__(self):
         if self.display_name is None:
             self.display_name = self.name
@@ -76,7 +93,10 @@ DATASET_CONFIGS = {
         name_mapping={
             'normal': 'healthy',
             'systemic lupus erythematosus': 'SLE'
-        }
+        },
+        # Clock analysis settings
+        clock_test_type='unpaired',
+        clock_pvalue_threshold=0.05,
     ),
     
     "Covid_50MHH": ConditionConfig(
@@ -131,6 +151,26 @@ DATASET_CONFIGS = {
             '24 h LPS': 'LPS (ctr: RPMI)'
         }),
         target_treatments=['Ruxolitinib (ctr: RPMI)', 'Ruxolitinib (ctr: LPS)'],
+        # Clock analysis settings
+        clock_test_type='mixed_effect',
+        clock_group_key='donor_id',
+        clock_pvalue_correction='raw',
+        clock_pvalue_threshold=0.05,
+        clock_experiments=[
+            ('24 h RPMI', '24 h LPS'),
+            ('24 h RPMI', '24 h RPMI + ruxolitinib'),
+            ('24 h LPS', '24 h LPS + ruxolitinib'),
+        ],
+        clock_pretty_names={
+            '24 h LPS': 'LPS \n (ctr: RPMI)',
+            '24 h LPS + ruxolitinib': 'Ruxolitinib \n (ctr: LPS)',
+            '24 h RPMI': 'RPMI',
+            '24 h RPMI + ruxolitinib': 'Ruxolitinib \n (ctr: RPMI)',
+        },
+        clock_plot_config={
+            'rejuvenating': {'figsize': (4, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
+            'aging': {'figsize': (7, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
+        },
     ),
     
     "parsebioscience": ConditionConfig(
