@@ -70,9 +70,13 @@ def format_columns(adata):
     
     # Apply parsing to all visitNames
     parsed = adata.obs['visitName'].apply(parse_visit_name)
-    adata.obs['vaccinated'] = parsed['vaccinated']
-    adata.obs['year'] = parsed['year']
-    adata.obs['day'] = parsed['day']
+    adata.obs['year'] = parsed['year'].astype(str)
+    adata.obs['day'] = parsed['day'].astype(str)
+    
+    # Convert vaccinated from 'yes'/'no' to boolean True/False
+    adata.obs['vaccinated'] = parsed['vaccinated'].apply(
+        lambda x: True if str(x).lower() == 'yes' else (False if str(x).lower() == 'no' else None)
+    )
     
     print(f'Added standardized columns. Total columns: {len(adata.obs.columns)}')
     print(f'Age group distribution:')

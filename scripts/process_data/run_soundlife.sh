@@ -26,7 +26,7 @@ TEST_MODE=false
 CMD="python src/process_dataset/soundlife/script.py \
     --input_dir /home/jnourisa/projs/ongoing/ciim/downloads \
     --output_bulk /vol/projects/jnourisa/datasets/bulk/soundlife_bulk.h5ad \
-    --output_metacell /vol/projects/jnourisa/datasets/bulk/soundlife_metacell.h5ad \
+    --output_metacell /vol/projects/jnourisa/datasets/metacell/soundlife_metacell.h5ad \
     --temp_dir /home/jnourisa/projs/ongoing/ciim/tmp/soundlife_processing"
 
 # Add test flag if in test mode
