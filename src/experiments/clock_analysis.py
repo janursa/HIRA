@@ -28,6 +28,7 @@ from ciim.src.common import (
     surrogate_names,
     colors_blind
 )
+
 from ciim.src.feature_association.config import get_config
 from ciim.src.utils.util import test_mixed_effects, test_paired, test_unpaired
 from ciim.src.clock.plots import (
@@ -382,7 +383,7 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
     Analyze aging dataset comparing young vs old groups.
     
     Shows scatter plots of predicted age vs actual age for each age group,
-    with Spearman correlation calculated for each.
+    with unpaired t-test comparing predicted ages between groups.
     
     Parameters
     ----------
@@ -398,6 +399,7 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
         Dataset configuration with age group info
     """
     from scipy.stats import spearmanr
+    from scipy import stats
     
     print("\n" + "="*60)
     print(f"Aging Analysis: {dataset}")
@@ -428,19 +430,41 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
         
         print(f"\nGenerating aging scatter plot for {cell_type}...")
         
-        # Calculate Spearman correlation for each age group
-        correlations = {}
-        for age_group in obs_ct[age_group_column].unique():
-            obs_group = obs_ct[obs_ct[age_group_column] == age_group]
-            if len(obs_group) > 2:  # Need at least 3 points for correlation
-                corr, pval = spearmanr(obs_group['age'], obs_group['predicted_age'])
-                display_name = pretty_names.get(age_group, age_group)
-                correlations[display_name] = {'r': corr, 'p': pval, 'n': len(obs_group)}
+        # Perform unpaired t-test comparing predicted ages between age groups
+        age_groups = sorted(obs_ct[age_group_column].unique())
         
-        # Print correlations
-        print(f"  Spearman correlations for {cell_type}:")
-        for group_name, stats in correlations.items():
-            print(f"    {group_name}: r={stats['r']:.3f}, p={stats['p']:.3e}, n={stats['n']}")
+        if len(age_groups) == 2:
+            young_group, old_group = age_groups[0], age_groups[1]
+            young_pred = obs_ct[obs_ct[age_group_column] == young_group]['predicted_age'].dropna()
+            old_pred = obs_ct[obs_ct[age_group_column] == old_group]['predicted_age'].dropna()
+            
+            if len(young_pred) >= 2 and len(old_pred) >= 2:
+                # Test: old vs young (positive difference means old has higher predicted age)
+                t_stat, p_value = stats.ttest_ind(old_pred, young_pred, equal_var=False)
+                mean_diff = old_pred.mean() - young_pred.mean()
+                
+                # Determine significance stars
+                if p_value < 0.001:
+                    stars = '***'
+                elif p_value < 0.01:
+                    stars = '**'
+                elif p_value < 0.05:
+                    stars = '*'
+                else:
+                    stars = 'ns'
+                
+                print(f"  Unpaired t-test (predicted age):")
+                print(f"    {pretty_names.get(young_group, young_group)}: {young_pred.mean():.1f} ± {young_pred.std():.1f} (n={len(young_pred)})")
+                print(f"    {pretty_names.get(old_group, old_group)}: {old_pred.mean():.1f} ± {old_pred.std():.1f} (n={len(old_pred)})")
+                print(f"    Difference (old - young): {mean_diff:.1f}, p={p_value:.3e} {stars}")
+            else:
+                p_value = None
+                stars = None
+                print(f"  Warning: Not enough data for t-test")
+        else:
+            p_value = None
+            stars = None
+            print(f"  Warning: Expected 2 age groups, found {len(age_groups)}")
         
         # Create scatter plot
         fig, ax = plt.subplots(1, 1, figsize=(3.5, 2.5))
@@ -454,12 +478,34 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
             alpha=0.7
         )
         
-        # Add correlation info to legend or title
-        if len(correlations) > 0:
-            corr_text = ' | '.join([f"{name}: r={s['r']:.2f}" for name, s in correlations.items()])
-            ax.set_title(f"{cell_type}\n{corr_text}", fontsize=9, pad=10)
-        else:
-            ax.set_title(cell_type, fontsize=10, pad=10)
+        # Add statistical bracket and annotation if t-test was performed
+        if p_value is not None and stars is not None:
+            # Get y-axis limits
+            y_min, y_max = ax.get_ylim()
+            y_range = y_max - y_min
+            
+            # Position bracket at top of plot
+            bracket_y = y_max - y_range * 0.05
+            bracket_height = y_range * 0.02
+            
+            # Get x positions for the two age groups (approximate centers)
+            # This works because the scatter plot spreads points across the x-axis
+            x_min, x_max = ax.get_xlim()
+            x_center_young = x_min + (x_max - x_min) * 0.25
+            x_center_old = x_min + (x_max - x_min) * 0.75
+            
+            # Draw bracket
+            ax.plot([x_center_young, x_center_young, x_center_old, x_center_old],
+                   [bracket_y, bracket_y + bracket_height, bracket_y + bracket_height, bracket_y],
+                   'k-', linewidth=1.5)
+            
+            # Add p-value and stars
+            bracket_text = f'p={p_value:.3e}\n{stars}' if p_value >= 0.001 else f'{stars}'
+            ax.text((x_center_young + x_center_old) / 2, bracket_y + bracket_height + y_range * 0.01,
+                   bracket_text, ha='center', va='bottom', fontsize=9, fontweight='bold')
+        
+        # Set title
+        ax.set_title(cell_type, fontsize=10, pad=10)
         
         # Save plot
         config_suffix = f"_{config.config_label}" if config.config_label else ""
@@ -483,6 +529,34 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
                 continue
             
             ax = axes[idx]
+            
+            # Perform unpaired t-test for this cell type
+            age_groups = sorted(obs_ct[age_group_column].unique())
+            
+            if len(age_groups) == 2:
+                young_group, old_group = age_groups[0], age_groups[1]
+                young_pred = obs_ct[obs_ct[age_group_column] == young_group]['predicted_age'].dropna()
+                old_pred = obs_ct[obs_ct[age_group_column] == old_group]['predicted_age'].dropna()
+                
+                if len(young_pred) >= 2 and len(old_pred) >= 2:
+                    t_stat, p_value = stats.ttest_ind(old_pred, young_pred, equal_var=False)
+                    
+                    # Determine significance stars
+                    if p_value < 0.001:
+                        stars = '***'
+                    elif p_value < 0.01:
+                        stars = '**'
+                    elif p_value < 0.05:
+                        stars = '*'
+                    else:
+                        stars = 'ns'
+                else:
+                    p_value = None
+                    stars = None
+            else:
+                p_value = None
+                stars = None
+            
             plot_scatter_age_vs_predictedAge(
                 obs_ct, 
                 dataset=dataset, 
@@ -493,20 +567,32 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
                 alpha=0.7
             )
             
-            # Calculate and add correlation
-            correlations = {}
-            for age_group in obs_ct[age_group_column].unique():
-                obs_group = obs_ct[obs_ct[age_group_column] == age_group]
-                if len(obs_group) > 2:
-                    corr, pval = spearmanr(obs_group['age'], obs_group['predicted_age'])
-                    display_name = pretty_names.get(age_group, age_group)
-                    correlations[display_name] = corr
+            # Add statistical bracket and annotation if t-test was performed
+            if p_value is not None and stars is not None:
+                # Get y-axis limits
+                y_min, y_max = ax.get_ylim()
+                y_range = y_max - y_min
+                
+                # Position bracket at top of plot
+                bracket_y = y_max - y_range * 0.05
+                bracket_height = y_range * 0.02
+                
+                # Get x positions for the two age groups
+                x_min, x_max = ax.get_xlim()
+                x_center_young = x_min + (x_max - x_min) * 0.25
+                x_center_old = x_min + (x_max - x_min) * 0.75
+                
+                # Draw bracket
+                ax.plot([x_center_young, x_center_young, x_center_old, x_center_old],
+                       [bracket_y, bracket_y + bracket_height, bracket_y + bracket_height, bracket_y],
+                       'k-', linewidth=1.5)
+                
+                # Add p-value and stars
+                bracket_text = f'p={p_value:.3e}\n{stars}' if p_value >= 0.001 else f'{stars}'
+                ax.text((x_center_young + x_center_old) / 2, bracket_y + bracket_height + y_range * 0.01,
+                       bracket_text, ha='center', va='bottom', fontsize=9, fontweight='bold')
             
-            if len(correlations) > 0:
-                corr_text = ' | '.join([f"{name}: r={r:.2f}" for name, r in correlations.items()])
-                ax.set_title(f"{cell_type}\n{corr_text}", fontsize=9, pad=10)
-            else:
-                ax.set_title(cell_type, fontsize=10, pad=10)
+            ax.set_title(cell_type, fontsize=10, pad=10)
             
             # Only show legend on last plot
             if idx < len(cell_types) - 1:
