@@ -201,7 +201,7 @@ Available datasets:
     parser.add_argument(
         '--data-type',
         type=str,
-        choices=['bulk', 'sc'],
+        choices=['bulk', 'sc', 'metacell'],
         default='bulk',
         help='Data type (default: bulk)'
     )

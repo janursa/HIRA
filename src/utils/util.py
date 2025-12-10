@@ -33,6 +33,10 @@ def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20):
         base_path = f"{base_path}/bulk/"
     elif 'sc' in type:
         base_path = f"{base_path}/sc/"
+    elif type == 'metacell':
+        base_path = f"{base_path}/metacell/"
+    else:
+        raise ValueError(f'Unknown type {type}')
        
     gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
 
@@ -79,7 +83,6 @@ def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20):
         adata.obs['age_group'] = adata.obs['subject.ageGroup'].apply(
             lambda x: 'young' if 'Young' in str(x) else ('old' if 'Older' in str(x) else None)
         )
-
     if dataset not in ['ibd']:
         adata.obs.rename({'perturbation': 'condition', 'disease': 'condition', 'treatment': 'condition', 'Max_WHO_Group': 'condition'}, axis=1, inplace=True)
     
