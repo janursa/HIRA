@@ -481,33 +481,52 @@ def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_a
     if condition_col != 'condition' and 'condition' in formula:
         formula = formula.replace('C(condition)', f'C({condition_col})').replace(' condition ', f' {condition_col} ')
 
-    # Filter to comparison groups
-    df = df[df[condition_col].isin([ctr, treatment])].copy()
+    # For interaction models (formula contains *), use ALL data without filtering
+    # For regular models, filter to comparison groups only
+    if '*' not in formula:
+        # Filter to comparison groups for non-interaction models
+        df = df[df[condition_col].isin([ctr, treatment])].copy()
+    # else: keep all data for interaction models
     
-    # Diagnostic: Check data quality before modeling
-    n_groups = df[group_key].nunique()
-    n_ctr = df[df[condition_col] == ctr].shape[0]
-    n_treat = df[df[condition_col] == treatment].shape[0]
-    
-    if n_groups < 2:
-        print(f"DIAGNOSTIC: Insufficient groups for {treatment} vs {ctr}: only {n_groups} {group_key}(s)")
-        return (np.nan, np.nan) if not return_full_result else None
-    
-    if n_ctr < 2 or n_treat < 2:
-        print(f"DIAGNOSTIC: Insufficient samples for {treatment} vs {ctr}: ctr={n_ctr}, treat={n_treat}")
-        return (np.nan, np.nan) if not return_full_result else None
-    
-    # Check variance
-    var_ctr = df[df[condition_col] == ctr][target_variable].var()
-    var_treat = df[df[condition_col] == treatment][target_variable].var()
-    
-    if var_ctr == 0 or var_treat == 0:
-        print(f"DIAGNOSTIC: Zero variance for {treatment} vs {ctr}: var_ctr={var_ctr}, var_treat={var_treat}")
-        return (np.nan, np.nan) if not return_full_result else None
+    # Diagnostic: Check data quality before modeling (skip for interaction models)
+    if '*' not in formula:
+        n_groups = df[group_key].nunique()
+        n_ctr = df[df[condition_col] == ctr].shape[0]
+        n_treat = df[df[condition_col] == treatment].shape[0]
+        
+        if n_groups < 2:
+            print(f"DIAGNOSTIC: Insufficient groups for {treatment} vs {ctr}: only {n_groups} {group_key}(s)")
+            return (np.nan, np.nan) if not return_full_result else None
+        
+        if n_ctr < 2 or n_treat < 2:
+            print(f"DIAGNOSTIC: Insufficient samples for {treatment} vs {ctr}: ctr={n_ctr}, treat={n_treat}")
+            return (np.nan, np.nan) if not return_full_result else None
+        
+        # Check variance
+        var_ctr = df[df[condition_col] == ctr][target_variable].var()
+        var_treat = df[df[condition_col] == treatment][target_variable].var()
+        
+        if var_ctr == 0 or var_treat == 0:
+            print(f"DIAGNOSTIC: Zero variance for {treatment} vs {ctr}: var_ctr={var_ctr}, var_treat={var_treat}")
+            return (np.nan, np.nan) if not return_full_result else None
     
     # Prepare data for model: encode categorical variables
     # For formulas using C(), statsmodels will handle encoding automatically
     # But we need to ensure the condition column is properly typed
+    
+    # Convert nullable integer types (Int64, Int32) to regular int
+    # statsmodels cannot handle pandas nullable integer types
+    # Only convert if there are no NAs (conversion would fail otherwise)
+    if hasattr(df[condition_col].dtype, 'name') and 'Int' in str(df[condition_col].dtype):
+        if not df[condition_col].isna().any():
+            df[condition_col] = df[condition_col].astype(int)
+    
+    # Convert other columns that might be nullable integers
+    for col in df.columns:
+        if hasattr(df[col].dtype, 'name') and 'Int' in str(df[col].dtype):
+            if not df[col].isna().any():
+                df[col] = df[col].astype(int)
+    
     if df[condition_col].dtype == 'object' or df[condition_col].dtype.name == 'category':
         df[condition_col] = pd.Categorical(df[condition_col], categories=[ctr, treatment], ordered=True)
     

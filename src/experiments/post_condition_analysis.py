@@ -56,9 +56,9 @@ def load_stats(dataset, data_type, feature_type, config_label=None):
     """Load statistics from saved CSV file."""
     cfg_list = get_config(dataset)
     
-    # Special handling for 'cmv' label - combine cmv_young and cmv_old
+    # Special handling for 'cmv' label - keep cmv_young and cmv_old separate
     if config_label == 'cmv' and dataset == 'soundlife':
-        print("Combining cmv_young and cmv_old configs...")
+        print("Loading cmv_young and cmv_old configs (keeping separate)...")
         
         # Load both configs
         cfg_young = next((c for c in cfg_list if c.config_label == 'cmv_young'), None)
@@ -75,20 +75,19 @@ def load_stats(dataset, data_type, feature_type, config_label=None):
         
         stats = pd.read_csv(stats_path)
         
-        # Filter to cmv_young and cmv_old, then combine
+        # Filter to cmv_young and cmv_old, keep them separate (don't combine)
         if 'config_label' in stats.columns:
             stats_young = stats[stats['config_label'] == 'cmv_young'].copy()
             stats_old = stats[stats['config_label'] == 'cmv_old'].copy()
             
-            # Combine both age groups
+            # Combine both age groups BUT keep config_label distinction
             stats = pd.concat([stats_young, stats_old], ignore_index=True)
             
-            # Update config_label to 'cmv' for combined data
-            stats['config_label'] = 'cmv'
+            # DON'T update config_label - keep cmv_young and cmv_old separate!
             
             print(f"  Loaded {len(stats_young)} rows from cmv_young")
             print(f"  Loaded {len(stats_old)} rows from cmv_old")
-            print(f"  Combined: {len(stats)} rows")
+            print(f"  Combined: {len(stats)} rows (kept config_label distinct)")
         else:
             raise ValueError("Stats file does not contain 'config_label' column for filtering")
         
@@ -147,9 +146,19 @@ def plot_overview_heatmap(stats, dataset, analysis_type, output_dir, config_labe
                 if len(stats_filtered) > 0:
                     _plot_single_heatmap(stats_filtered, palette, output_dir, 
                                        suffix=f"{dataset}_cmv_{age_group}")
+        elif config_label in ['cmv_young', 'cmv_old'] and dataset == 'soundlife':
+            # Individual CMV configs: use data as-is (already has correct age_group from config)
+            _plot_single_heatmap(stats, palette, output_dir, 
+                               suffix=f"{dataset}_{config_label}")
         else:
-            # For disease/aging, filter to both age groups
-            stats_filtered = stats[stats['age_group'] == 'Both age groups'].copy()
+            # For disease/aging without CMV, filter to 'Both age groups' or accept any age_group
+            # If data has specific age groups (like 'young'), don't filter
+            unique_age_groups = stats['age_group'].unique()
+            if 'Both age groups' in unique_age_groups:
+                stats_filtered = stats[stats['age_group'] == 'Both age groups'].copy()
+            else:
+                # Data already filtered by config (e.g., cmv_young has age_group='young')
+                stats_filtered = stats.copy()
             _plot_single_heatmap(stats_filtered, palette, output_dir, 
                                suffix=dataset if (analysis_type == 'disease' or analysis_type == 'aging') else None)
     else:
@@ -207,23 +216,33 @@ def plot_aging_overlap(stats_sig, dataset, included_cell_types, analysis_type, a
         if target_treatments is None:
             target_treatments = stats_sig['condition'].unique()
         conditions_to_plot = target_treatments
+    elif 'config_label' in stats_sig.columns and set(stats_sig['config_label'].unique()) & {'cmv_young', 'cmv_old'}:
+        # Special case: if we have cmv_young and cmv_old, process them separately
+        conditions_to_plot = [c for c in ['cmv_young', 'cmv_old'] if c in stats_sig['config_label'].unique()]
+        print(f"  Processing CMV configs separately: {conditions_to_plot}")
     else:
-        conditions_to_plot = [None]  # For disease, process all together
+        conditions_to_plot = [None]  # For disease/aging, process all together
     
     for cell_type in included_cell_types:
         print(f"  Processing cell type: {cell_type}")
         
         for condition in conditions_to_plot:
             # Filter stats
-            if condition is not None:
+            if condition is not None and condition in ['cmv_young', 'cmv_old']:
+                # Filter by config_label for CMV configs
+                df_sub = stats_sig[(stats_sig['config_label'] == condition) & (stats_sig['cell_type'] == cell_type)].reset_index(drop=True)
+                condition_label = condition  # Use config_label as condition name
+            elif condition is not None:
                 df_sub = stats_sig[(stats_sig['condition'] == condition) & (stats_sig['cell_type'] == cell_type)].reset_index(drop=True)
+                condition_label = condition
             else:
                 df_sub = stats_sig[stats_sig['cell_type'] == cell_type].reset_index(drop=True)
+                condition_label = None
             
             aging_stats_sig_sub = aging_stats_sig[aging_stats_sig['cell_type'] == cell_type].reset_index(drop=True)
             
             if len(df_sub) == 0:
-                print(f"    Warning: No data for {'condition ' + condition if condition else 'this cell type'}")
+                print(f"    Warning: No data for {'condition ' + condition_label if condition_label else 'this cell type'}")
                 continue
             
             # Calculate overlap statistics (aging TFs as base)
@@ -242,13 +261,14 @@ def plot_aging_overlap(stats_sig, dataset, included_cell_types, analysis_type, a
                 opposite_direction = (np.sign(merged_inner['slope']) == -np.sign(merged_inner['slope_condition'])).sum()
                 total_overlap = len(merged_inner)
                 
-                print(f"    Overlap with aging TFs: {total_overlap}")
+                condition_str = f" ({condition_label})" if condition_label else ""
+                print(f"    Overlap with aging TFs{condition_str}: {total_overlap}")
                 print(f"      Same direction: {same_direction} ({same_direction/total_overlap*100:.1f}%)")
                 print(f"      Opposite direction: {opposite_direction} ({opposite_direction/total_overlap*100:.1f}%)")
             
             plot_overlap(
-                aging_stats_sig_sub[['tf', 'cell_type', 'slope']].reset_index(drop=True), 
-                df_sub[['tf', 'cell_type', 'slope_condition']].reset_index(drop=True), 
+                df_sub[['tf', 'cell_type', 'slope_condition']].reset_index(drop=True),  # RIGHT side (Sound Life sig TFs)
+                aging_stats_sig_sub[['tf', 'cell_type', 'slope']].reset_index(drop=True),  # LEFT side (Reference aging TFs - baseline)
                 col='cell_type', 
                 how='left', 
                 agreement=agreement, 
@@ -261,12 +281,127 @@ def plot_aging_overlap(stats_sig, dataset, included_cell_types, analysis_type, a
                 plt.title('')
                 plt.legend().remove()
             
-            name_suffix = f'{dataset}_{condition}_{cell_type}' if condition else f'{dataset}_{cell_type}'
+            name_suffix = f'{dataset}_{condition_label}_{cell_type}' if condition_label else f'{dataset}_{cell_type}'
             output_path = os.path.join(output_dir, f'condition_aging_overlap_{name_suffix}.png')
             output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
             plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
             plt.close()
             print(f"    Saved: {output_path}")
+
+
+def plot_directional_consistency_scatter(stats_sig, dataset, included_cell_types, output_dir):
+    """
+    Generate directional consistency scatter plots comparing Sound Life vs Reference aging TFs.
+    Shows signed -log10(p-values) with direction concordance.
+    """
+    print("Generating directional consistency scatter plots...")
+    
+    import seaborn as sns
+    
+    # Load reference aging TFs
+    aging_stats_sig = retrieve_sig_stats(type='bulk', filter_inconsistent=True)
+    aging_stats_sig = aging_stats_sig.drop_duplicates(subset=['cell_type', 'tf'])
+    
+    # Prepare data
+    sl_sig = (
+        stats_sig[stats_sig['p_value_adj'] < 0.05]
+        .sort_values("p_value_adj")
+        .drop_duplicates(["cell_type", "tf"], keep="first")
+    )
+    
+    ref_aging_unique = (
+        aging_stats_sig
+        .sort_values("p_value_adj")
+        .drop_duplicates(["cell_type", "tf"], keep="first")
+    )
+    
+    sns.set_style('whitegrid')
+    plt.rcParams['font.size'] = 11
+    plt.rcParams['axes.labelsize'] = 12
+    plt.rcParams['axes.titlesize'] = 13
+    
+    for cell_type in included_cell_types:
+        if cell_type not in sl_sig['cell_type'].unique():
+            print(f"  Warning: No significant TFs for {cell_type}")
+            continue
+            
+        print(f"  Processing {cell_type}")
+        
+        sl_ct = sl_sig[sl_sig['cell_type'] == cell_type].copy()
+        ref_ct = ref_aging_unique[ref_aging_unique['cell_type'] == cell_type].copy()
+        
+        print(f"    Sound Life significant TFs: {len(sl_ct)}")
+        print(f"    Reference aging TFs: {len(ref_ct)}")
+        
+        # Inner merge to get overlap
+        merged = sl_ct[['tf', 'slope_condition', 'p_value_adj']].merge(
+            ref_ct[['tf', 'slope', 'meta_p_adj']],
+            on='tf',
+            how='inner',
+            suffixes=('_sl', '_ref')
+        )
+        
+        if len(merged) < 10:
+            print(f"    Overlap too small (n={len(merged)}), skipping")
+            continue
+        
+        print(f"    Overlap TFs: {len(merged)}")
+        
+        # Calculate directional metrics
+        merged['same_direction'] = (
+            np.sign(merged['slope_condition']) == np.sign(merged['slope'])
+        )
+        
+        merged['neg_log_p_sl'] = -np.log10(merged['p_value_adj']) * np.sign(merged['slope_condition'])
+        merged['neg_log_p_ref'] = -np.log10(merged['meta_p_adj']) * np.sign(merged['slope'])
+        
+        same_dir = merged[merged['same_direction']]
+        opp_dir = merged[~merged['same_direction']]
+        
+        print(f"    Same direction: {len(same_dir)} ({len(same_dir)/len(merged)*100:.1f}%)")
+        print(f"    Opposite direction: {len(opp_dir)} ({len(opp_dir)/len(merged)*100:.1f}%)")
+        
+        # Create scatter plot
+        fig = plt.figure(figsize=(3, 3))
+        ax_main = plt.subplot(1, 1, 1)
+        s = 20
+        
+        if len(opp_dir) > 0:
+            ax_main.scatter(
+                opp_dir['neg_log_p_sl'],
+                opp_dir['neg_log_p_ref'],
+                c='red',
+                s=s,
+                alpha=0.6,
+                label=f'Opposite direction (n={len(opp_dir)})',
+                edgecolors='darkred',
+                linewidths=.1
+            )
+        
+        if len(same_dir) > 0:
+            ax_main.scatter(
+                same_dir['neg_log_p_sl'],
+                same_dir['neg_log_p_ref'],
+                c='green',
+                s=s,
+                alpha=0.6,
+                label=f'Same direction (n={len(same_dir)})',
+                edgecolors='darkred',
+                linewidths=.1
+            )
+        
+        ax_main.axhline(y=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
+        ax_main.axvline(x=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
+        
+        ax_main.set_xlabel('Sound Life aging\n-log10(p)', fontsize=10)
+        ax_main.set_ylabel('Reference aging\n-log10(p)', fontsize=10)
+        
+        ax_main.legend(loc=(1.01, 0.5), framealpha=0.9, fontsize=10, frameon=False)
+        
+        output_path = os.path.join(output_dir, f'directional_consistency_{dataset}_{cell_type}.png')
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"    Saved: {output_path}")
 
 
 def plot_aging_disease_overlap_heatmap(stats_sig, dataset, cell_types, output_dir):
@@ -504,13 +639,32 @@ def plot_age_stratified_or_comparison(stats, stats_sig, dataset, analysis_type, 
 
 def _plot_age_stratified_disease(stats, stats_sig, disease_name, target_cell_types, top_aging_tfs, aging_stats_sig, palette_all, output_dir):
     """Plot age-stratified analysis for disease data."""
-    age_groups = stats['age_group'].unique()
+    
+    # Check if we have cmv_young and cmv_old configs
+    has_cmv_configs = 'config_label' in stats.columns and set(stats['config_label'].unique()) & {'cmv_young', 'cmv_old'}
+    
+    if has_cmv_configs:
+        # CMV analysis: use config_label as groups
+        age_groups = [c for c in ['cmv_young', 'cmv_old'] if c in stats['config_label'].unique()]
+        group_col = 'config_label'
+        print(f"  CMV analysis detected: {age_groups}")
+    else:
+        # Regular disease/aging analysis: use age_group
+        age_groups = stats['age_group'].unique()
+        group_col = 'age_group'
+    
     stats['dataset'] = stats['dataset'].apply(lambda name: surrogate_names.get(name, name))
     
-    # Map age_group names for better display
-    age_group_display_map = {
-        'Both age groups': 'SoundLife cohort' if disease_name == 'soundlife' else 'Both age groups'
-    }
+    # Map group names for better display
+    if has_cmv_configs:
+        age_group_display_map = {
+            'cmv_young': 'CMV-young',
+            'cmv_old': 'CMV-old'
+        }
+    else:
+        age_group_display_map = {
+            'Both age groups': 'SoundLife cohort' if disease_name == 'soundlife' else 'Both age groups'
+        }
     
     for cell_type in target_cell_types:
         print(f"  Processing cell type: {cell_type}")
@@ -529,7 +683,7 @@ def _plot_age_stratified_disease(stats, stats_sig, disease_name, target_cell_typ
         stats_store = []
         for age_group in age_groups:
             stats_d = stats[
-                (stats['age_group'] == age_group) &
+                (stats[group_col] == age_group) &
                 (stats['cell_type'] == cell_type) &
                 (~stats['slope_condition'].isna())
             ].copy()
@@ -537,8 +691,8 @@ def _plot_age_stratified_disease(stats, stats_sig, disease_name, target_cell_typ
             # Map age group name for display
             display_name = age_group_display_map.get(age_group, age_group)
             stats_d['analysis'] = display_name
-            # For soundlife aging analysis, use aging trend labels; otherwise use disease labels
-            if disease_name == 'soundlife':
+            # For soundlife aging or CMV analysis, use aging trend labels; otherwise use disease labels
+            if disease_name == 'soundlife' or has_cmv_configs:
                 stats_d['trend'] = ['Increase in aging' if x > 0 else 'Decrease in aging' for x in stats_d['slope_condition']]
             else:
                 stats_d['trend'] = ['Increase in disease' if x > 0 else 'Decrease in disease' for x in stats_d['slope_condition']]
@@ -843,10 +997,14 @@ def plot_pathway_analysis(stats, dataset, data_type, feature_type, analysis_type
     
     if analysis_type == 'disease' or analysis_type == 'aging':
         # For disease/aging, filter to younger age group
+        # Accept: 'Younger than 50' (traditional disease), 'young' (CMV configs), 'Both age groups' (aging without age filter)
         stats_sig = stats_sig[
             (~stats_sig['slope_condition'].isna()) & 
-            (stats_sig['age_group'] == 'Younger than 50')
+            (stats_sig['age_group'].isin(['Younger than 50', 'young', 'Both age groups']))
         ]
+        print(f"  Filtered to {len(stats_sig)} significant features for pathway analysis")
+        if len(stats_sig) > 0:
+            print(f"    Cell types: {stats_sig['cell_type'].value_counts().to_dict()}")
     else:
         # For perturbation, just filter non-null slopes
         stats_sig = stats_sig[~stats_sig['slope_condition'].isna()]
@@ -855,42 +1013,82 @@ def plot_pathway_analysis(stats, dataset, data_type, feature_type, analysis_type
         print("  Warning: No significant data for pathway analysis")
         return
     
-    # Pathway enrichment with appropriate feature column
-    res_aging = pathway_kde_func(aging_stats_sig, min_genes=10, feature_col=feature_col)
-    res_aging_sig = res_aging[res_aging['p_adj'] < 0.05]
+    # Choose pathway analysis method based on analysis type
+    if analysis_type == 'disease' or analysis_type == 'aging':
+        # Use GSEA for disease/aging analysis
+        _plot_disease_pathway_gsea(stats_sig, dataset, output_dir, feature_col, pathway_cell_types)
+    else:
+        # Use KDE for perturbation analysis (original behavior)
+        # Pathway enrichment with appropriate feature column
+        res_aging = pathway_kde_func(aging_stats_sig, min_genes=10, feature_col=feature_col)
+        res_aging_sig = res_aging[res_aging['p_adj'] < 0.05]
+        
+        stats_sig['slope'] = stats_sig['slope_condition']
+        res_condition = pathway_kde_func(stats_sig, min_genes=10, feature_col=feature_col)
+        res_condition_sig = res_condition[res_condition['p_adj'] < 0.05]
+        
+        sets = np.concatenate([res_aging_sig['gene_set'].unique(), res_condition_sig['gene_set'].unique()])
+        
+        if len(sets) == 0:
+            print("  No significant pathways found")
+            return
+        
+        plot_pathway_kde(
+            df_aging=aging_stats_sig,
+            res_aging=res_aging,
+            df_condition=stats_sig,
+            res_cond=res_condition,
+            cell_types=pathway_cell_types,
+            sets=sets,
+            min_genes=10,
+            max_height=0.1,
+            row_spacing=0.4,
+            cell_spacing=1.5,
+            feature_col=feature_col,
+        )
+        
+        output_path = os.path.join(output_dir, f'{dataset}_aging_pathway.png')
+        plt.savefig(output_path, bbox_inches="tight", dpi=300, transparent=True)
+        plt.close()
+        print(f"  Saved: {output_path}")
+        
+        # Additional GSEA for perturbations
+        _plot_perturbation_pathway_gsea(stats_sig, dataset, output_dir, feature_col)
+
+
+def _plot_disease_pathway_gsea(stats_sig, dataset, output_dir, feature_col, pathway_cell_types):
+    """Generate GSEA pathway analysis for disease/aging."""
+    from ciim.src.pathway_analysis.util import gsea_func
+    from ciim.src.pathway_analysis.plots import plot_pathway_gsea
     
-    stats_sig['slope'] = stats_sig['slope_condition']
-    res_condition = pathway_kde_func(stats_sig, min_genes=10, feature_col=feature_col)
-    res_condition_sig = res_condition[res_condition['p_adj'] < 0.05]
+    print("\n  Running GSEA enrichment analysis...")
     
-    sets = np.concatenate([res_aging_sig['gene_set'].unique(), res_condition_sig['gene_set'].unique()])
-    
-    if len(sets) == 0:
-        print("  No significant pathways found")
-        return
-    
-    plot_pathway_kde(
-        df_aging=aging_stats_sig,
-        res_aging=res_aging,
-        df_condition=stats_sig,
-        res_cond=res_condition,
-        cell_types=pathway_cell_types,
-        sets=sets,
-        min_genes=10,
-        max_height=0.1,
-        row_spacing=0.4,
-        cell_spacing=1.5,
-        feature_col=feature_col,
+    # Prepare data for GSEA: add trend column based on slope direction
+    stats_sig = stats_sig.copy()
+    stats_sig['trend'] = stats_sig['slope_condition'].apply(
+        lambda x: 'Increase in disease' if x > 0 else 'Decrease in disease'
     )
     
-    output_path = os.path.join(output_dir, f'{dataset}_aging_pathway.png')
-    plt.savefig(output_path, bbox_inches="tight", dpi=300, transparent=True)
-    plt.close()
-    print(f"  Saved: {output_path}")
+    # Run GSEA
+    pathway_scores = gsea_func(
+        stats_sig,
+        pvalue_col='p_value_adj',
+        gene_sets=['MSigDB_Hallmark_2020'],
+        feature_col=feature_col
+    )
     
-    # Additional GSEA for perturbations
-    if analysis_type == 'perturbation':
-        _plot_perturbation_pathway_gsea(stats_sig, dataset, output_dir, feature_col)
+    if pathway_scores is not None and len(pathway_scores) > 0:
+        print(f"  Found {len(pathway_scores)} significant pathways")
+        
+        # Plot combined GSEA results
+        plot_pathway_gsea(pathway_scores, palette=palette_disease_effect)
+        
+        output_path = os.path.join(output_dir, f'{dataset}_pathway_gsea.png')
+        plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+        plt.close()
+        print(f"  Saved GSEA plot: {output_path}")
+    else:
+        print("  No significant pathways found")
 
 
 def _plot_perturbation_pathway_gsea(stats_sig, dataset, output_dir, feature_col):
@@ -1143,6 +1341,15 @@ Examples:
             args.agreement,
             output_dir
         )
+        
+        # 2b. Directional consistency scatter plots (for aging analysis)
+        if args.analysis_type == 'aging':
+            plot_directional_consistency_scatter(
+                stats_sig,
+                args.dataset,
+                args.cell_types,
+                output_dir
+            )
     
     # 3. Aging-experiment heatmap
     if not args.skip_heatmap and len(stats_sig) > 0:

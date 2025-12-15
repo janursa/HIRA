@@ -219,44 +219,44 @@ DATASET_CONFIGS = {
         # ===== AGING ANALYSES =====
         
         # 1. Pure aging - ALL samples (no filtering)
-        ConditionConfig(
-            name="soundlife",
-            analysis_type='aging',
-            condition_column='age_group',
-            control_group='young',
-            treatment_groups=['old'],
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ age_group',  # Simple age effect
-            mixed_effects_group='donor_id',
-            comparison_mode='same',
-            display_name='Sound Life (Aging - All Samples)',
-            config_label='aging_all',
-            data_filter=None,  # No filtering - use all samples
-            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        ),
+        # ConditionConfig(
+        #     name="soundlife",
+        #     analysis_type='aging',
+        #     condition_column='age_group',
+        #     control_group='young',
+        #     treatment_groups=['old'],
+        #     test_type='mixed-effect',
+        #     mixed_effects_formula='feature_values ~ age_group',  # Simple age effect
+        #     mixed_effects_group='donor_id',
+        #     comparison_mode='same',
+        #     display_name='Sound Life (Aging - All Samples)',
+        #     config_label='aging_all',
+        #     data_filter=None,  # No filtering - use all samples
+        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        # ),
         
-        # 2. Pure aging - Baseline only (original analysis)
-        ConditionConfig(
-            name="soundlife",
-            analysis_type='aging',
-            condition_column='age_group',
-            control_group='young',
-            treatment_groups=['old'],
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ age_group',
-            mixed_effects_group='donor_id',
-            comparison_mode='same',
-            display_name='Sound Life (Aging - Baseline)',
-            config_label='aging_baseline',
-            data_filter={
-                'sample.visitName': ['Flu Year 1 Day 0', 'Flu Year 2 Day 0', 
-                                     'Immune Variation Day 0', 'Immune Variation Day 7', 
-                                     'Immune Variation Day 90']
-            },
-            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        ),
+        # # 2. Pure aging - Baseline only (original analysis)
+        # ConditionConfig(
+        #     name="soundlife",
+        #     analysis_type='aging',
+        #     condition_column='age_group',
+        #     control_group='young',
+        #     treatment_groups=['old'],
+        #     test_type='mixed-effect',
+        #     mixed_effects_formula='feature_values ~ age_group',
+        #     mixed_effects_group='donor_id',
+        #     comparison_mode='same',
+        #     display_name='Sound Life (Aging - Baseline)',
+        #     config_label='aging_baseline',
+        #     data_filter={
+        #         'sample.visitName': ['Flu Year 1 Day 0', 'Flu Year 2 Day 0', 
+        #                              'Immune Variation Day 0', 'Immune Variation Day 7', 
+        #                              'Immune Variation Day 90']
+        #     },
+        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        # ),
         
-        # 3. Pure aging - CMV Negative only
+        # # 3. Pure aging - CMV Negative only
         ConditionConfig(
             name="soundlife",
             analysis_type='aging',
@@ -264,7 +264,7 @@ DATASET_CONFIGS = {
             control_group='young',
             treatment_groups=['old'],
             test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ age_group',
+            mixed_effects_formula='feature_values ~ age_group + C(Q("sample.visitName"))',
             mixed_effects_group='donor_id',
             comparison_mode='same',
             display_name='Sound Life (Aging - CMV Negative)',
@@ -278,229 +278,234 @@ DATASET_CONFIGS = {
         ),
         
         # 4. Pure aging - CMV Positive only
-        ConditionConfig(
-            name="soundlife",
-            analysis_type='aging',
-            condition_column='age_group',
-            control_group='young',
-            treatment_groups=['old'],
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ age_group',
-            mixed_effects_group='donor_id',
-            comparison_mode='same',
-            display_name='Sound Life (Aging - CMV Positive)',
-            config_label='aging_cmv_pos',
-            data_filter={
-                'subject.cmv': ['Positive']
-            },
-            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        ),
+        # ConditionConfig(
+        #     name="soundlife",
+        #     analysis_type='aging',
+        #     condition_column='age_group',
+        #     control_group='young',
+        #     treatment_groups=['old'],
+        #     test_type='mixed-effect',
+        #     mixed_effects_formula='feature_values ~ age_group',
+        #     mixed_effects_group='donor_id',
+        #     comparison_mode='same',
+        #     display_name='Sound Life (Aging - CMV Positive)',
+        #     config_label='aging_cmv_pos',
+        #     data_filter={
+        #         'subject.cmv': ['Positive']
+        #     },
+        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        # ),
         
         # ===== VACCINATION ANALYSES - ALL SUBJECTS =====
         
-        # Day 0: Baseline (all subjects)
-        ConditionConfig(
-            name="soundlife",
-            analysis_type='perturbation',
-            condition_column='vaccinated',
-            control_group=False,
-            treatment_groups=[True],
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ vaccinated + age_group',
-            mixed_effects_group='donor_id',
-            comparison_mode='opposite',
-            display_name='Sound Life (Vaccination Day 0 - All)',
-            config_label='vacc_d0_all',
-            data_filter={
-                'sample.visitName': ['Flu Year 1 Day 0', 'Flu Year 2 Day 0', 'Immune Variation Day 0']
-            },
-            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        ),
+        # # Day 0: Baseline (all subjects)
+        # ConditionConfig(
+        #     name="soundlife",
+        #     analysis_type='perturbation',
+        #     condition_column='vaccinated',
+        #     control_group=False,
+        #     treatment_groups=[True],
+        #     test_type='mixed-effect',
+        #     mixed_effects_formula='feature_values ~ vaccinated + age_group',
+        #     mixed_effects_group='donor_id',
+        #     comparison_mode='opposite',
+        #     display_name='Sound Life (Vaccination Day 0 - All)',
+        #     config_label='vacc_d0_all',
+        #     data_filter={
+        #         'sample.visitName': ['Flu Year 1 Day 0', 'Flu Year 2 Day 0', 'Immune Variation Day 0']
+        #     },
+        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        # ),
         
-        # Day 7: Peak response (all subjects)
-        ConditionConfig(
-            name="soundlife",
-            analysis_type='perturbation',
-            condition_column='vaccinated',
-            control_group=False,
-            treatment_groups=[True],
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ vaccinated + age_group',
-            mixed_effects_group='donor_id',
-            comparison_mode='opposite',
-            display_name='Sound Life (Vaccination Day 7 - All)',
-            config_label='vacc_d7_all',
-            data_filter={
-                'sample.visitName': ['Flu Year 1 Day 7', 'Flu Year 2 Day 7', 'Immune Variation Day 7']
-            },
-            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        ),
+        # # Day 7: Peak response (all subjects)
+        # ConditionConfig(
+        #     name="soundlife",
+        #     analysis_type='perturbation',
+        #     condition_column='vaccinated',
+        #     control_group=False,
+        #     treatment_groups=[True],
+        #     test_type='mixed-effect',
+        #     mixed_effects_formula='feature_values ~ vaccinated + age_group',
+        #     mixed_effects_group='donor_id',
+        #     comparison_mode='opposite',
+        #     display_name='Sound Life (Vaccination Day 7 - All)',
+        #     config_label='vacc_d7_all',
+        #     data_filter={
+        #         'sample.visitName': ['Flu Year 1 Day 7', 'Flu Year 2 Day 7', 'Immune Variation Day 7']
+        #     },
+        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        # ),
         
-        # Day 90: Memory response (all subjects)
-        ConditionConfig(
-            name="soundlife",
-            analysis_type='perturbation',
-            condition_column='vaccinated',
-            control_group=False,
-            treatment_groups=[True],
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ vaccinated + age_group',
-            mixed_effects_group='donor_id',
-            comparison_mode='opposite',
-            display_name='Sound Life (Vaccination Day 90 - All)',
-            config_label='vacc_d90_all',
-            data_filter={
-                'sample.visitName': ['Flu Year 1 Day 90', 'Flu Year 2 Day 90', 'Immune Variation Day 90']
-            },
-            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        ),
+        # # Day 90: Memory response (all subjects)
+        # ConditionConfig(
+        #     name="soundlife",
+        #     analysis_type='perturbation',
+        #     condition_column='vaccinated',
+        #     control_group=False,
+        #     treatment_groups=[True],
+        #     test_type='mixed-effect',
+        #     mixed_effects_formula='feature_values ~ vaccinated + age_group',
+        #     mixed_effects_group='donor_id',
+        #     comparison_mode='opposite',
+        #     display_name='Sound Life (Vaccination Day 90 - All)',
+        #     config_label='vacc_d90_all',
+        #     data_filter={
+        #         'sample.visitName': ['Flu Year 1 Day 90', 'Flu Year 2 Day 90', 'Immune Variation Day 90']
+        #     },
+        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        # ),
         
-        # ===== VACCINATION ANALYSES - CMV NEGATIVE =====
+        # # ===== VACCINATION ANALYSES - CMV NEGATIVE =====
         
-        # Day 0 - CMV Negative
-        ConditionConfig(
-            name="soundlife",
-            analysis_type='perturbation',
-            condition_column='vaccinated',
-            control_group=False,
-            treatment_groups=[True],
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ vaccinated + age_group',
-            mixed_effects_group='donor_id',
-            comparison_mode='opposite',
-            display_name='Sound Life (Vaccination Day 0 - CMV Neg)',
-            config_label='vacc_d0_cmv_neg',
-            data_filter={
-                'sample.visitName': ['Flu Year 1 Day 0', 'Flu Year 2 Day 0', 'Immune Variation Day 0'],
-                'subject.cmv': ['Negative']
-            },
-            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        ),
+        # # Day 0 - CMV Negative
+        # ConditionConfig(
+        #     name="soundlife",
+        #     analysis_type='perturbation',
+        #     condition_column='vaccinated',
+        #     control_group=False,
+        #     treatment_groups=[True],
+        #     test_type='mixed-effect',
+        #     mixed_effects_formula='feature_values ~ vaccinated + age_group',
+        #     mixed_effects_group='donor_id',
+        #     comparison_mode='opposite',
+        #     display_name='Sound Life (Vaccination Day 0 - CMV Neg)',
+        #     config_label='vacc_d0_cmv_neg',
+        #     data_filter={
+        #         'sample.visitName': ['Flu Year 1 Day 0', 'Flu Year 2 Day 0', 'Immune Variation Day 0'],
+        #         'subject.cmv': ['Negative']
+        #     },
+        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        # ),
         
-        # Day 7 - CMV Negative
-        ConditionConfig(
-            name="soundlife",
-            analysis_type='perturbation',
-            condition_column='vaccinated',
-            control_group=False,
-            treatment_groups=[True],
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ vaccinated + age_group',
-            mixed_effects_group='donor_id',
-            comparison_mode='opposite',
-            display_name='Sound Life (Vaccination Day 7 - CMV Neg)',
-            config_label='vacc_d7_cmv_neg',
-            data_filter={
-                'sample.visitName': ['Flu Year 1 Day 7', 'Flu Year 2 Day 7', 'Immune Variation Day 7'],
-                'subject.cmv': ['Negative']
-            },
-            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        ),
+        # # Day 7 - CMV Negative
+        # ConditionConfig(
+        #     name="soundlife",
+        #     analysis_type='perturbation',
+        #     condition_column='vaccinated',
+        #     control_group=False,
+        #     treatment_groups=[True],
+        #     test_type='mixed-effect',
+        #     mixed_effects_formula='feature_values ~ vaccinated + age_group',
+        #     mixed_effects_group='donor_id',
+        #     comparison_mode='opposite',
+        #     display_name='Sound Life (Vaccination Day 7 - CMV Neg)',
+        #     config_label='vacc_d7_cmv_neg',
+        #     data_filter={
+        #         'sample.visitName': ['Flu Year 1 Day 7', 'Flu Year 2 Day 7', 'Immune Variation Day 7'],
+        #         'subject.cmv': ['Negative']
+        #     },
+        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        # ),
         
-        # Day 90 - CMV Negative
-        ConditionConfig(
-            name="soundlife",
-            analysis_type='perturbation',
-            condition_column='vaccinated',
-            control_group=False,
-            treatment_groups=[True],
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ vaccinated + age_group',
-            mixed_effects_group='donor_id',
-            comparison_mode='opposite',
-            display_name='Sound Life (Vaccination Day 90 - CMV Neg)',
-            config_label='vacc_d90_cmv_neg',
-            data_filter={
-                'sample.visitName': ['Flu Year 1 Day 90', 'Flu Year 2 Day 90', 'Immune Variation Day 90'],
-                'subject.cmv': ['Negative']
-            },
-            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        ),
+        # # Day 90 - CMV Negative
+        # ConditionConfig(
+        #     name="soundlife",
+        #     analysis_type='perturbation',
+        #     condition_column='vaccinated',
+        #     control_group=False,
+        #     treatment_groups=[True],
+        #     test_type='mixed-effect',
+        #     mixed_effects_formula='feature_values ~ vaccinated + age_group',
+        #     mixed_effects_group='donor_id',
+        #     comparison_mode='opposite',
+        #     display_name='Sound Life (Vaccination Day 90 - CMV Neg)',
+        #     config_label='vacc_d90_cmv_neg',
+        #     data_filter={
+        #         'sample.visitName': ['Flu Year 1 Day 90', 'Flu Year 2 Day 90', 'Immune Variation Day 90'],
+        #         'subject.cmv': ['Negative']
+        #     },
+        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        # ),
         
-        # ===== VACCINATION ANALYSES - CMV POSITIVE =====
+        # # ===== VACCINATION ANALYSES - CMV POSITIVE =====
         
-        # Day 0 - CMV Positive
-        ConditionConfig(
-            name="soundlife",
-            analysis_type='perturbation',
-            condition_column='vaccinated',
-            control_group=False,
-            treatment_groups=[True],
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ vaccinated + age_group',
-            mixed_effects_group='donor_id',
-            comparison_mode='opposite',
-            display_name='Sound Life (Vaccination Day 0 - CMV Pos)',
-            config_label='vacc_d0_cmv_pos',
-            data_filter={
-                'sample.visitName': ['Flu Year 1 Day 0', 'Flu Year 2 Day 0', 'Immune Variation Day 0'],
-                'subject.cmv': ['Positive']
-            },
-            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        ),
+        # # Day 0 - CMV Positive
+        # ConditionConfig(
+        #     name="soundlife",
+        #     analysis_type='perturbation',
+        #     condition_column='vaccinated',
+        #     control_group=False,
+        #     treatment_groups=[True],
+        #     test_type='mixed-effect',
+        #     mixed_effects_formula='feature_values ~ vaccinated + age_group',
+        #     mixed_effects_group='donor_id',
+        #     comparison_mode='opposite',
+        #     display_name='Sound Life (Vaccination Day 0 - CMV Pos)',
+        #     config_label='vacc_d0_cmv_pos',
+        #     data_filter={
+        #         'sample.visitName': ['Flu Year 1 Day 0', 'Flu Year 2 Day 0', 'Immune Variation Day 0'],
+        #         'subject.cmv': ['Positive']
+        #     },
+        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        # ),
         
-        # Day 7 - CMV Positive
-        ConditionConfig(
-            name="soundlife",
-            analysis_type='perturbation',
-            condition_column='vaccinated',
-            control_group=False,
-            treatment_groups=[True],
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ vaccinated + age_group',
-            mixed_effects_group='donor_id',
-            comparison_mode='opposite',
-            display_name='Sound Life (Vaccination Day 7 - CMV Pos)',
-            config_label='vacc_d7_cmv_pos',
-            data_filter={
-                'sample.visitName': ['Flu Year 1 Day 7', 'Flu Year 2 Day 7', 'Immune Variation Day 7'],
-                'subject.cmv': ['Positive']
-            },
-            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        ),
+        # # Day 7 - CMV Positive
+        # ConditionConfig(
+        #     name="soundlife",
+        #     analysis_type='perturbation',
+        #     condition_column='vaccinated',
+        #     control_group=False,
+        #     treatment_groups=[True],
+        #     test_type='mixed-effect',
+        #     mixed_effects_formula='feature_values ~ vaccinated + age_group',
+        #     mixed_effects_group='donor_id',
+        #     comparison_mode='opposite',
+        #     display_name='Sound Life (Vaccination Day 7 - CMV Pos)',
+        #     config_label='vacc_d7_cmv_pos',
+        #     data_filter={
+        #         'sample.visitName': ['Flu Year 1 Day 7', 'Flu Year 2 Day 7', 'Immune Variation Day 7'],
+        #         'subject.cmv': ['Positive']
+        #     },
+        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        # ),
         
-        # Day 90 - CMV Positive
-        ConditionConfig(
-            name="soundlife",
-            analysis_type='perturbation',
-            condition_column='vaccinated',
-            control_group=False,
-            treatment_groups=[True],
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ vaccinated + age_group',
-            mixed_effects_group='donor_id',
-            comparison_mode='opposite',
-            display_name='Sound Life (Vaccination Day 90 - CMV Pos)',
-            config_label='vacc_d90_cmv_pos',
-            data_filter={
-                'sample.visitName': ['Flu Year 1 Day 90', 'Flu Year 2 Day 90', 'Immune Variation Day 90'],
-                'subject.cmv': ['Positive']
-            },
-            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        ),
+        # # Day 90 - CMV Positive
+        # ConditionConfig(
+        #     name="soundlife",
+        #     analysis_type='perturbation',
+        #     condition_column='vaccinated',
+        #     control_group=False,
+        #     treatment_groups=[True],
+        #     test_type='mixed-effect',
+        #     mixed_effects_formula='feature_values ~ vaccinated + age_group',
+        #     mixed_effects_group='donor_id',
+        #     comparison_mode='opposite',
+        #     display_name='Sound Life (Vaccination Day 90 - CMV Pos)',
+        #     config_label='vacc_d90_cmv_pos',
+        #     data_filter={
+        #         'sample.visitName': ['Flu Year 1 Day 90', 'Flu Year 2 Day 90', 'Immune Variation Day 90'],
+        #         'subject.cmv': ['Positive']
+        #     },
+        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        # ),
         
-        # ===== DISEASE (CMV) EFFECT ANALYSES =====
+        # ===== COMBINED TEMPORAL ANALYSIS - ALL COHORTS & INTERACTIONS =====
+        # Interaction model: Tests how vaccination effects vary by age and CMV status
+        # Also tests how CMV effects vary by age
+        # Formula includes 2-way interactions: day*age, day*CMV, CMV*age
+        # ConditionConfig(
+        #     name="soundlife",
+        #     analysis_type='perturbation',
+        #     condition_column='followup_day',  # Primary variable for temporal analysis
+        #     control_group=0,  # Day 0 as reference (pre-vaccination baseline)
+        #     treatment_groups=[7, 90],
+        #     test_type='mixed-effect',
+        #     mixed_effects_formula='feature_values ~ C(followup_day) * C(age_group) + C(followup_day) * C(Q("subject.cmv")) + C(Q("subject.cmv")) * C(age_group) + C(vaccinated)',
+        #     mixed_effects_group='donor_id',
+        #     comparison_mode='same',
+        #     display_name='Sound Life (Vaccination with Interactions)',
+        #     config_label='vacc_temporal_interactions',
+        #     data_filter={
+        #         'sample.visitName': [
+        #             'Flu Year 1 Day 0', 'Flu Year 1 Day 7', 'Flu Year 1 Day 90',
+        #             'Flu Year 2 Day 0', 'Flu Year 2 Day 7', 'Flu Year 2 Day 90',
+        #             'Immune Variation Day 0', 'Immune Variation Day 7', 'Immune Variation Day 90'
+        #         ]
+        #     },
+        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        # ),
         
-        # CMV effect across ALL age groups (stratified analysis)
-        ConditionConfig(
-            name="soundlife",
-            analysis_type='disease',
-            condition_column='subject.cmv',
-            control_group='Negative',
-            treatment_groups=['Positive'],
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ condition',  # 'condition' will be replaced with column name
-            mixed_effects_group='donor_id',
-            comparison_mode='opposite',
-            display_name='Sound Life (CMV Effect)',
-            config_label='cmv',
-            data_filter=None,  # No filtering - analyze all age groups
-            name_mapping={'Negative': 'CMV-', 'Positive': 'CMV+'},
-            # Clock analysis configuration
-            clock_test_type='unpaired',
-            clock_pvalue_threshold=0.05
-        ),
-        
+        # # ===== DISEASE (CMV) EFFECT ANALYSES =====
         # CMV effect in YOUNG subjects
         ConditionConfig(
             name="soundlife",
@@ -509,7 +514,7 @@ DATASET_CONFIGS = {
             control_group='Negative',
             treatment_groups=['Positive'],
             test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ condition',  # 'condition' will be replaced with column name
+            mixed_effects_formula='feature_values ~ C(Q("subject.cmv")) + C(Q("sample.visitName"))',  # Escape both column names with dots
             mixed_effects_group='donor_id',
             comparison_mode='opposite',
             display_name='Sound Life (CMV Effect - Young)',
@@ -531,7 +536,7 @@ DATASET_CONFIGS = {
             control_group='Negative',
             treatment_groups=['Positive'],
             test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ condition',  # 'condition' will be replaced with column name
+            mixed_effects_formula='feature_values ~ C(Q("subject.cmv")) + C(Q("sample.visitName"))',  # Escape both column names with dots
             mixed_effects_group='donor_id',
             comparison_mode='opposite',
             display_name='Sound Life (CMV Effect - Old)',
@@ -624,5 +629,4 @@ def list_datasets(analysis_type: Optional[str] = None) -> List[str]:
     return [
         name for name, config in DATASET_CONFIGS.items()
         if get_analysis_type(config) == analysis_type
-        if config.analysis_type == analysis_type
     ]

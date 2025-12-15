@@ -226,40 +226,89 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
                 obs_case['feature_values'] = values_case
                 
                 df = pd.concat([obs_ctr, obs_case])
-                                
-                pval, coef = test_mixed_effects(dataset, df, ctr_group, condition, 
-                                               target_variable='feature_values', config=config)
+                
+                # Check if formula contains interactions (*)
+                if config and hasattr(config, 'mixed_effects_formula') and '*' in config.mixed_effects_formula:
+                    # For interaction models, fit on ALL data and return full model
+                    # Use all data from adata, not just ctr vs treatment
+                    df_full = adata.obs.copy()
+                    df_full['feature_values'] = adata[:, gene].X.toarray().flatten()
+                    
+                    result = test_mixed_effects(dataset, df_full, ctr_group, condition, 
+                                               target_variable='feature_values', config=config,
+                                               return_full_result=True)
+                    
+                    if result is None:
+                        return None
+                    
+                    # Extract ALL coefficients (except Intercept and Group Var)
+                    results_list = []
+                    for param_name in result.params.index:
+                        if param_name in ['Intercept', 'Group Var']:
+                            continue
+                        results_list.append({
+                            "tf": gene,
+                            "coefficient": param_name,
+                            "coef": result.params[param_name],
+                            "p_value": result.pvalues[param_name],
+                            "std_err": result.bse[param_name]
+                        })
+                    return results_list
+                else:
+                    # Original behavior for non-interaction models
+                    pval, coef = test_mixed_effects(dataset, df, ctr_group, condition, 
+                                                   target_variable='feature_values', config=config)
+       
+                    if np.isnan(pval):
+                        print(f'NaN p-value, {dataset} {gene} {condition} vs {ctr_group}')
+                        return None
+                    
+                    return {
+                        "tf": gene,
+                        "p_value": pval,
+                        "slope_condition":  coef ,
+                        'ctrl': ctr_group,
+                        'condition': name_mapping.get(condition, condition)
+                    }
    
             else:
                 raise ValueError('Unknown test type')
-            if np.isnan(pval):
-                print(f'NaN p-value, {dataset} {gene} {condition} vs {ctr_group}')
-                return None
-            
-            return {
-                "tf": gene,
-                "p_value": pval,
-                "slope_condition":  coef ,
-                'ctrl': ctr_group,
-                'condition': name_mapping.get(condition, condition)
-            }
         
         # Parallelize gene processing
         with ThreadPoolExecutor(max_workers=10) as executor:
             results = list(executor.map(process_gene, enumerate(adata.var_names)))
         
-        # Filter out None results
-        results = [r for r in results if r is not None]
-        results = pd.DataFrame(results)
+        # Filter out None results and flatten if needed (interaction models return lists)
+        flattened_results = []
+        for r in results:
+            if r is None:
+                continue
+            if isinstance(r, list):
+                # Interaction model - list of coefficient dicts
+                flattened_results.extend(r)
+            else:
+                # Regular model - single dict
+                flattened_results.append(r)
+        
+        results = pd.DataFrame(flattened_results)
         return results
+    
+    # Determine age stratification based on dataset and config
     if 'SLE' in dataset:
-        # Run for each age subset
+        # SLE: Run for each age subset
         age_masks = {
             'Both age groups': adata.obs.index.notnull(),  # All samples
             'Younger than 50': adata.obs['age'] < 50,
             'Older than 50': adata.obs['age'] >= 50
         }
+    elif config is not None and config.data_filter is not None and 'age_group' in config.data_filter:
+        # Config has age_group filter - use that value (data is already filtered)
+        filtered_age_group = config.data_filter['age_group']
+        age_masks = {
+            filtered_age_group: adata.obs.index.notnull()  # All samples (already filtered by config)
+        }
     else:
+        # Default: no age stratification
         age_masks = {
             'Both age groups': adata.obs.index.notnull()
         }
@@ -274,7 +323,20 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
             if stats_df is None:
                 continue
 
-            stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
+            # For interaction models, apply FDR per coefficient type
+            # For regular models, apply FDR globally
+            if 'coefficient' in stats_df.columns:
+                # Interaction model - apply FDR per coefficient
+                for coef_type in stats_df['coefficient'].unique():
+                    mask = stats_df['coefficient'] == coef_type
+                    stats_df.loc[mask, 'p_value_adj'] = multipletests(
+                        stats_df.loc[mask, 'p_value'], 
+                        method='fdr_bh'
+                    )[1]
+            else:
+                # Regular model - apply FDR globally
+                stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
+            
             assert np.any(np.isnan(stats_df['p_value_adj']) == False), f'NaN p-values in {stats_df}'
             
             stats_df['age_group'] = age_subset
@@ -551,7 +613,9 @@ def _compute_condition_stats_from_config(adata, config, test_type, association_t
             config=config
         )
         if config.name_mapping:
-            stats['condition'] = stats['condition'].replace(config.name_mapping)
+            # Only apply name mapping if 'condition' column exists (non-interaction models)
+            if 'condition' in stats.columns:
+                stats['condition'] = stats['condition'].replace(config.name_mapping)
     
     return stats
 
