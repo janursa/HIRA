@@ -44,27 +44,41 @@ def format_columns(adata):
     
     # Extract vaccinated, year, and day from sample.visitName
     # Examples: "Flu Year 1 Day 0", "Immune Variation Day 7", "Flu Year 2 Stand-Alone"
+    # Study Timeline:
+    # - Flu Year 1 & 2: Vaccinated cohorts
+    #   - Day 0: PRE-vaccination baseline (vaccinated=False)
+    #   - Day 7: POST-vaccination (vaccinated=True)
+    #   - Day 90: POST-vaccination (vaccinated=True)
+    # - Immune Variation: Control cohort (never vaccinated, always False)
     def parse_visit_name(visit_name):
         visit_str = str(visit_name)
         
-        # Extract vaccinated (yes if "Flu Year", no if "Immune Variation")
+        import re
+        
+        # Extract day first (e.g., "Day 0", "Day 7", "Day 90", or None for "Stand-Alone")
+        day_match = re.search(r'Day (\d+)', visit_str)
+        day = day_match.group(1) if day_match else None
+        
+        # Determine vaccinated status based on cohort and day
         if 'Flu Year' in visit_str:
-            vaccinated = 'yes'
-            # Extract year number (e.g., "Flu Year 1" -> "1", "Flu Year 2" -> "2")
-            import re
+            # Flu Year cohort - extract year number
             year_match = re.search(r'Flu Year (\d+)', visit_str)
             year = year_match.group(1) if year_match else None
+            
+            # Day 0 is PRE-vaccination (baseline), Day 7 and Day 90 are POST-vaccination
+            if day == '0':
+                vaccinated = 0  # PRE-vaccination baseline
+            elif day in ['7', '90']:
+                vaccinated = 1  # POST-vaccination
+            else:
+                vaccinated = None  # Unknown day (e.g., Stand-Alone)
         elif 'Immune Variation' in visit_str:
-            vaccinated = 'no'
+            # Immune Variation cohort - never vaccinated
+            vaccinated = 0
             year = None
         else:
             vaccinated = None
             year = None
-        
-        # Extract day (e.g., "Day 0", "Day 7", "Day 90", or None for "Stand-Alone")
-        import re
-        day_match = re.search(r'Day (\d+)', visit_str)
-        day = day_match.group(1) if day_match else None
         
         return pd.Series({'vaccinated': vaccinated, 'year': year, 'day': day})
     
@@ -73,10 +87,8 @@ def format_columns(adata):
     adata.obs['year'] = parsed['year'].astype(str)
     adata.obs['day'] = parsed['day'].astype(str)
     
-    # Convert vaccinated from 'yes'/'no' to boolean True/False
-    adata.obs['vaccinated'] = parsed['vaccinated'].apply(
-        lambda x: True if str(x).lower() == 'yes' else (False if str(x).lower() == 'no' else None)
-    )
+    # Assign vaccinated column (0 or 1)
+    adata.obs['vaccinated'] = parsed['vaccinated']
     
     print(f'Added standardized columns. Total columns: {len(adata.obs.columns)}')
     print(f'Age group distribution:')
