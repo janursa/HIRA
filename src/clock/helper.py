@@ -13,6 +13,13 @@ from sklearn.preprocessing import StandardScaler
 from scipy.sparse import issparse
 from anndata import AnnData
 
+from ciim.src.common import (
+    PLOTS_DIR, 
+    SAVE_DIR,
+    surrogate_names,
+    colors_blind)
+from ciim.src.clock.config import use_local_clocks, clock_version
+
 def save_function(model, gene_names, cell_type, data_type, feature_type, reg_type, version):
     import os
     import joblib
@@ -183,30 +190,7 @@ def align_feature_space(adata, gene_names):
     new_adata.var_names = gene_names
 
     return new_adata
-def predict_age(adata, cell_type, feature_type='tf_activity', data_type='bulk', reg_type='ridge', version='v1.0'):
-    # try:
-    #     adata.X = adata.layers['X_norm'].copy()  # Ensure we use the normalized data
-    # except:
-    #     pass
-    
-    # - load the model
-    model, gene_names = retrieve_function(reg_type, cell_type, data_type, feature_type, version)
-    
-    # - align the genes
-    adata = align_feature_space(adata, gene_names)
-    if reg_type == 'NN':
-        import cpa 
-        from ciim.src.clock.NN.helper import cell_type_train
-        cpa.CPA.wrapper_setup_data(adata, data_type=data_type, batch_key='dataset', cell_type=cell_type_train)
-        model.predict_age(adata)
-        adata.obs.rename(columns={'age_predicted': 'predicted_age'}, inplace=True)
-    else:
-        X = adata.X.copy()
-        if issparse(X):
-            X = X.toarray()
-        predicted_age = model.predict(X)
-        adata.obs['predicted_age'] = predicted_age.copy()
-    return adata
+
 def merge_adata(datasets, feature_type, cell_type, data_type, age_limit=0):
     from ciim.src.common import SAVE_DIR
     adata_store = []
@@ -220,6 +204,36 @@ def merge_adata(datasets, feature_type, cell_type, data_type, age_limit=0):
     adata_all = ad.concat(adata_store, join='inner', axis=0)
     print(adata_all.obs['dataset'].value_counts())
     return adata_all
+def wrapper_predict_age(adata, use_local_clocks=True, cell_type=None, model_dir=None, version=None):
+    import sys
+    sys.path.insert(0, '../GRNimmuneClock')
+    from grnimmuneclock import predict_age
+    if use_local_clocks:
+        adata = predict_age(adata, model_dir=model_dir, version=version)
+    else:
+        adata = predict_age(adata, cell_type=cell_type)
+    return adata
+
+def get_all_predictions(cell_types, evaluate_datasets, version=clock_version, data_type='bulk', feature_type='gene_expression'):
+    from pathlib import Path
+
+    obs_store = []
+    for cell_type in cell_types:
+        model_dir = Path(SAVE_DIR) / 'clock' / cell_type
+        for dataset in evaluate_datasets:
+            adata = ad.read_h5ad(f"{SAVE_DIR}/{feature_type}_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
+            adata.obs['condition'] = adata.obs['condition'].apply(lambda name: surrogate_names.get(name, name))
+            conds = adata.obs['condition'].unique()
+            for cond in conds:
+                adata_c = adata[adata.obs['condition'] == cond]
+                wrapper_predict_age(adata_c, use_local_clocks=use_local_clocks, cell_type=cell_type, model_dir=model_dir, version=version)
+                obs = adata_c.obs
+                obs['dataset'] = dataset
+                obs['cell_type'] = cell_type
+                obs['condition'] = cond
+                obs_store.append(obs)
+    obs = pd.concat(obs_store, axis=0)
+    return obs
 
 def stability_selection_shap(features, model, X, y, top_q=80, top_features=50):
     """

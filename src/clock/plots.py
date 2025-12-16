@@ -344,6 +344,7 @@ def plot_age_acceleration_by_group(obs, dataset, config):
 
 
 def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None):
+    
     # Get condition names from config or use hardcoded defaults
     if config is not None:
         # Map condition values using name_mapping if available
@@ -372,6 +373,9 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None
     obs_disease['age'] = obs_disease['age'].astype(float)
     obs_disease['donor_age'] = obs_disease['donor_age'].astype(str)
     
+    # Calculate signed residuals (age acceleration)
+    obs_disease['age_residual'] = abs(obs_disease['predicted_age'] - obs_disease['age'])
+    
     # Check if expected condition values exist in data, use case-insensitive match if needed
     available_conditions = obs_disease['condition'].unique()
     if ctr not in available_conditions:
@@ -397,12 +401,8 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None
         if 'age_group' in obs_ct.columns:
             # Convert age_group from Categorical to string to avoid creating empty combinations
             obs_ct['age_group'] = obs_ct['age_group'].astype(str)
-            # Group by donor_age, age_group, and condition (NOT age - it's redundant with donor_age)
-            obs_ct = obs_ct.groupby(['donor_age', 'age_group', 'condition'])['predicted_age'].median().reset_index()
-            # Also need the age for plotting
-            # Get median age for each donor (they should all be the same anyway)
-            age_map = obs_disease[obs_disease['cell_type'] == cell_type].groupby('donor_age')['age'].median()
-            obs_ct['age'] = obs_ct['donor_age'].map(age_map)
+            # Group by donor_age, age_group, and condition - take median of age_residual
+            obs_ct = obs_ct.groupby(['donor_age', 'age_group', 'condition'])['age_residual'].median().reset_index()
             # Use existing age_group column and map to pretty names
             age_group_name_mapping = {'young': 'Young', 'old': 'Old'}
             obs_ct['age_bin'] = obs_ct['age_group'].map(age_group_name_mapping)
@@ -410,7 +410,10 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None
             age_bin_order = ['Young', 'Old']
         else:
             # Standard groupby without age_group
-            obs_ct = obs_ct.groupby(['donor_age', 'age', 'condition'])['predicted_age'].median().reset_index()
+            obs_ct = obs_ct.groupby(['donor_age', 'condition']).agg({
+                'age_residual': 'median',
+                'age': 'median'
+            }).reset_index()
             # Bin ages manually (for SLE, COVID, etc.)
             age_bins = [20, 50, 80]
             obs_ct['age_bin'] = pd.cut(obs_ct['age'], bins=age_bins, right=False)
@@ -421,19 +424,19 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None
         pvals = []
         positions = []
 
-        print(f"\n{cell_type} - Average age differences by age group:")
+        print(f"\n{cell_type} - Age residuals by age group:")
         print(f"{'Age Group':<12} {'Mean Difference':<15} {'P-value':<10} {'N_Control':<10} {'N_Disease':<10}")
         print("-" * 70)
 
         for age_bin in age_bin_order:
             for group in [ctr, cond]:
-                vals = obs_ct[(obs_ct['condition'] == group) & (obs_ct['age_bin'] == age_bin)]['predicted_age']
+                vals = obs_ct[(obs_ct['condition'] == group) & (obs_ct['age_bin'] == age_bin)]['age_residual']
                 for v in vals:
-                    plot_data.append({'age_bin': age_bin, 'condition': group, 'predicted_age': v})
+                    plot_data.append({'age_bin': age_bin, 'condition': group, 'age_residual': v})
 
             # Store p-values for later FDR correction and calculate mean differences
-            cond_vals = obs_ct[(obs_ct['condition'] == cond) & (obs_ct['age_bin'] == age_bin)]['predicted_age'].values
-            ctr_vals = obs_ct[(obs_ct['condition'] == ctr) & (obs_ct['age_bin'] == age_bin)]['predicted_age'].values
+            cond_vals = obs_ct[(obs_ct['condition'] == cond) & (obs_ct['age_bin'] == age_bin)]['age_residual'].values
+            ctr_vals = obs_ct[(obs_ct['condition'] == ctr) & (obs_ct['age_bin'] == age_bin)]['age_residual'].values
             
             if len(cond_vals) >= 3 and len(ctr_vals) >= 3:
                 tstat, pval = ttest_ind(cond_vals, ctr_vals, equal_var=False)
@@ -457,10 +460,8 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None
         # Use None for palette if config is provided (let seaborn auto-generate)
         palette_to_use = None if config is not None else palette_disease
         
-        sns.barplot(data=plot_df_c, x='age_bin', y='predicted_age', hue='condition', width=0.5,
+        sns.barplot(data=plot_df_c, x='age_bin', y='age_residual', hue='condition', width=0.5,
                     ax=ax, palette=palette_to_use, ci='sd', errorbar='sd', capsize=0.1, linewidth=.1, alpha=.8, errcolor='black', errwidth=1.5)
-        # sns.stripplot(data=plot_df_c, x='age_bin', y='predicted_age', hue='condition',
-        #             ax=ax, palette=palette_disease, alpha=.7)
 
         # Correct for multiple testing
         corrected = multipletests([p for p in pvals if not np.isnan(p)], method='bonferroni')
@@ -479,11 +480,11 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None
 
                     # Compute bracket height above error bars
                     group_data = plot_df[plot_df['age_bin'] == age_bin]
-                    group_means = group_data.groupby('condition')['predicted_age'].mean()
-                    group_stds = group_data.groupby('condition')['predicted_age'].std()
-                    y_max = (group_means + group_stds).max() + 7  # leave more space
+                    group_means = group_data.groupby('condition')['age_residual'].mean()
+                    group_stds = group_data.groupby('condition')['age_residual'].std()
+                    y_max = (group_means + group_stds).max() + 2  # leave more space
 
-                    h = 2  # bracket height
+                    h = 1  # bracket height
                     bar_x1 = j - 0.2
                     bar_x2 = j + 0.2
                     bar_y = y_max
@@ -498,11 +499,12 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None
         ax.set_title(cell_type, fontsize=10, weight='bold', pad=15)
         ax.set_xlabel("Age group")
         if i == 0:
-            ax.set_ylabel("Predicted age")
+            ax.set_ylabel("Age residual (years)\n(predicted - actual age)")
         else:
             ax.set_ylabel("")
         ax.get_legend().remove()
         ax.spines[['top', 'right']].set_visible(False)
+        ax.axhline(0, linestyle='--', color='gray', linewidth=1, alpha=0.5)
         ax.margins(x=0.2, y=0.1)
 
     ax.legend(loc='upper left', bbox_to_anchor=(1, 1), title='Condition', frameon=False)

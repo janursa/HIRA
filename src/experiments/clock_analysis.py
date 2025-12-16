@@ -39,9 +39,7 @@ from ciim.src.clock.plots import (
     plot_scatter_age_vs_predictedAge
 )
 
-# Import from GRNimmuneClock package
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../GRNimmuneClock'))
-from grnimmuneclock import predict_age
+from ciim.src.clock.helper import get_all_predictions
 
 warnings.filterwarnings("ignore")
 
@@ -50,63 +48,6 @@ plt.rcParams["figure.dpi"] = 150
 plt.rcParams["font.family"] = "Arial"
 
 
-def get_all_predictions(cell_types, datasets, feature_type='gene_expression', 
-                       data_type='bulk', reg_type='ridge', version='all_data'):
-    """
-    Get predictions for all cell types and datasets.
-    
-    Parameters
-    ----------
-    cell_types : list
-        List of cell types to analyze
-    datasets : list
-        List of dataset names
-    feature_type : str
-        Feature type (gene_expression or tf_activity)
-    data_type : str
-        Data type (bulk or sc)
-    reg_type : str
-        Regression type (ridge, lasso, etc.)
-    version : str
-        Model version
-        
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame with predictions and metadata
-    """
-    obs_store = []
-    for cell_type in cell_types:
-        for dataset in datasets:
-            adata_path = f"{SAVE_DIR}/{feature_type}_smoothed/{dataset}_{cell_type}_{data_type}.h5ad"
-            
-            if not os.path.exists(adata_path):
-                print(f"Warning: File not found {adata_path}, skipping...")
-                continue
-                
-            adata = ad.read_h5ad(adata_path)
-            adata.obs['condition'] = adata.obs['condition'].apply(
-                lambda name: surrogate_names.get(name, name)
-            )
-            conds = adata.obs['condition'].unique()
-            
-            for cond in conds:
-                adata_c = adata[adata.obs['condition'] == cond]
-                adata_c = predict_age(
-                    adata_c, cell_type, 
-                    feature_type=feature_type, 
-                    data_type=data_type, 
-                    reg_type=reg_type, 
-                    version=version
-                )
-                obs = adata_c.obs
-                obs['dataset'] = dataset
-                obs['cell_type'] = cell_type
-                obs['condition'] = cond
-                obs_store.append(obs)
-    
-    obs = pd.concat(obs_store, axis=0)
-    return obs
 
 
 def apply_data_filter(obs, config):
@@ -400,6 +341,8 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
     """
     from scipy.stats import spearmanr
     from scipy import stats
+    import seaborn as sns
+    import numpy as np
     
     print("\n" + "="*60)
     print(f"Aging Analysis: {dataset}")
@@ -466,42 +409,57 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
             stars = None
             print(f"  Warning: Expected 2 age groups, found {len(age_groups)}")
         
-        # Create scatter plot
-        fig, ax = plt.subplots(1, 1, figsize=(3.5, 2.5))
-        plot_scatter_age_vs_predictedAge(
-            obs_ct, 
-            dataset=dataset, 
-            ax=ax, 
-            hue=hue_column,
+        # Create strip plot showing predicted ages (NOT residuals for aging comparison)
+        fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5))
+        
+        # Set the correct order for age groups (young first, then old)
+        if hue_column == 'age_group_display':
+            # Use pretty names in correct order
+            age_order = [pretty_names.get('young', 'young'), pretty_names.get('old', 'old')]
+        else:
+            age_order = ['young', 'old']
+        
+        # Strip plot with age group coloring - use predicted_age
+        sns.stripplot(
+            data=obs_ct,
+            x=hue_column,
+            y='predicted_age',
+            hue=hue_column,  # Color by age group
+            order=age_order,  # Ensure correct order: young then old
+            ax=ax,
+            alpha=0.7,
+            s=6,
             palette=None,  # Let seaborn auto-generate palette
-            s=30, 
-            alpha=0.7
+            legend=False  # Remove legend since x-axis already shows groups
         )
+        
+        ax.set_ylabel("Predicted age (years)")
+        ax.set_xlabel("")
+        ax.spines[['top', 'right']].set_visible(False)
+        ax.margins(x=0.3, y=0.2)  # Add more margin on x and y axes
+        ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.5)  # Add zero line
         
         # Add statistical bracket and annotation if t-test was performed
         if p_value is not None and stars is not None:
-            # Get y-axis limits
+            # Get y-axis limits after setting margins
             y_min, y_max = ax.get_ylim()
             y_range = y_max - y_min
             
-            # Position bracket at top of plot
-            bracket_y = y_max - y_range * 0.05
-            bracket_height = y_range * 0.02
+            # Position bracket higher with more space
+            bracket_y = y_max - y_range * 0.15
+            bracket_height = y_range * 0.03
             
-            # Get x positions for the two age groups (approximate centers)
-            # This works because the scatter plot spreads points across the x-axis
-            x_min, x_max = ax.get_xlim()
-            x_center_young = x_min + (x_max - x_min) * 0.25
-            x_center_old = x_min + (x_max - x_min) * 0.75
+            # Get x positions for the two age groups (centers of the categories)
+            x_positions = [0, 1]  # Strip plot uses categorical positions 0, 1, etc.
             
             # Draw bracket
-            ax.plot([x_center_young, x_center_young, x_center_old, x_center_old],
+            ax.plot([x_positions[0], x_positions[0], x_positions[1], x_positions[1]],
                    [bracket_y, bracket_y + bracket_height, bracket_y + bracket_height, bracket_y],
                    'k-', linewidth=1.5)
             
             # Add p-value and stars
             bracket_text = f'p={p_value:.3e}\n{stars}' if p_value >= 0.001 else f'{stars}'
-            ax.text((x_center_young + x_center_old) / 2, bracket_y + bracket_height + y_range * 0.01,
+            ax.text((x_positions[0] + x_positions[1]) / 2, bracket_y + bracket_height + y_range * 0.02,
                    bracket_text, ha='center', va='bottom', fontsize=9, fontweight='bold')
         
         # Set title
@@ -886,26 +844,7 @@ Examples:
         default=None,
         help='Config label for datasets with multiple configurations (e.g., aging_cmv_neg, cmv_young)'
     )
-    
-    # Model configuration
-    parser.add_argument(
-        '--feature-type',
-        type=str,
-        default='gene_expression',
-        help='Feature type: gene_expression or tf_activity (default: gene_expression)'
-    )
-    parser.add_argument(
-        '--data-type',
-        type=str,
-        default='bulk',
-        help='Data type: bulk or sc (default: bulk)'
-    )
-    parser.add_argument(
-        '--reg-type',
-        type=str,
-        default='ridge',
-        help='Regression type (default: ridge)'
-    )
+
     parser.add_argument(
         '--version',
         type=str,
@@ -967,8 +906,6 @@ Examples:
     if args.config_label:
         print(f"Config label: {args.config_label}")
     print(f"Analysis type: {args.analysis_type}")
-    print(f"Feature type: {args.feature_type}")
-    print(f"Data type: {args.data_type}")
     print(f"Model version: {args.version}")
     print(f"Cell types: {', '.join(args.cell_types)}")
     print(f"P-value threshold: {p_value_threshold}")
@@ -980,9 +917,6 @@ Examples:
     obs = get_all_predictions(
         args.cell_types, 
         [args.dataset],
-        feature_type=args.feature_type,
-        data_type=args.data_type,
-        reg_type=args.reg_type,
         version=args.version
     )
     

@@ -506,6 +506,26 @@ DATASET_CONFIGS = {
         # ),
         
         # # ===== DISEASE (CMV) EFFECT ANALYSES =====
+        # CMV effect across BOTH age groups (combined analysis)
+        ConditionConfig(
+            name="soundlife",
+            analysis_type='disease',
+            condition_column='subject.cmv',
+            control_group='Negative',
+            treatment_groups=['Positive'],
+            test_type='mixed-effect',
+            mixed_effects_formula='feature_values ~ C(Q("subject.cmv")) + C(Q("sample.visitName"))',  # Escape both column names with dots
+            mixed_effects_group='donor_id',
+            comparison_mode='opposite',
+            display_name='Sound Life (CMV Effect)',
+            config_label='cmv',
+            data_filter=None,  # No age group filter - include both young and old
+            name_mapping={'Negative': 'CMV-', 'Positive': 'CMV+'},
+            # Clock analysis configuration
+            clock_test_type='unpaired',
+            clock_pvalue_threshold=0.05
+        ),
+        
         # CMV effect in YOUNG subjects
         ConditionConfig(
             name="soundlife",
