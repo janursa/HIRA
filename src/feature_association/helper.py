@@ -43,29 +43,47 @@ def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datas
         stats = stats[stats['dataset'].isin(datasets)]
     return stats
 
-def retrieve_feature_data(dataset, smoothened=False, cell_type=None, type='bulk', feature_type='tf_activity', condition='healthy'):
+def retrieve_feature_data(dataset, smoothened=False, cell_type=None, type='bulk', feature_type='tf_activity', condition='healthy', suffix=''):
     
     from ciim.src.common import SAVE_DIR, datasets_e, datasets_a, datasets_all
+    from ciim.src.feature_association.config import get_config
+    
     if smoothened:
-        file_path = f'{SAVE_DIR}/{feature_type}_smoothed/{dataset}_{cell_type}_{type}.h5ad'
+        file_path = f'{SAVE_DIR}/{feature_type}_smoothed/{dataset}_{cell_type}_{type}{suffix}.h5ad'
         
     else:
-        file_path = f'{SAVE_DIR}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad'
+        file_path = f'{SAVE_DIR}/{feature_type}/{dataset}_{cell_type}_{type}{suffix}.h5ad'
     if os.path.exists(file_path) == False:
         raise ValueError(f'File {file_path} does not exist')
 
     adata = ad.read_h5ad(file_path)
-    if ('SLE' in dataset) & (condition == 'healthy'):
-        adata = adata[adata.obs['condition'] == 'normal'].copy()
+    adata.obs['condition'] = adata.obs['condition'].map(lambda x: x.replace('normal', 'healthy')) # watch out this one
+    
+    # Apply dataset-specific condition mapping if configured
+    
+    cfg_list = get_config(dataset)
+    if cfg_list:
+        cfg = cfg_list[0] if isinstance(cfg_list, list) else cfg_list
+        if cfg.condition_mapping and 'condition' in adata.obs.columns:
+            # Use .replace() instead of .map() to handle categorical columns properly
+            adata.obs['condition'] = adata.obs['condition'].astype(str).replace(cfg.condition_mapping)
+    
+    # Filter by condition
+    if condition is not None and 'condition' in adata.obs.columns:
+        if condition not in adata.obs['condition'].unique():
+            raise ValueError(f'Error in retrieving feature data: given condition "{condition}" not in {adata.obs["condition"].unique()}')
+        adata = adata[adata.obs['condition'] == condition].copy()
+    
     if cell_type is not None:
         if cell_type not in adata.obs['cell_type'].unique():
             raise ValueError(f'Error in retrieving feature data: given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
         adata = adata[adata.obs['cell_type'] == cell_type]
+
     return adata
 
-def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activity'):
+def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activity', suffix=''):
     # print('writing here: ', f'{SAVE_DIR}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
-    adata.write_h5ad(f'{SAVE_DIR}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
+    adata.write_h5ad(f'{SAVE_DIR}/{feature_type}/{dataset}_{cell_type}_{type}{suffix}.h5ad')
 
 def retrieve_sig_stats(type='bulk', feature_type='tf_activity', race='both', filter_inconsistent=True, cell_type=None):
     from ciim.src.common import SAVE_DIR
@@ -164,31 +182,32 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
     if conditions is None:
         conditions = adata.obs[condition_col].unique()
     dataset = adata.obs['dataset'].unique()[0]
-    name_mapping = {'normal': 'healthy', 'systemic lupus erythematosus': 'SLE'}
+    # name_mapping = {'normal': 'healthy', 'systemic lupus erythematosus': 'SLE'}
     stats_all = []
-    if 'SLE' in dataset:
-        # case 1: association with age in healthy and disease samples
-        def process_condition_group(group):
-            adata_sub = adata[adata.obs[condition_col] == group]
-            stats_df = association_with_age(adata_sub, association_type=association_type)
+    # if 'SLE' in dataset:
+    #     # case 1: association with age in healthy and disease samples
+    #     def process_condition_group(group):
+    #         adata_sub = adata[adata.obs[condition_col] == group]
+    #         stats_df = association_with_age(adata_sub, association_type=association_type)
             
-            stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
-            stats_df['condition'] = name_mapping.get(group, group)
+    #         stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
+    #         stats_df['condition'] = name_mapping.get(group, group)
             
-            return stats_df
+    #         return stats_df
         
-        # Parallelize condition group processing
-        with ThreadPoolExecutor(max_workers=20) as executor:
-            condition_results = list(executor.map(process_condition_group, conditions))
+    #     # Parallelize condition group processing
+    #     with ThreadPoolExecutor(max_workers=20) as executor:
+    #         condition_results = list(executor.map(process_condition_group, conditions))
         
-        stats_all.extend(condition_results)
+    #     stats_all.extend(condition_results)
         
-    # case 2: condition vs ctrl 
     def stats_condition_vs_ctr(adata, condition):  
+
         mask_ctr = adata.obs[condition_col] == ctr_group
         mask_condition = adata.obs[condition_col] == condition
         
         control_group = adata.X[mask_ctr.values, :]
+ 
         case_group = adata.X[mask_condition.values, :]
         if (np.sum(mask_condition) < 3) or (np.sum(mask_ctr) < 3):
             print('Not enough samples for', condition, ' vs ', ctr_group)
@@ -212,9 +231,25 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
                 stat, pval = mannwhitneyu(values_case, values_control, alternative="two-sided")
                 # stat, pval = ttest_ind(values_case, values_control, equal_var=False)
                 coef = np.median(values_case) - np.median(values_control)
+                
+                return {
+                    "tf": gene,
+                    "p_value": pval,
+                    "slope_condition": coef,
+                    'ctrl': ctr_group,
+                    'condition': condition
+                }
             elif test_type == 'paired':
                 stat, pval = ttest_rel(values_case, values_control)
                 coef = np.median(values_case) - np.median(values_control)
+                
+                return {
+                    "tf": gene,
+                    "p_value": pval,
+                    "slope_condition": coef,
+                    'ctrl': ctr_group,
+                    'condition': condition
+                }
             elif test_type == 'mixed-effect':
                 from ciim.src.utils.util import test_mixed_effects
                 
@@ -260,8 +295,7 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
                                                    target_variable='feature_values', config=config)
        
                     if np.isnan(pval):
-                        print(f'NaN p-value, {dataset} {gene} {condition} vs {ctr_group}')
-                        return None
+                        raise ValueError('NaN p-value encountered in mixed-effects model', dataset, gene, condition)
                     
                     return {
                         "tf": gene,
@@ -291,6 +325,8 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
                 flattened_results.append(r)
         
         results = pd.DataFrame(flattened_results)
+        if len(results) == 0:
+            raise ValueError(f'No valid results for condition {condition} vs {ctr_group} in dataset {dataset}')
         return results
     
     # Determine age stratification based on dataset and config
@@ -320,8 +356,9 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
             if condition == ctr_group:
                 continue
             stats_df = stats_condition_vs_ctr(adata_sub, condition)
+
             if stats_df is None:
-                continue
+                raise ValueError(f'No stats returned for condition {condition} vs {ctr_group} in dataset {dataset}')
 
             # For interaction models, apply FDR per coefficient type
             # For regular models, apply FDR globally
@@ -455,6 +492,8 @@ def wrapper_association_with_age_condition(par, features=None, test_type=None, c
     feature_type = par['feature_type']
     data_type = par['type']
     cell_types = par['cell_types']
+    only_promotor_based = par.get('only_promotor_based', False)
+    suffix = '_promotor' if only_promotor_based else ''
 
     print(f'Association {feature_type} with condition...')
     if 'minor' in data_type:
@@ -465,32 +504,27 @@ def wrapper_association_with_age_condition(par, features=None, test_type=None, c
     stats_store = []
     for cell_type in tqdm(cell_types_l, desc='cell types'):
         for dataset in datasets:
-            # Get configuration for this dataset
-            if config is None:
-                try:
-                    cfg = get_config(dataset)
-                except ValueError:
-                    # Unknown dataset - use aging analysis
-                    cfg = None
-            else:
-                cfg = config
+            # Use the provided config (None for aging analysis, specific config for condition analysis)
+            cfg = config
             
             # Load data
-            try:
-                adata = retrieve_feature_data(
-                    dataset=dataset, 
-                    cell_type=cell_type, 
-                    type=data_type, 
-                    feature_type=feature_type, 
-                    condition=condition
-                )
-                adata = adata[:, adata.var_names.isin(features)] if features is not None else adata
-            except ValueError as e:
-                print(e)
-                continue
+            
+            adata = retrieve_feature_data(
+                dataset=dataset, 
+                cell_type=cell_type, 
+                type=data_type, 
+                feature_type=feature_type, 
+                condition=condition,
+                suffix=suffix
+            )
+            adata = adata[:, adata.var_names.isin(features)] if features is not None else adata
+                    
+            
             
             # Apply data filter from config if specified
             if cfg is not None and cfg.data_filter is not None:
+                
+
                 filter_mask = pd.Series(True, index=adata.obs.index)
                 for col, value in cfg.data_filter.items():
                     # Handle special case: column.notnull for checking non-null values
@@ -511,10 +545,11 @@ def wrapper_association_with_age_condition(par, features=None, test_type=None, c
                     continue
             
             # Filter by cell type
+            
             adata_sub = adata[adata.obs[par['cell_type_resolution']]==cell_type]
+            
             if adata_sub.shape[0] < 3:
-                print('Not enough samples for', cell_type, dataset)
-                continue
+                raise ValueError(f'Not enough samples for {cell_type} in {dataset}, only {adata_sub.shape[0]} samples')
             
             # Subset features
             genes = adata_sub.var_names
@@ -538,8 +573,7 @@ def wrapper_association_with_age_condition(par, features=None, test_type=None, c
                 )
             
             if stats is None or len(stats) == 0:
-                print('No stats for', cell_type, dataset)
-                continue
+                raise ValueError(f'No stats calculated for {cell_type} in {dataset}, something went wrong')
                 
             stats['dataset'] = dataset
             stats['cell_type'] = cell_type
@@ -625,7 +659,9 @@ def wrapper_tf_activity(par):
     cell_types = par['cell_types']
     datasets = par['datasets']
     cell_type_col = par['cell_type_resolution']
+    only_promotor_based = par.get('only_promotor_based', False)
     print('Calculating TF activity...')
+    print(f'  - Promotor-based only: {only_promotor_based}')
     for dataset in datasets:
         print(dataset, data_type)
         adata = retrieve_adata(dataset, data_type)
@@ -633,14 +669,14 @@ def wrapper_tf_activity(par):
         cell_types_l = [ct for ct in cell_types_l if ct in cell_types]
         for cell_type in tqdm(cell_types_l, desc='cell types'):
             adata_t = adata[adata.obs[cell_type_col]==cell_type]
-            net = retrieve_net_consensus(datasets=datasets_all, cell_type=cell_type)
+            net = retrieve_net_consensus(datasets=datasets_all, cell_type=cell_type, only_promotor_based=only_promotor_based)
             if adata_t.shape[0] < 10:
                 continue
             tf_acts = calculate_tf_activity(adata_t, net)
             tf_acts.obs['dataset'] = dataset
             tf_acts.uns['dataset'] = dataset
             tf_acts = tf_acts[tf_acts.obs['age'].isna()==False] # there is a bug in the code that causes age to be NaN
-            write_feature_data(tf_acts, dataset, cell_type, data_type)
+            write_feature_data(tf_acts, dataset, cell_type, data_type, suffix='_promotor' if only_promotor_based else '')
 
 def wrapper_gene_score(par):
     from ciim.src.utils.util import get_genesets

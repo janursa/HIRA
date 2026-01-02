@@ -33,6 +33,13 @@ os.makedirs(CLOCKS_DIR, exist_ok=True)
 os.makedirs(PLOTS_DIR, exist_ok=True)
 os.makedirs(f"{PLOTS_DIR}/insilico_perturbation/", exist_ok=True)
 
+# Age binning configuration for disease analysis
+# Cutoff of 40 years provides better balance for SLE analysis:
+# Under 40: Healthy=58, SLE=29 (ratio 2.0:1)
+# Over 40: Healthy=16, SLE=45 (ratio 2.8:1) 
+# vs old cutoff of 50 which had poor balance (min N=11)
+AGE_CUTOFF_SLE = 40  # years
+
 surrogate_names = {'batch_1':'Batch 1', 'batch_2':'Batch 2', 'all_batches':'All batches', 
                     '34-':'35 below', '35_44':'35-45', '45_54':'45-55', '55_64':'55-65', '65_75':'65-75',
 

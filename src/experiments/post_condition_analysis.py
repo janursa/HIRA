@@ -153,11 +153,16 @@ def plot_overview_heatmap(stats, dataset, analysis_type, output_dir, config_labe
         else:
             # For disease/aging without CMV, filter to 'Both age groups' or accept any age_group
             # If data has specific age groups (like 'young'), don't filter
-            unique_age_groups = stats['age_group'].unique()
-            if 'Both age groups' in unique_age_groups:
-                stats_filtered = stats[stats['age_group'] == 'Both age groups'].copy()
+            # Check if age_group column exists (not all datasets have it)
+            if 'age_group' in stats.columns:
+                unique_age_groups = stats['age_group'].unique()
+                if 'Both age groups' in unique_age_groups:
+                    stats_filtered = stats[stats['age_group'] == 'Both age groups'].copy()
+                else:
+                    # Data already filtered by config (e.g., cmv_young has age_group='young')
+                    stats_filtered = stats.copy()
             else:
-                # Data already filtered by config (e.g., cmv_young has age_group='young')
+                # No age_group column (e.g., SLE_European), use data as-is
                 stats_filtered = stats.copy()
             _plot_single_heatmap(stats_filtered, palette, output_dir, 
                                suffix=dataset if (analysis_type == 'disease' or analysis_type == 'aging') else None)

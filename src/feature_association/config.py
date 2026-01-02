@@ -41,6 +41,7 @@ class ConditionConfig:
     # Special handling
     control_mapping: Optional[Dict[str, str]] = None  # For datasets with multiple controls
     name_mapping: Optional[Dict[str, str]] = None     # Rename conditions for display
+    condition_mapping: Optional[Dict[str, str]] = None  # Transform actual condition values in data (applied when loading)
     
     # Display
     display_name: Optional[str] = None
@@ -85,12 +86,16 @@ DATASET_CONFIGS = {
         name="SLE_European",
         analysis_type='disease',
         condition_column='condition',
-        control_group='normal',
-        treatment_groups=['systemic lupus erythematosus'],
+        control_group='healthy',
+        treatment_groups=['SLE'],
         test_type='unpaired',
         comparison_mode='same',  # Pathological aging (same direction as aging)
         display_name='SLE',
         name_mapping={
+            'normal': 'healthy',
+            'systemic lupus erythematosus': 'SLE'
+        },
+        condition_mapping={
             'normal': 'healthy',
             'systemic lupus erythematosus': 'SLE'
         },
@@ -317,85 +322,85 @@ DATASET_CONFIGS = {
         #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
         # ),
         
-        # # Day 7: Peak response (all subjects)
-        # ConditionConfig(
-        #     name="soundlife",
-        #     analysis_type='perturbation',
-        #     condition_column='vaccinated',
-        #     control_group=False,
-        #     treatment_groups=[True],
-        #     test_type='mixed-effect',
-        #     mixed_effects_formula='feature_values ~ vaccinated + age_group',
-        #     mixed_effects_group='donor_id',
-        #     comparison_mode='opposite',
-        #     display_name='Sound Life (Vaccination Day 7 - All)',
-        #     config_label='vacc_d7_all',
-        #     data_filter={
-        #         'sample.visitName': ['Flu Year 1 Day 7', 'Flu Year 2 Day 7', 'Immune Variation Day 7']
-        #     },
-        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        # ),
+        # Day 7: Peak response (all subjects)
+        ConditionConfig(
+            name="soundlife",
+            analysis_type='perturbation',
+            condition_column='vaccinated',
+            control_group=False,
+            treatment_groups=[True],
+            test_type='mixed-effect',
+            mixed_effects_formula='feature_values ~ vaccinated + age_group',
+            mixed_effects_group='donor_id',
+            comparison_mode='opposite',
+            display_name='Sound Life (Vaccination Day 7 - All)',
+            config_label='vacc_d7_all',
+            data_filter={
+                'sample.visitName': ['Flu Year 1 Day 7', 'Flu Year 2 Day 7', 'Immune Variation Day 7']
+            },
+            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        ),
         
-        # # Day 90: Memory response (all subjects)
-        # ConditionConfig(
-        #     name="soundlife",
-        #     analysis_type='perturbation',
-        #     condition_column='vaccinated',
-        #     control_group=False,
-        #     treatment_groups=[True],
-        #     test_type='mixed-effect',
-        #     mixed_effects_formula='feature_values ~ vaccinated + age_group',
-        #     mixed_effects_group='donor_id',
-        #     comparison_mode='opposite',
-        #     display_name='Sound Life (Vaccination Day 90 - All)',
-        #     config_label='vacc_d90_all',
-        #     data_filter={
-        #         'sample.visitName': ['Flu Year 1 Day 90', 'Flu Year 2 Day 90', 'Immune Variation Day 90']
-        #     },
-        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        # ),
+        # Day 90: Memory response (all subjects)
+        ConditionConfig(
+            name="soundlife",
+            analysis_type='perturbation',
+            condition_column='vaccinated',
+            control_group=False,
+            treatment_groups=[True],
+            test_type='mixed-effect',
+            mixed_effects_formula='feature_values ~ vaccinated + age_group',
+            mixed_effects_group='donor_id',
+            comparison_mode='opposite',
+            display_name='Sound Life (Vaccination Day 90 - All)',
+            config_label='vacc_d90_all',
+            data_filter={
+                'sample.visitName': ['Flu Year 1 Day 90', 'Flu Year 2 Day 90', 'Immune Variation Day 90']
+            },
+            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        ),
         
         # # ===== VACCINATION ANALYSES - CMV NEGATIVE =====
         
-        # # Day 0 - CMV Negative
-        # ConditionConfig(
-        #     name="soundlife",
-        #     analysis_type='perturbation',
-        #     condition_column='vaccinated',
-        #     control_group=False,
-        #     treatment_groups=[True],
-        #     test_type='mixed-effect',
-        #     mixed_effects_formula='feature_values ~ vaccinated + age_group',
-        #     mixed_effects_group='donor_id',
-        #     comparison_mode='opposite',
-        #     display_name='Sound Life (Vaccination Day 0 - CMV Neg)',
-        #     config_label='vacc_d0_cmv_neg',
-        #     data_filter={
-        #         'sample.visitName': ['Flu Year 1 Day 0', 'Flu Year 2 Day 0', 'Immune Variation Day 0'],
-        #         'subject.cmv': ['Negative']
-        #     },
-        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        # ),
+        # Day 0 - CMV Negative
+        ConditionConfig(
+            name="soundlife",
+            analysis_type='perturbation',
+            condition_column='vaccinated',
+            control_group=False,
+            treatment_groups=[True],
+            test_type='mixed-effect',
+            mixed_effects_formula='feature_values ~ vaccinated + age_group',
+            mixed_effects_group='donor_id',
+            comparison_mode='opposite',
+            display_name='Sound Life (Vaccination Day 0 - CMV Neg)',
+            config_label='vacc_d0_cmv_neg',
+            data_filter={
+                'sample.visitName': ['Flu Year 1 Day 0', 'Flu Year 2 Day 0', 'Immune Variation Day 0'],
+                'subject.cmv': ['Negative']
+            },
+            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        ),
         
         # # Day 7 - CMV Negative
-        # ConditionConfig(
-        #     name="soundlife",
-        #     analysis_type='perturbation',
-        #     condition_column='vaccinated',
-        #     control_group=False,
-        #     treatment_groups=[True],
-        #     test_type='mixed-effect',
-        #     mixed_effects_formula='feature_values ~ vaccinated + age_group',
-        #     mixed_effects_group='donor_id',
-        #     comparison_mode='opposite',
-        #     display_name='Sound Life (Vaccination Day 7 - CMV Neg)',
-        #     config_label='vacc_d7_cmv_neg',
-        #     data_filter={
-        #         'sample.visitName': ['Flu Year 1 Day 7', 'Flu Year 2 Day 7', 'Immune Variation Day 7'],
-        #         'subject.cmv': ['Negative']
-        #     },
-        #     name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
-        # ),
+        ConditionConfig(
+            name="soundlife",
+            analysis_type='perturbation',
+            condition_column='vaccinated',
+            control_group=False,
+            treatment_groups=[True],
+            test_type='mixed-effect',
+            mixed_effects_formula='feature_values ~ vaccinated + age_group',
+            mixed_effects_group='donor_id',
+            comparison_mode='opposite',
+            display_name='Sound Life (Vaccination Day 7 - CMV Neg)',
+            config_label='vacc_d7_cmv_neg',
+            data_filter={
+                'sample.visitName': ['Flu Year 1 Day 7', 'Flu Year 2 Day 7', 'Immune Variation Day 7'],
+                'subject.cmv': ['Negative']
+            },
+            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+        ),
         
         # # Day 90 - CMV Negative
         # ConditionConfig(
@@ -598,11 +603,7 @@ def get_config(dataset_name: str, config_label: Optional[str] = None) -> List[Co
         If dataset not found or config_label not found
     """
     if dataset_name not in DATASET_CONFIGS:
-        available = ', '.join(DATASET_CONFIGS.keys())
-        raise ValueError(
-            f"Unknown dataset '{dataset_name}'. "
-            f"Available: {available}"
-        )
+        return None
     
     config = DATASET_CONFIGS[dataset_name]
     

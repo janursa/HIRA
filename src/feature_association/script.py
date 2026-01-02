@@ -61,6 +61,12 @@ def run_workflow_gene_score(par):
 
 
 if __name__ == '__main__':
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Run feature association analysis')
+    parser.add_argument('--promotor-only', action='store_true', 
+                        help='Use promotor-based GRN only (default: use full GRN)')
+    args = parser.parse_args()
+    
     os.makedirs(f'{SAVE_DIR}/tmp/', exist_ok=True)
     os.makedirs(f'{SAVE_DIR}/tf_activity/', exist_ok=True)
     os.makedirs(f'{SAVE_DIR}/tf_activity/tf_acts', exist_ok=True)
@@ -71,6 +77,8 @@ if __name__ == '__main__':
 
     run_flag = True
     run_flag_gender = False
+    only_promotor_based = args.promotor_only  # From command-line flag
+    suffix = '_promotor' if only_promotor_based else ''
     
     if run_flag:
         for data_type in ['bulk']: # 'bulk_minor', 'bulk
@@ -82,9 +90,10 @@ if __name__ == '__main__':
                     'datasets': datasets_all,
                     'association_type': 'spearman',
                     'cell_type_resolution': 'Major_CT' if data_type == 'bulk' else 'Sub_CT',
-                    'stats_features': f'{SAVE_DIR}/{feature_type}/stats_features_{data_type}.csv',
-                    'stats_all': f'{SAVE_DIR}/{feature_type}/stats_all_{data_type}.csv', 
+                    'stats_features': f'{SAVE_DIR}/{feature_type}/stats_features_{data_type}{suffix}.csv',
+                    'stats_all': f'{SAVE_DIR}/{feature_type}/stats_all_{data_type}{suffix}.csv', 
                     'temp_dir': f'{SAVE_DIR}/tmp/',
+                    'only_promotor_based': only_promotor_based,
                     # 'pathway': 'canonical' if feature_type == 'gene_score' else None, #'canonical' #opengenes
                     'gene_coverage': 'target_genes' if feature_type == 'gene_score' else None, # 'target_genes' all_genes
                 }

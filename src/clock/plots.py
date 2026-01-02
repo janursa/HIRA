@@ -171,17 +171,21 @@ def wrapper_age_acceleration_disease(obs, disease_dataset, figsize=(4, 2.7), con
     df_pivot = obs_disease.pivot_table(index=['age', 'cell_type'], columns='condition', values='predicted_age')
     df_pivot = df_pivot.reset_index()
     
+    # Convert control and treatment values to strings for comparison
+    ctr = str(ctr)
+    cond = str(cond)
+    
     # Check if expected condition values exist in pivot columns
     # If not, try case-insensitive match
     available_cols = [c for c in df_pivot.columns if c not in ['age', 'cell_type']]
     if ctr not in df_pivot.columns:
         # Try case-insensitive match
-        ctr_match = [c for c in available_cols if c.lower() == ctr.lower()]
+        ctr_match = [c for c in available_cols if str(c).lower() == ctr.lower()]
         if ctr_match:
             ctr = ctr_match[0]
     if cond not in df_pivot.columns:
         # Try case-insensitive match
-        cond_match = [c for c in available_cols if c.lower() == cond.lower()]
+        cond_match = [c for c in available_cols if str(c).lower() == cond.lower()]
         if cond_match:
             cond = cond_match[0]
     
@@ -376,14 +380,18 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None
     # Calculate signed residuals (age acceleration)
     obs_disease['age_residual'] = abs(obs_disease['predicted_age'] - obs_disease['age'])
     
+    # Convert control and treatment values to strings for comparison
+    ctr = str(ctr)
+    cond = str(cond)
+    
     # Check if expected condition values exist in data, use case-insensitive match if needed
     available_conditions = obs_disease['condition'].unique()
     if ctr not in available_conditions:
-        ctr_match = [c for c in available_conditions if c.lower() == ctr.lower()]
+        ctr_match = [c for c in available_conditions if str(c).lower() == ctr.lower()]
         if ctr_match:
             ctr = ctr_match[0]
     if cond not in available_conditions:
-        cond_match = [c for c in available_conditions if c.lower() == cond.lower()]
+        cond_match = [c for c in available_conditions if str(c).lower() == cond.lower()]
         if cond_match:
             cond = cond_match[0]
 
@@ -415,10 +423,12 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None
                 'age': 'median'
             }).reset_index()
             # Bin ages manually (for SLE, COVID, etc.)
-            age_bins = [20, 50, 80]
+            # Import age cutoff from common configuration
+            from ciim.src.common import AGE_CUTOFF_SLE
+            age_bins = [20, AGE_CUTOFF_SLE, 80]
             obs_ct['age_bin'] = pd.cut(obs_ct['age'], bins=age_bins, right=False)
             obs_ct['age_bin'] = obs_ct['age_bin'].astype(str)
-            age_bin_order = [str(b) for b in pd.cut([21, 51], bins=age_bins, right=False).categories]
+            age_bin_order = [str(b) for b in pd.cut([21, AGE_CUTOFF_SLE + 1], bins=age_bins, right=False).categories]
 
         plot_data = []
         pvals = []
