@@ -259,12 +259,12 @@ def plot_aging_overlap(stats_sig, dataset, included_cell_types, analysis_type, a
             )
             
             # Filter to only those that have condition data (inner join equivalent)
-            merged_inner = merged[merged['slope_condition'].notna()]
+            merged = merged[merged['slope_condition'].notna()]
             
-            if len(merged_inner) > 0:
-                same_direction = (np.sign(merged_inner['slope']) == np.sign(merged_inner['slope_condition'])).sum()
-                opposite_direction = (np.sign(merged_inner['slope']) == -np.sign(merged_inner['slope_condition'])).sum()
-                total_overlap = len(merged_inner)
+            if len(merged) > 0:
+                same_direction = (np.sign(merged['slope']) == np.sign(merged['slope_condition'])).sum()
+                opposite_direction = (np.sign(merged['slope']) == -np.sign(merged['slope_condition'])).sum()
+                total_overlap = len(merged)
                 
                 condition_str = f" ({condition_label})" if condition_label else ""
                 print(f"    Overlap with aging TFs{condition_str}: {total_overlap}")
@@ -1333,8 +1333,8 @@ Examples:
     print()
     
     # 1. Overview heatmap
-    plot_overview_heatmap(stats_sig if (args.analysis_type == 'disease' or args.analysis_type == 'aging') else stats, 
-                         args.dataset, args.analysis_type, output_dir, args.config_label)
+    # plot_overview_heatmap(stats_sig if (args.analysis_type == 'disease' or args.analysis_type == 'aging') else stats, 
+    #                      args.dataset, args.analysis_type, output_dir, args.config_label)
     
     # 2. Aging overlap
     if len(stats_sig) > 0:

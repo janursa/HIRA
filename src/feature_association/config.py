@@ -147,9 +147,9 @@ DATASET_CONFIGS = {
         condition_column='condition',
         control_group=None,  # Multiple controls handled specially
         treatment_groups=[
-            '24 h RPMI + ruxolitinib',
+            # '24 h RPMI + ruxolitinib',
             '24 h LPS + ruxolitinib',
-            '24 h LPS'
+            # '24 h LPS'
         ],
         test_type='mixed-effect',
         mixed_effects_formula='feature_values ~ condition',

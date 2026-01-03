@@ -183,6 +183,7 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
         conditions = adata.obs[condition_col].unique()
     dataset = adata.obs['dataset'].unique()[0]
     # name_mapping = {'normal': 'healthy', 'systemic lupus erythematosus': 'SLE'}
+    name_mapping = {} if config is None else config.name_mapping if hasattr(config, 'name_mapping') else {}
     stats_all = []
     # if 'SLE' in dataset:
     #     # case 1: association with age in healthy and disease samples
@@ -508,7 +509,6 @@ def wrapper_association_with_age_condition(par, features=None, test_type=None, c
             cfg = config
             
             # Load data
-            
             adata = retrieve_feature_data(
                 dataset=dataset, 
                 cell_type=cell_type, 
@@ -519,12 +519,8 @@ def wrapper_association_with_age_condition(par, features=None, test_type=None, c
             )
             adata = adata[:, adata.var_names.isin(features)] if features is not None else adata
                     
-            
-            
             # Apply data filter from config if specified
             if cfg is not None and cfg.data_filter is not None:
-                
-
                 filter_mask = pd.Series(True, index=adata.obs.index)
                 for col, value in cfg.data_filter.items():
                     # Handle special case: column.notnull for checking non-null values
@@ -545,9 +541,7 @@ def wrapper_association_with_age_condition(par, features=None, test_type=None, c
                     continue
             
             # Filter by cell type
-            
             adata_sub = adata[adata.obs[par['cell_type_resolution']]==cell_type]
-            
             if adata_sub.shape[0] < 3:
                 raise ValueError(f'Not enough samples for {cell_type} in {dataset}, only {adata_sub.shape[0]} samples')
             
@@ -631,6 +625,9 @@ def _compute_condition_stats_from_config(adata, config, test_type, association_t
                 association_type=association_type,
                 config=config
             )
+            # print('\n Control used for', treatment, 'is', control)
+            # print('\n', stats[stats['p_value']<0.05].shape)
+            # aaa
             if config.name_mapping:
                 stats['condition'] = stats['condition'].replace(config.name_mapping)
             stats_list.append(stats)
