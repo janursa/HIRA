@@ -529,6 +529,7 @@ def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_a
     
     if df[condition_col].dtype == 'object' or df[condition_col].dtype.name == 'category':
         df[condition_col] = pd.Categorical(df[condition_col], categories=[ctr, treatment], ordered=True)
+        # df[condition_col] = df[condition_col].cat.codes  # 0 for ctr, 1 for treatment (matches legacy)
     
     # Fit mixed model
     try:

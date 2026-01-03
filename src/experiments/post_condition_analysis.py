@@ -1274,6 +1274,12 @@ Examples:
         action='store_true',
         help='Skip aging-experiment heatmap (perturbation only)'
     )
+
+    parser.add_argument(
+        '--skip-overview',
+        action='store_true',
+        help='Skip overview heatmap (perturbation only)'
+    )
     
     args = parser.parse_args()
     
@@ -1333,8 +1339,9 @@ Examples:
     print()
     
     # 1. Overview heatmap
-    # plot_overview_heatmap(stats_sig if (args.analysis_type == 'disease' or args.analysis_type == 'aging') else stats, 
-    #                      args.dataset, args.analysis_type, output_dir, args.config_label)
+    if not args.skip_overview:
+        plot_overview_heatmap(stats_sig if (args.analysis_type == 'disease' or args.analysis_type == 'aging') else stats, 
+                             args.dataset, args.analysis_type, output_dir, args.config_label)
     
     # 2. Aging overlap
     if len(stats_sig) > 0:
