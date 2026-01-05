@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from pandas.api.types import CategoricalDtype
+pd.set_option("display.max_columns", None)
 
 # Import common utilities and configuration
 from ciim.src.common import (
@@ -56,13 +57,13 @@ stats_all = retrieve_stats_features(type, feature_type='tf_activity', condition=
 # - add sig signs
 stats_sig = retrieve_sig_stats(type)
 
-tuple_index = stats_sig.set_index(['cell_type', 'tf', 'dataset']).index
+tuple_index = stats_sig.set_index(['cell_type', 'gene', 'dataset']).index
 
-stats_all = stats_all.set_index(['cell_type', 'tf', 'dataset'])
+stats_all = stats_all.set_index(['cell_type', 'gene', 'dataset'])
 stats_all['is_significant'] = False
 stats_all.loc[tuple_index, 'is_significant'] = True
 
-stats_all = stats_all.reset_index()[['tf', 'cell_type', 'dataset', 'slope', 'is_significant']].drop_duplicates()
+stats_all = stats_all.reset_index()[['gene', 'cell_type', 'dataset', 'slope', 'is_significant']].drop_duplicates()
 
 
 ## Heatmap of sig TFs across cell types and cohorts
@@ -88,7 +89,7 @@ def plot_heatmap_overal():
 
 ## Sig TFs counts
 def plot_sig_tf_counts():
-    aging_stats_sig = retrieve_sig_stats(type='bulk', filter_inconsistent=True).drop_duplicates(subset=['cell_type', 'tf'])
+    aging_stats_sig = retrieve_sig_stats(type='bulk', filter_inconsistent=True).drop_duplicates(subset=['cell_type', 'gene'])
     # plt.savefig(f'../output/tf_activity/trends.png', dpi=300)
     aging_stats_sig['cell_type'] = pd.Categorical(aging_stats_sig['cell_type'], categories=cell_types, ordered=True)
     plot_sig_tfs_stats(aging_stats_sig, figsize=(2, 1.5), palette=palette_trend_2)
@@ -196,7 +197,7 @@ def plot_central_features(type = 'bulk'):
             stats_ct = stats_all[stats_all['cell_type'] == ct].copy()
             if focus == 'source':
                 # Merge with TF stats to get trend
-                stats_ct = stats_ct[['tf', 'slope']].drop_duplicates(subset='tf')
+                stats_ct = stats_ct[['gene', 'slope']].drop_duplicates(subset='gene')
                 stats_ct.columns = ['source', 'slope']
                 merged = counts.merge(stats_ct, on='source', how='left')
                 # Handle missing slopes - assign a small positive value to avoid NaN
@@ -264,8 +265,8 @@ def plot_central_features(type = 'bulk'):
 def plot_interaction_of_aging_TFs_between_cell_types(type = 'bulk'):
     from grn_benchmark.src.exp_analysis.helper import plot_interactions, create_interaction_df
 
-    stats_sig = retrieve_sig_stats(type=type).drop_duplicates(subset=['cell_type', 'tf'])
-    df_dict = stats_sig.groupby(['cell_type'])['tf'].apply(list).to_dict()
+    stats_sig = retrieve_sig_stats(type=type).drop_duplicates(subset=['cell_type', 'gene'])
+    df_dict = stats_sig.groupby(['cell_type'])['gene'].apply(list).to_dict()
     interaction_main_df = create_interaction_df(df_dict)
     aa = plot_interactions(interaction_main_df, min_subset_size=5, min_degree=1, color_map=palette_cell_types)
     file_name = f"{PLOTS_DIR}/interactions.png"
@@ -293,7 +294,7 @@ def plot_interaction_of_aging_TFs_between_cell_types(type = 'bulk'):
         mask = interaction_main_df[ttypes].sum(axis=1)==len(ttypes)
         features = mask[mask].index
         # Get significant TFs for CD4T and CD8T cells
-        df = stats_sig[stats_sig['tf'].isin(features)].drop_duplicates(subset=['cell_type', 'tf'])
+        df = stats_sig[stats_sig['gene'].isin(features)].drop_duplicates(subset=['cell_type', 'gene'])
         df['neg_log10_adj_pval'] = -np.log10(df['meta_p_adj'])
 
         fig, ax = plt.subplots(1, 1, figsize=(3, 3))
@@ -302,7 +303,10 @@ def plot_interaction_of_aging_TFs_between_cell_types(type = 'bulk'):
 def gsea_analysis():
     from ciim.src.pathway_analysis.util import get_genesets, pathway_kde_func, get_hallmark, gsea_func, wrapper_gsea
 
-    wrapper_gsea(stats_sig, feature_type='tf_activity')
+    wrapper_gsea(stats_sig)
+    file_name = f"{PLOTS_DIR}/gsea_tf_activity.png"
+    print(f"Saving figure to {file_name}")
+    plt.savefig(file_name, bbox_inches='tight', dpi=200)
 
 def plot_case_tf():
     case_tf = 'SATB1'  # 'TCF7' 'SATB1' 
@@ -408,11 +412,114 @@ def plot_case_tf():
         for cell_type in ['MONO']:
             wrapper_draw_net(cell_type, datasets_all, features, min_degree=3, indivitual_net=False, draw_evidence=True, draw_collectri=True, figsize=(2.5, 2.5), figsize_collectri=(4, 4), 
                             offset_evidence=.13, arc_offset=.05, only_promotor_based=False)
+def plot_sig_genes_counts_hallmarks():
+    from ciim.src.common import PRIOR_DIR
+    # Load aging hallmark genes with gene set information
+    gene_col = 'gene' 
+    geneset_col = 'gene_set'
+    type = 'bulk'
+    aging_hallmark_path = f'{PRIOR_DIR}/aging_hallmark_genes.csv'
+    if not os.path.exists(aging_hallmark_path):
+        raise FileNotFoundError(f'Aging hallmark genes file not found at {aging_hallmark_path}')
+    
+    aging_hallmark_df = pd.read_csv(aging_hallmark_path)   
+    
+    # Load significant stats for aging hallmarks
+    stats_sig = retrieve_sig_stats(type, feature_type='aging_hallmarks', filter_inconsistent=True)
+    # Merge with gene set information
+    stats_with_geneset = stats_sig.merge(
+        aging_hallmark_df[[gene_col, geneset_col]],
+        left_on='gene',  # In the stats, genes are stored in 'gene' column
+        right_on='gene',
+        how='left'
+    )
+    
+    # Calculate counts per cell type and gene set
+    stats_with_geneset['trend'] = stats_with_geneset['slope'].apply(
+        lambda x: 'Increase in aging' if x > 0 else 'Decrease in aging'
+    )
+    
+    # Count significant genes per cell type and gene set
+    count_df = stats_with_geneset.groupby(['cell_type', geneset_col, 'trend']).size().reset_index(name='count')
+
+    # Pivot to get separate columns for increase and decrease
+    count_pivot = count_df.pivot_table(
+        index=['cell_type', geneset_col],
+        columns='trend',
+        values='count',
+        fill_value=0
+    ).reset_index()
+    
+    # Get unique cell types and gene sets
+    cell_types_unique = count_pivot['cell_type'].unique()
+    genesets_unique = sorted(count_pivot[geneset_col].unique())
+    
+    # Create one plot per cell type
+    from matplotlib.patches import Patch
+    
+    for ct in cell_types_unique:
+        ct_data = count_pivot[count_pivot['cell_type'] == ct]
+        
+        # Align data with genesets_unique order
+        increase_counts = []
+        decrease_counts = []
+        
+        for gs in genesets_unique:
+            gs_data = ct_data[ct_data[geneset_col] == gs]
+            if len(gs_data) > 0:
+                increase_counts.append(gs_data['Increase in aging'].values[0] if 'Increase in aging' in gs_data.columns else 0)
+                decrease_counts.append(gs_data['Decrease in aging'].values[0] if 'Decrease in aging' in gs_data.columns else 0)
+            else:
+                increase_counts.append(0)
+                decrease_counts.append(0)
+        
+        # Plot
+        fig, ax = plt.subplots(figsize=(max(6, len(genesets_unique) * 0.6), 4))
+        
+        x = np.arange(len(genesets_unique))
+        width = 0.35
+        
+        # Plot bars for increase and decrease
+        bars1 = ax.bar(x - width/2, increase_counts, width, 
+                        label='Increase in aging', 
+                        color=palette_trend_2['Increase in aging'], 
+                        alpha=0.7)
+        bars2 = ax.bar(x + width/2, decrease_counts, width, 
+                        label='Decrease in aging', 
+                        color=palette_trend_2['Decrease in aging'], 
+                        alpha=0.7)
+        
+        # Aesthetics
+        ax.set_xlabel('Gene Set', fontsize=10)
+        ax.set_ylabel('Number of Significant Genes', fontsize=10)
+        ax.set_title(f'Aging-associated genes: {ct}', fontsize=12, weight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(genesets_unique, rotation=45, ha='right', fontsize=9)
+        ax.legend(frameon=False, loc='upper left')
+        ax.spines[['top', 'right']].set_visible(False)
+        ax.margins(x=0.02)
+        
+        plt.tight_layout()
+        file_name = f"{PLOTS_DIR}/aging_hallmarks_by_geneset_{ct}.png"
+        print(f"Saving figure to {file_name}")
+        plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+        plt.close()
+        
 if __name__ == "__main__":
-    plot_heatmap_overal()
-    plot_sig_tf_counts()
-    # plot_sig_networks()
-    plot_central_features()
-    plot_interaction_of_aging_TFs_between_cell_types()
-    gsea_analysis()
-    plot_case_tf()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--feature-type', type=str, required=True, help='Feature type to analyze')
+    args = parser.parse_args()
+    feature_type = args.feature_type
+
+    if feature_type == 'tf_activity':
+        plot_heatmap_overal()
+        plot_sig_tf_counts()
+        # plot_sig_networks()
+        plot_central_features()
+        plot_interaction_of_aging_TFs_between_cell_types()
+        gsea_analysis()
+        plot_case_tf()
+    elif feature_type == 'aging_hallmarks':
+        plot_sig_genes_counts_hallmarks()
+    else:
+        raise ValueError('Unknown feature type')

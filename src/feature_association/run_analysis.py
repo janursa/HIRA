@@ -14,6 +14,7 @@ from ciim.src.feature_association.config import get_config, list_datasets
 from ciim.src.feature_association.helper import (
     wrapper_tf_activity,
     wrapper_gene_expression,
+    wrapper_aging_hallmarks,
     wrapper_association_with_age_condition,
     retrieve_sig_stats
 )
@@ -51,7 +52,7 @@ def run_condition_analysis(
     Returns
     -------
     dict
-        Results dictionary with 'condition_stats' and 'aging_stats'
+        Results dictionary with 'condition_stats'
     """
     # Get configuration(s) - may be single or multiple
     configs = get_config(dataset)
@@ -85,6 +86,8 @@ def run_condition_analysis(
             wrapper_tf_activity(par)
         elif feature_type == 'gene_expression':
             wrapper_gene_expression(par)
+        elif feature_type == 'aging_hallmarks':
+            wrapper_aging_hallmarks(par)
         else:
             raise ValueError(f"Unknown feature type: {feature_type}")
         print("✓ Features calculated")
@@ -129,26 +132,7 @@ def run_condition_analysis(
     stats_file = f'{SAVE_DIR}/stats/stats_{dataset}_{data_type}_{feature_type}_{configs[0].test_type}.csv'
     condition_stats_combined.to_csv(stats_file, index=False)
     print(f"✓ Condition stats saved: {stats_file}")
-    
-    # Step 3: Load aging reference
-    print("\n[3/3] Loading aging reference...")
-    aging_stats = retrieve_sig_stats(
-        type='bulk',
-        race='both',
-        feature_type=feature_type
-    ).drop_duplicates(subset=['cell_type', 'tf' if feature_type == 'tf_activity' else 'target'])
-    print(f"✓ Loaded {len(aging_stats)} significant aging features")
-    
-    print("\n" + "=" * 80)
-    print("ANALYSIS COMPLETE")
-    print("=" * 80 + "\n")
-    
-    return {
-        'configs': configs,
-        'condition_stats': condition_stats_combined,
-        'aging_stats': aging_stats,
-        'stats_file': stats_file
-    }
+
 
 
 def main():
@@ -193,7 +177,6 @@ Available datasets:
     parser.add_argument(
         '--feature-type',
         type=str,
-        choices=['tf_activity', 'gene_expression'],
         default='tf_activity',
         help='Feature type to analyze (default: tf_activity)'
     )
@@ -223,7 +206,7 @@ Available datasets:
     args = parser.parse_args()
     
     try:
-        results = run_condition_analysis(
+        run_condition_analysis(
             dataset=args.dataset,
             cell_types=args.cell_types,
             feature_type=args.feature_type,
@@ -231,11 +214,6 @@ Available datasets:
             skip_features=args.skip_features,
             association_type=args.association_type
         )
-        
-        print("\nResults:")
-        print(f"  Condition stats: {results['stats_file']}")
-        print(f"  Significant features: {(results['condition_stats']['p_value_adj'] < 0.05).sum()}")
-        
         return 0
         
     except Exception as e:

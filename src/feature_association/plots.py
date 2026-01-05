@@ -287,7 +287,7 @@ def plot_ctr_condition_distribution(cell_types, genes, treatment, ctr, dataset, 
         plt.suptitle(f' {treatment} - {cell_type}', y=1.1)
 
 def plot_sig_tfs_stats(df, figsize=(3.5, 2), palette=None, ax=None):
-    df = df[['tf', 'cell_type', 'trend']]
+    df = df[['gene', 'cell_type', 'trend']]
     df['trend'] = df['trend'].astype(CategoricalDtype(categories=palette.keys(), ordered=True))
     df = df[~df.duplicated()].reset_index(drop=True)
     df_counts = df.groupby(['cell_type', 'trend']).size().reset_index(name='Sig. TFs')
@@ -309,8 +309,8 @@ class ModularizedNetPlot:
         from ciim.src.feature_association.helper import retrieve_nets, retrieve_sig_stats
         from ciim.src.common import datasets_e, datasets_a, datasets_all
 
-        stats_sig = retrieve_sig_stats(race=race, type=type).drop_duplicates(subset=['cell_type', 'tf'])
-        stats_sig_t = stats_sig[stats_sig['cell_type'] == cell_type].set_index(['tf'])
+        stats_sig = retrieve_sig_stats(race=race, type=type).drop_duplicates(subset=['cell_type', 'gene'])
+        stats_sig_t = stats_sig[stats_sig['cell_type'] == cell_type].set_index(['gene'])
         sig_tfs = stats_sig_t.index.unique()
         if race=='european':
             datasets = datasets_e
@@ -396,8 +396,8 @@ class ModularizedNetPlot:
     def add_trend_to_collapsed_net_only_tfs(collapsed_net, type, race, cell_type):
         from ciim.src.feature_association.helper import retrieve_sig_stats
         # - sumarize the trends for the collapsed net
-        stats_sig = retrieve_sig_stats(race=race, type=type).drop_duplicates(subset=['cell_type', 'tf'])
-        stats_sig_t = stats_sig[stats_sig['cell_type'] == cell_type].set_index(['tf'])
+        stats_sig = retrieve_sig_stats(race=race, type=type).drop_duplicates(subset=['cell_type', 'gene'])
+        stats_sig_t = stats_sig[stats_sig['cell_type'] == cell_type].set_index(['gene'])
         def summarize_trend(x):
             'Assigns one trend for multiple tfs'
             unique_trends = np.unique([stats_sig_t.loc[tf]['trend'] for tf in x.split('/')])
@@ -457,7 +457,7 @@ def dotplot_category_color(df, ax,
             color_col='trend', 
             size_col='neg_log10_adj_pval', 
             x='cell_type', 
-            y='tf', 
+            y='gene', 
             palette=None, sizes=(20, 200),
             show_color_legend=True, 
             show_size_legend=True,
@@ -685,7 +685,7 @@ def plot_trend_sle_case(adata, tf='LEF1', cell_type='CD8T'):
     plt.suptitle(f'{tf}', fontsize=10, fontweight='bold', y=.9)
     plt.tight_layout()
 
-def plot_analysis_and_centrality(df, all_groups, palette_all, feature_col='tf', figsize=(3.5, 5), plot_centrality=True,
+def plot_analysis_and_centrality(df, all_groups, palette_all, feature_col='gene', figsize=(3.5, 5), plot_centrality=True,
                                 ax2_margins={'y': 0.1, 'x': 0.1}, hide_ylabels=False, show_legend=True):
     
     # stats_d_sig = stats_d[stats_d['p_value_adj'] < 0.05]
@@ -714,7 +714,7 @@ def plot_analysis_and_centrality(df, all_groups, palette_all, feature_col='tf', 
 
     ax0.set_xticklabels(ax0.get_xticklabels(), rotation=45, ha="right")
     ax0.set_xlabel('')
-    ax0.set_ylabel('TFs' if feature_col == 'tf' else 'Pathways')
+    ax0.set_ylabel('TFs' if feature_col == 'gene' else 'Pathways')
     ax0.margins(x=.2, y=.05 if len(tfs) > 10 else 0.2)
     ax0.spines[['top', 'right']].set_visible(False)
     if hide_ylabels:
@@ -774,10 +774,10 @@ def plot_overlap(
 
     included_celltypes = stats_drug_sig['cell_type'].cat.categories 
 
-    merged = aging_stats_sig.merge(stats_drug_sig, on=['tf', col], how=how)
+    merged = aging_stats_sig.merge(stats_drug_sig, on=['gene', col], how=how)
     merged['slope_sign'] = np.sign(merged['slope'])
     merged['slope_condition_sign'] = np.sign(merged['slope_condition'])
-    merged = merged.drop_duplicates(subset=['tf', col, 'slope_sign', 'slope_condition_sign'])
+    merged = merged.drop_duplicates(subset=['gene', col, 'slope_sign', 'slope_condition_sign'])
     merged['trend'] = merged['slope_sign'].map({1: 'positive', -1: 'negative'})
     merged = merged[merged['cell_type'].isin(included_celltypes)]
 
@@ -897,8 +897,8 @@ def plot_gene_score_association_with_age(cell_type, datasets, type, features=Non
     # - format the data
     stats_t = retrieve_stats_features(type=type, feature_type=feature_type, cell_type=cell_type, datasets=datasets, condition='healthy')
     
-    if 'tf' in stats_t.columns:
-        stats_t = stats_t.rename(columns={'tf': 'source'})
+    if 'gene' in stats_t.columns:
+        stats_t = stats_t.rename(columns={'gene': 'source'})
     if filter_meta_significant:
         stats_sig = retrieve_sig_stats(type=type, race=race, feature_type=feature_type)
         stats_sig = stats_sig[stats_sig['cell_type'] == cell_type]
@@ -1064,12 +1064,12 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
     stats_t = retrieve_stats_features(type, feature_type, cell_type=cell_type, datasets=datasets, condition='healthy')
     # print(stats_t)
     
-    if 'tf' in stats_t.columns:
-        stats_t = stats_t.rename(columns={'tf': 'source'})
+    if 'gene' in stats_t.columns:
+        stats_t = stats_t.rename(columns={'gene': 'source'})
     if filter_meta_significant:
         stats_sig = retrieve_sig_stats(type=type, race=race, feature_type=feature_type)
-        if 'tf' in stats_sig.columns:
-            stats_sig = stats_sig.rename(columns={'tf': 'source'})
+        if 'gene' in stats_sig.columns:
+            stats_sig = stats_sig.rename(columns={'gene': 'source'})
         stats_sig = stats_sig[stats_sig['cell_type'] == cell_type]
         sig_tfs = stats_sig[feature_col].unique()
         stats_t = stats_t[stats_t[feature_col].isin(sig_tfs)]
@@ -1641,12 +1641,12 @@ def plot_overall_heatmap(stats_all,
     stats_all = stats_all[stats_all[second_col].isin(second_col_unique_values)]
     stats_all['trend_int'] = stats_all['slope'].map(lambda value: 1 if value > 0 else (-1 if value < 0 else 0))
     multi_index = pd.MultiIndex.from_product([first_col_unique_values, second_col_unique_values], names=[first_col, second_col])
-    pivot_df = stats_all.pivot(index="tf", columns=[first_col, second_col], values="trend_int")
+    pivot_df = stats_all.pivot(index='gene', columns=[first_col, second_col], values="trend_int")
     df_plot = pivot_df.reindex(columns=multi_index).fillna(0)
 
     # - format the is_sig if needed
     if 'is_significant' in stats_all.columns:
-        sig_df = stats_all.pivot(index="tf", columns=[first_col, second_col], values="is_significant")
+        sig_df = stats_all.pivot(index='gene', columns=[first_col, second_col], values="is_significant")
         sig_df = sig_df.reindex(columns=multi_index).fillna(0)
     else:
         sig_df = None
@@ -1809,9 +1809,9 @@ def plot_joint_scatter(stats_all, col='cell_type', vars=['CD4T', 'CD8T'], annota
     xy_vars = [f'{v}_pval' for v in vars]
     trend_vars = [f'{v}_trend' for v in vars]
 
-    stats_all_table = stats_all.pivot(index='tf', columns=col, values='neg_log10_adj_pval').reset_index().fillna(0)
-    stats_all_trend = stats_all.pivot(index='tf', columns=col, values='trend').reset_index()
-    stats_all_table = stats_all_table.merge(stats_all_trend, on='tf', suffixes=('_pval', '_trend'))
+    stats_all_table = stats_all.pivot(index='gene', columns=col, values='neg_log10_adj_pval').reset_index().fillna(0)
+    stats_all_trend = stats_all.pivot(index='gene', columns=col, values='trend').reset_index()
+    stats_all_table = stats_all_table.merge(stats_all_trend, on='gene', suffixes=('_pval', '_trend'))
     stats_all_table[trend_vars] = stats_all_table[trend_vars].fillna('Inconsistent')
 
     stats_all_table['trend'] = stats_all_table[trend_vars].apply(
@@ -1860,7 +1860,7 @@ def plot_joint_scatter(stats_all, col='cell_type', vars=['CD4T', 'CD8T'], annota
             
             # Adjust the annotation position slightly away from the point
             ax.annotate(
-                row['tf'], 
+                row['gene'], 
                 xy=(row[xy_vars[0]], row[xy_vars[1]]), 
                 xytext=(row[xy_vars[0]]  + x_offset[ii], row[xy_vars[1]] + y_offset[ii]),  # Adjust this value for distance
                 textcoords='data',
@@ -2258,7 +2258,7 @@ def heamap_plot_minor_cell_types(stats_all, palette,
     stats_all=stats_all[stats_all[minor_col].isin(cell_types)]
     
     stats_all['trend_int'] = stats_all[slope_col].map(lambda value: 1 if value > 0 else (-1 if value < 0 else 0))
-    pivot_df = stats_all.pivot(index='tf', columns=minor_col, values='trend_int').fillna(0)
+    pivot_df = stats_all.pivot(index='gene', columns=minor_col, values='trend_int').fillna(0)
     
     pivot_df = pivot_df.reindex(columns=cell_types).fillna(0)
 
@@ -2301,7 +2301,7 @@ def heamap_plot_minor_cell_types(stats_all, palette,
 
     # - format the is_sig if needed
     if 'is_significant' in stats_all.columns:
-        sig_df = stats_all.pivot(index="tf", columns='cell_type', values="is_significant").fillna(0)
+        sig_df = stats_all.pivot(index='gene', columns='cell_type', values="is_significant").fillna(0)
         sig_df = sig_df.reindex(columns=cell_types)
     else:
         sig_df = None
@@ -2535,7 +2535,7 @@ class DotPlotTFtarget:
 
         return data
     def wrapper_combine_data(self, stats_source, stats_target, net, filter_criteria='meta_p_adj_target', n_top_targets=20):   
-        stats_s = stats_source.rename(columns={'tf': 'source'})
+        stats_s = stats_source.rename(columns={'gene': 'source'})
         stats_t = stats_target
         data_all = self.combine_data(stats_s, stats_t, net)
 
@@ -2638,7 +2638,7 @@ def plot_trends(top_tfs, datasets, data_dict, palette, cell_type, surrogate_name
                 r2 = r_value**2
                 # - correct for multiple testing
                 if stats_df is not None:
-                    stats_df_sub = stats_df[(stats_df['tf'] == tf) & (stats_df['dataset'] == dataset)]
+                    stats_df_sub = stats_df[(stats_df['gene'] == tf) & (stats_df['dataset'] == dataset)]
                     p_value_adj = stats_df_sub.loc[:, 'meta_p_adj'].values[0]
                     p_value_adj = min([p_value_adj, 1])  # Ensure p-value is not greater than 1
                 else:
@@ -2702,7 +2702,7 @@ def plot_activation_vs_expression(df_combined,
             ax.text(
                 row[col_x] + x_offset,
                 row[col_y] + np.random.rand() * .1 *  y_range,
-                row['tf'],  # assumes TF names are in column "tf"
+                row['gene'],  # assumes TF names are in column 'gene'
                 fontsize=7,
                 ha='left',    # anchor text to the left since we shift right
                 va='bottom',  # anchor text above since we shift up

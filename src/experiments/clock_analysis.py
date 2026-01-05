@@ -177,7 +177,7 @@ def perform_statistical_tests(obs_pert, experiments, dataset, test_type='mixed_e
                 p_value, slope = test_unpaired(df_sub, ctr, treatment)
             elif test_type == 'mixed_effect':
                 p_value, slope = test_mixed_effects(
-                    dataset, df_sub, ctr, treatment, 
+                    df_sub, ctr, treatment, 
                     target_variable='predicted_age', 
                     group_key=group_key
                 )

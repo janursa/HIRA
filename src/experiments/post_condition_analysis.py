@@ -5,7 +5,7 @@ Unified Condition Analysis - Post-run visualization script
 This script performs post-run analysis for both disease and perturbation experiments,
 generating various visualizations including:
 - Overview heatmap of cell types
-- Overlap analysis with aging TFs
+- Overlap analysis with aging genes
 - Age-stratified analysis (disease) / Aging-perturbation comparison
 - Case TF trends / Donor-level effects (perturbations)
 - Pathway analysis
@@ -51,74 +51,94 @@ warnings.filterwarnings("ignore")
 plt.rcParams["figure.dpi"] = 150
 plt.rcParams["font.family"] = "Arial"
 
-
-def load_stats(dataset, data_type, feature_type, config_label=None):
-    """Load statistics from saved CSV file."""
-    cfg_list = get_config(dataset)
+def load_stats_soundlife(args):
+    print("Loading cmv_young and cmv_old configs (keeping separate)...")
+    cfg_list = get_config(args.dataset)
+    # Load both configs
+    cfg_young = next((c for c in cfg_list if c.config_label == 'cmv_young'), None)
+    cfg_old = next((c for c in cfg_list if c.config_label == 'cmv_old'), None)
     
-    # Special handling for 'cmv' label - keep cmv_young and cmv_old separate
-    if config_label == 'cmv' and dataset == 'soundlife':
-        print("Loading cmv_young and cmv_old configs (keeping separate)...")
-        
-        # Load both configs
-        cfg_young = next((c for c in cfg_list if c.config_label == 'cmv_young'), None)
-        cfg_old = next((c for c in cfg_list if c.config_label == 'cmv_old'), None)
-        
-        if cfg_young is None or cfg_old is None:
-            raise ValueError(f"Cannot find both cmv_young and cmv_old configs for dataset '{dataset}'")
-        
-        # Load stats file
-        stats_path = f'{SAVE_DIR}/stats/stats_{dataset}_{data_type}_{feature_type}_{cfg_young.test_type}.csv'
-        
-        if not os.path.exists(stats_path):
-            raise FileNotFoundError(f"Stats file not found: {stats_path}")
-        
-        stats = pd.read_csv(stats_path)
-        
-        # Filter to cmv_young and cmv_old, keep them separate (don't combine)
-        if 'config_label' in stats.columns:
-            stats_young = stats[stats['config_label'] == 'cmv_young'].copy()
-            stats_old = stats[stats['config_label'] == 'cmv_old'].copy()
-            
-            # Combine both age groups BUT keep config_label distinction
-            stats = pd.concat([stats_young, stats_old], ignore_index=True)
-            
-            # DON'T update config_label - keep cmv_young and cmv_old separate!
-            
-            print(f"  Loaded {len(stats_young)} rows from cmv_young")
-            print(f"  Loaded {len(stats_old)} rows from cmv_old")
-            print(f"  Combined: {len(stats)} rows (kept config_label distinct)")
-        else:
-            raise ValueError("Stats file does not contain 'config_label' column for filtering")
-        
-        # Return the young config as template (they have same structure)
-        cfg = cfg_young
-        
-        return stats, cfg
+    if cfg_young is None or cfg_old is None:
+        raise ValueError(f"Cannot find both cmv_young and cmv_old configs for dataset '{args.dataset}'")
     
-    # Standard config handling
-    if config_label:
-        cfg = next((c for c in cfg_list if c.config_label == config_label), None)
-        if cfg is None:
-            raise ValueError(f"Config with label '{config_label}' not found for dataset '{dataset}'")
-    else:
-        cfg = cfg_list[0]  # Use first config (most datasets have only one)
-    
-    # For soundlife, all configs are in the same stats file (no config_label in filename)
-    stats_path = f'{SAVE_DIR}/stats/stats_{dataset}_{data_type}_{feature_type}_{cfg.test_type}.csv'
+    # Load stats file
+    stats_path = f'{SAVE_DIR}/stats/stats_{args.dataset}_{args.data_type}_{args.feature_type}_{cfg_young.test_type}.csv'
     
     if not os.path.exists(stats_path):
         raise FileNotFoundError(f"Stats file not found: {stats_path}")
     
     stats = pd.read_csv(stats_path)
     
-    # For soundlife with config_label, filter stats to the specific config
-    if config_label and dataset == 'soundlife':
-        # The stats file contains all configs, filter by the condition specified in the config
-        # This will be handled by the config object's condition_column, control, treatment
-        pass  # Stats filtering happens later based on config properties
+    # Filter to cmv_young and cmv_old, keep them separate (don't combine)
+    if 'config_label' in stats.columns:
+        stats_young = stats[stats['config_label'] == 'cmv_young'].copy()
+        stats_old = stats[stats['config_label'] == 'cmv_old'].copy()
+        
+        # Combine both age groups BUT keep config_label distinction
+        stats = pd.concat([stats_young, stats_old], ignore_index=True)
+        
+        # DON'T update config_label - keep cmv_young and cmv_old separate!
+        
+        print(f"  Loaded {len(stats_young)} rows from cmv_young")
+        print(f"  Loaded {len(stats_old)} rows from cmv_old")
+        print(f"  Combined: {len(stats)} rows (kept config_label distinct)")
+    else:
+        raise ValueError("Stats file does not contain 'config_label' column for filtering")
     
-    return stats, cfg
+    # For soundlife with config_label, filter to the specific config
+    # Skip filtering if config_label is 'cmv' (already combined in load_stats)
+    if args.config_label and args.dataset == 'soundlife' and 'config_label' in stats.columns and args.config_label != 'cmv':
+        print(f"Filtering stats to config_label: {args.config_label}")
+        stats = stats[stats['config_label'] == args.config_label].copy()
+        print(f"  Filtered to {len(stats)} rows")
+    
+    
+    return stats
+def load_stats(args):
+    """Load statistics from saved CSV file."""
+    cfg_list = get_config(args.dataset)
+    config_label = args.config_label
+    
+    # Special handling for 'cmv' label - keep cmv_young and cmv_old separate
+    if args.dataset == 'soundlife':
+        stats = load_stats_soundlife(args)
+    else:
+        # Standard config handling
+        if config_label:
+            cfg = next((c for c in cfg_list if c.config_label == config_label), None)
+            if cfg is None:
+                raise ValueError(f"Config with label '{config_label}' not found for dataset '{args.dataset}'")
+        else:
+            cfg = cfg_list[0]  # Use first config (most datasets have only one)
+        
+        # For soundlife, all configs are in the same stats file (no config_label in filename)
+        stats_path = f'{SAVE_DIR}/stats/stats_{args.dataset}_{args.data_type}_{args.feature_type}_{cfg.test_type}.csv'
+        
+        if not os.path.exists(stats_path):
+            raise FileNotFoundError(f"Stats file not found: {stats_path}")
+        
+        stats = pd.read_csv(stats_path)
+    # Standardize column names - ensure slope_condition exists
+    if 'slope' in stats.columns and 'slope_condition' not in stats.columns:
+        stats['slope_condition'] = stats['slope']
+    
+    # Filter based on analysis type
+    if args.analysis_type == 'disease' or args.analysis_type == 'aging':
+        stats = stats[~stats['slope_condition'].isna()].copy()
+        stats['major_cell_type'] = stats['cell_type'].apply(
+            lambda x: mapping_minor_2_major.get(x, x)
+        )
+    else:
+        stats['cell_type'] = pd.Categorical(stats['cell_type'], categories=cell_types, ordered=True)
+        stats['trend'] = [
+            'Increase after treatment' if x > 0 else 'Decrease after treatment' 
+            for x in stats['slope_condition']
+        ]
+    
+    stats_sig = stats[stats['p_value_adj'] < args.sig_threshold].copy()
+    
+
+    return stats, stats_sig
 
 
 def get_condition_palette(analysis_type):
@@ -131,9 +151,14 @@ def get_condition_palette(analysis_type):
         return palette_disease_effect  # Default
 
 
-def plot_overview_heatmap(stats, dataset, analysis_type, output_dir, config_label=None):
+def plot_overview_heatmap(stats, args):
     """Generate overview heatmap of minor cell types."""
     print("Generating overview heatmap...")
+    
+    dataset = args.dataset
+    analysis_type = args.analysis_type
+    output_dir = args.output_dir
+    config_label = args.config_label
     
     palette = get_condition_palette(analysis_type)
     
@@ -207,13 +232,20 @@ def _plot_single_heatmap(stats, palette, output_dir, suffix=None):
     print(f"  Saved: {output_path}")
 
 
-def plot_aging_overlap(stats_sig, dataset, included_cell_types, analysis_type, agreement, output_dir):
-    """Plot overlap between condition (disease/perturbation) and aging TFs."""
+def plot_aging_overlap(stats_sig, args):
+    """Plot overlap between condition (disease/perturbation) and aging genes."""
     print("Generating aging overlap plot...")
     
+    dataset = args.dataset
+    included_cell_types = args.cell_types
+    analysis_type = args.analysis_type
+    agreement = args.agreement
+    output_dir = args.output_dir
+    feature_type = args.feature_type
+    
     cfg = get_config(dataset)[0]
-    aging_stats_sig = retrieve_sig_stats(type='bulk').drop_duplicates(subset=['cell_type', 'tf'])
-    aging_stats_sig = aging_stats_sig[['tf', 'cell_type', 'slope']].copy()
+    aging_stats_sig = retrieve_sig_stats(type='bulk', feature_type=feature_type).drop_duplicates(subset=['cell_type', 'gene'])
+    aging_stats_sig = aging_stats_sig[['gene', 'cell_type', 'slope']].copy()
     
     # Determine which conditions to process
     if analysis_type == 'perturbation':
@@ -227,7 +259,8 @@ def plot_aging_overlap(stats_sig, dataset, included_cell_types, analysis_type, a
         print(f"  Processing CMV configs separately: {conditions_to_plot}")
     else:
         conditions_to_plot = [None]  # For disease/aging, process all together
-    
+    # print(stats_sig.groupby(['cell_type','condition'])['gene'].nunique())
+
     for cell_type in included_cell_types:
         print(f"  Processing cell type: {cell_type}")
         
@@ -250,11 +283,15 @@ def plot_aging_overlap(stats_sig, dataset, included_cell_types, analysis_type, a
                 print(f"    Warning: No data for {'condition ' + condition_label if condition_label else 'this cell type'}")
                 continue
             
-            # Calculate overlap statistics (aging TFs as base)
-            # Use aging TFs as base (left merge) to calculate overlap
-            merged = aging_stats_sig_sub[['tf', 'slope']].merge(
-                df_sub[['tf', 'slope_condition']], 
-                on='tf', 
+            # Calculate overlap statistics (aging genes as base)
+            if False:
+                genes_aging = set(aging_stats_sig_sub['gene'].unique())
+                genes_condition = set(df_sub['gene'].unique())
+                print(len(genes_aging), len(genes_condition), 'overlap calculation :', len(genes_aging & genes_condition))
+                aa
+            merged = aging_stats_sig_sub[['gene', 'slope']].merge(
+                df_sub[['gene', 'slope_condition']], 
+                on='gene', 
                 how='left'
             )
             
@@ -267,13 +304,13 @@ def plot_aging_overlap(stats_sig, dataset, included_cell_types, analysis_type, a
                 total_overlap = len(merged)
                 
                 condition_str = f" ({condition_label})" if condition_label else ""
-                print(f"    Overlap with aging TFs{condition_str}: {total_overlap}")
+                print(f"    Overlap with aging genes{condition_str}: {total_overlap}")
                 print(f"      Same direction: {same_direction} ({same_direction/total_overlap*100:.1f}%)")
                 print(f"      Opposite direction: {opposite_direction} ({opposite_direction/total_overlap*100:.1f}%)")
             
             plot_overlap(
-                df_sub[['tf', 'cell_type', 'slope_condition']].reset_index(drop=True),  # RIGHT side (Sound Life sig TFs)
-                aging_stats_sig_sub[['tf', 'cell_type', 'slope']].reset_index(drop=True),  # LEFT side (Reference aging TFs - baseline)
+                df_sub[['gene', 'cell_type', 'slope_condition']].reset_index(drop=True),  # RIGHT side (Sound Life sig genes)
+                aging_stats_sig_sub[['gene', 'cell_type', 'slope']].reset_index(drop=True),  # LEFT side (Reference aging genes - baseline)
                 col='cell_type', 
                 how='left', 
                 agreement=agreement, 
@@ -294,30 +331,35 @@ def plot_aging_overlap(stats_sig, dataset, included_cell_types, analysis_type, a
             print(f"    Saved: {output_path}")
 
 
-def plot_directional_consistency_scatter(stats_sig, dataset, included_cell_types, output_dir):
+def plot_directional_consistency_scatter(stats_sig, args):
     """
-    Generate directional consistency scatter plots comparing Sound Life vs Reference aging TFs.
+    Generate directional consistency scatter plots comparing Sound Life vs Reference aging genes.
     Shows signed -log10(p-values) with direction concordance.
     """
     print("Generating directional consistency scatter plots...")
     
+    feature_type = args.feature_type
+    dataset = args.dataset
+    included_cell_types = args.cell_types
+    output_dir = args.output_dir
+    
     import seaborn as sns
     
-    # Load reference aging TFs
-    aging_stats_sig = retrieve_sig_stats(type='bulk', filter_inconsistent=True)
-    aging_stats_sig = aging_stats_sig.drop_duplicates(subset=['cell_type', 'tf'])
+    # Load reference aging genes
+    aging_stats_sig = retrieve_sig_stats(type='bulk', feature_type=feature_type, filter_inconsistent=True)
+    aging_stats_sig = aging_stats_sig.drop_duplicates(subset=['cell_type', 'gene'])
     
     # Prepare data
     sl_sig = (
         stats_sig[stats_sig['p_value_adj'] < 0.05]
         .sort_values("p_value_adj")
-        .drop_duplicates(["cell_type", "tf"], keep="first")
+        .drop_duplicates(["cell_type", 'gene'], keep="first")
     )
     
     ref_aging_unique = (
         aging_stats_sig
         .sort_values("p_value_adj")
-        .drop_duplicates(["cell_type", "tf"], keep="first")
+        .drop_duplicates(["cell_type", 'gene'], keep="first")
     )
     
     sns.set_style('whitegrid')
@@ -327,7 +369,7 @@ def plot_directional_consistency_scatter(stats_sig, dataset, included_cell_types
     
     for cell_type in included_cell_types:
         if cell_type not in sl_sig['cell_type'].unique():
-            print(f"  Warning: No significant TFs for {cell_type}")
+            print(f"  Warning: No significant genes for {cell_type}")
             continue
             
         print(f"  Processing {cell_type}")
@@ -335,13 +377,13 @@ def plot_directional_consistency_scatter(stats_sig, dataset, included_cell_types
         sl_ct = sl_sig[sl_sig['cell_type'] == cell_type].copy()
         ref_ct = ref_aging_unique[ref_aging_unique['cell_type'] == cell_type].copy()
         
-        print(f"    Sound Life significant TFs: {len(sl_ct)}")
-        print(f"    Reference aging TFs: {len(ref_ct)}")
+        print(f"    Sound Life significant genes: {len(sl_ct)}")
+        print(f"    Reference aging genes: {len(ref_ct)}")
         
         # Inner merge to get overlap
-        merged = sl_ct[['tf', 'slope_condition', 'p_value_adj']].merge(
-            ref_ct[['tf', 'slope', 'meta_p_adj']],
-            on='tf',
+        merged = sl_ct[['gene', 'slope_condition', 'p_value_adj']].merge(
+            ref_ct[['gene', 'slope', 'meta_p_adj']],
+            on='gene',
             how='inner',
             suffixes=('_sl', '_ref')
         )
@@ -350,7 +392,7 @@ def plot_directional_consistency_scatter(stats_sig, dataset, included_cell_types
             print(f"    Overlap too small (n={len(merged)}), skipping")
             continue
         
-        print(f"    Overlap TFs: {len(merged)}")
+        print(f"    Overlap genes: {len(merged)}")
         
         # Calculate directional metrics
         merged['same_direction'] = (
@@ -409,19 +451,24 @@ def plot_directional_consistency_scatter(stats_sig, dataset, included_cell_types
         print(f"    Saved: {output_path}")
 
 
-def plot_aging_disease_overlap_heatmap(stats_sig, dataset, cell_types, output_dir):
+def plot_aging_disease_overlap_heatmap(stats_sig, args):
     """
     Plot heatmap comparing TF activity/directions between aging and disease/aging condition.
     (Disease/Aging-specific visualization showing side-by-side slopes)
-    Creates separate heatmaps for each cell type with TFs on y-axis.
+    Creates separate heatmaps for each cell type with genes on y-axis.
     """
     print("Generating aging vs condition overlap heatmap...")
+    
+    dataset = args.dataset
+    cell_types = args.cell_types
+    output_dir = args.output_dir
+    feature_type = args.feature_type
     
     import seaborn as sns
     from matplotlib.patches import Rectangle
         
     # Load aging stats
-    aging_stats_sig = retrieve_sig_stats(type='bulk').drop_duplicates(subset=["cell_type", "tf"])
+    aging_stats_sig = retrieve_sig_stats(type='bulk', feature_type=feature_type).drop_duplicates(subset=["cell_type", 'gene'])
     
     # Process each cell type separately
     for cell_type in cell_types:
@@ -434,41 +481,41 @@ def plot_aging_disease_overlap_heatmap(stats_sig, dataset, cell_types, output_di
         # Get condition data for this cell type
         condition_df = stats_sig[
             stats_sig['cell_type'] == cell_type
-        ][['tf', 'slope_condition']].copy()
+        ][['gene', 'slope_condition']].copy()
         
         # Get aging data for same cell type
         aging_df = aging_stats_sig[
             aging_stats_sig['cell_type'] == cell_type
-        ][['tf', 'slope']].copy()
+        ][['gene', 'slope']].copy()
         
-        # Get union of TFs from both condition and aging
-        all_tfs = sorted(list(set(condition_df['tf'].tolist() + aging_df['tf'].tolist())))
+        # Get union of genes from both condition and aging
+        all_tfs = sorted(list(set(condition_df['gene'].tolist() + aging_df['gene'].tolist())))
         
-        # Create a dataframe with all TFs
-        merged = pd.DataFrame({'tf': all_tfs})
-        merged = merged.merge(condition_df, on='tf', how='left')
-        merged = merged.merge(aging_df, on='tf', how='left')
+        # Create a dataframe with all genes
+        merged = pd.DataFrame({'gene': all_tfs})
+        merged = merged.merge(condition_df, on='gene', how='left')
+        merged = merged.merge(aging_df, on='gene', how='left')
         
         if len(merged) == 0:
-            print(f"    Warning: No TFs found for {cell_type}")
+            print(f"    Warning: No genes found for {cell_type}")
             continue
         
-        # Sort by aging slope (Age-associated TFs column), put NaNs at the end
+        # Sort by aging slope (Age-associated genes column), put NaNs at the end
         merged['sort_key'] = merged['slope'].fillna(999)  # NaNs go to bottom
         merged = merged.sort_values('sort_key', ascending=False).drop(columns=['sort_key'])
         
         n_tfs = len(merged)
-        print(f"    Total TFs (union): {n_tfs}")
-        print(f"      Condition TFs: {condition_df['tf'].nunique()}")
-        print(f"      Aging TFs: {aging_df['tf'].nunique()}")
+        print(f"    Total genes (union): {n_tfs}")
+        print(f"      Condition genes: {condition_df['gene'].nunique()}")
+        print(f"      Aging genes: {aging_df['gene'].nunique()}")
         
-        # Prepare data matrix: rows are TFs, columns are [Aging, Condition]
+        # Prepare data matrix: rows are genes, columns are [Aging, Condition]
         data_matrix = merged[['slope', 'slope_condition']].values
         
         # Convert to binary: +1 for positive slope, -1 for negative slope
         binary_matrix = np.sign(data_matrix)
         
-        # Create heatmap with TFs on y-axis
+        # Create heatmap with genes on y-axis
         figsize = (2.5, max(6, n_tfs * 0.05))
         
         fig, ax = plt.subplots(figsize=figsize)
@@ -493,12 +540,12 @@ def plot_aging_disease_overlap_heatmap(stats_sig, dataset, cell_types, output_di
         
         # Set column labels
         ax.set_xticks([0, 1])
-        ax.set_xticklabels(['Age-associated\nTFs', 'SoundLife'], fontsize=9, rotation=45, ha='right')
+        ax.set_xticklabels(['Age-associated\ngenes', 'SoundLife'], fontsize=9, rotation=45, ha='right')
         ax.set_xlabel('')
         
         # Hide y-axis labels (TF names) but show count
         ax.set_yticks([])
-        ax.set_ylabel(f'TFs (n={n_tfs})', fontsize=9)
+        ax.set_ylabel(f'genes (n={n_tfs})', fontsize=9)
         
         # Add colorbar
         cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, ticks=[-1, 1])
@@ -518,18 +565,22 @@ def plot_aging_disease_overlap_heatmap(stats_sig, dataset, cell_types, output_di
         print(f"    Saved: {output_path}")
 
 
-def plot_aging_experiment_heatmap(stats_sig, dataset, output_dir):
+def plot_aging_experiment_heatmap(stats_sig, args):
     """
     Plot heatmap comparing TF activity/directions between aging and experimental conditions.
     (Perturbation-specific visualization)
     """
     print("Generating aging vs experiment heatmap...")
     
+    dataset = args.dataset
+    output_dir = args.output_dir
+    feature_type = args.feature_type
+    
     import seaborn as sns
     from matplotlib.patches import Rectangle
         
     # Load aging stats
-    aging_stats_sig = retrieve_sig_stats(type='bulk').drop_duplicates(subset=["cell_type", "tf"])
+    aging_stats_sig = retrieve_sig_stats(type='bulk', feature_type=feature_type).drop_duplicates(subset=["cell_type", 'gene'])
     
     cfg = get_config(dataset)[0]
     target_treatments = cfg.target_treatments
@@ -546,15 +597,15 @@ def plot_aging_experiment_heatmap(stats_sig, dataset, output_dir):
             exp_df = stats_sig[
                 (stats_sig['condition'] == treatment) & 
                 (stats_sig['cell_type'] == cell_type)
-            ][['tf', 'slope_condition']].copy()
+            ][['gene', 'slope_condition']].copy()
             
             # Get aging data for same cell type
             aging_df = aging_stats_sig[
                 aging_stats_sig['cell_type'] == cell_type
-            ][['tf', 'slope']].copy()
+            ][['gene', 'slope']].copy()
             
-            # Merge on TFs that are in the experiment (left join)
-            merged = exp_df.merge(aging_df, on='tf', how='left')
+            # Merge on genes that are in the experiment (left join)
+            merged = exp_df.merge(aging_df, on='gene', how='left')
             
             if len(merged) == 0:
                 print(f"    Warning: No data for {treatment} in {cell_type}")
@@ -588,9 +639,9 @@ def plot_aging_experiment_heatmap(stats_sig, dataset, output_dir):
             ax.set_xticks([0, 1])
             ax.set_xlabel('')
             
-            # Remove y-axis labels (too many TFs)
+            # Remove y-axis labels (too many genes)
             ax.set_yticks([])
-            ax.set_ylabel(f'TFs (n={n_tfs})', fontsize=9)
+            ax.set_ylabel(f'genes (n={n_tfs})', fontsize=9)
             
             # Add colorbar
             cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
@@ -624,17 +675,24 @@ def plot_aging_experiment_heatmap(stats_sig, dataset, output_dir):
             print(f"    Saved: {output_path}")
 
 
-def plot_age_stratified_or_comparison(stats, stats_sig, dataset, analysis_type, target_cell_types, top_aging_tfs, output_dir):
+def plot_age_stratified_or_comparison(stats, stats_sig, args):
     """
     Plot age-stratified analysis (disease/aging) or aging-perturbation comparison.
     This function handles disease, aging, and perturbation cases.
     """
-    print(f"Generating {'age-stratified analysis' if (analysis_type == 'disease' or analysis_type == 'aging') else 'aging vs perturbation comparison'}...")
+    print(f"Generating {'age-stratified analysis' if (args.analysis_type == 'disease' or args.analysis_type == 'aging') else 'aging vs perturbation comparison'}...")
+    
+    dataset = args.dataset
+    analysis_type = args.analysis_type
+    target_cell_types = args.cell_types
+    top_aging_tfs = args.top_aging_tfs
+    output_dir = args.output_dir
+    feature_type = args.feature_type
     
     palette_all = {**palette_trend, **palette_disease_effect, **palette_treatment}
     
-    aging_stats_sig = retrieve_sig_stats(type='bulk').drop_duplicates(subset=['cell_type', 'tf'])
-    aging_stats_sig = aging_stats_sig[['tf', 'cell_type', 'slope']]
+    aging_stats_sig = retrieve_sig_stats(type='bulk', feature_type=feature_type).drop_duplicates(subset=['cell_type', 'gene'])
+    aging_stats_sig = aging_stats_sig[['gene', 'cell_type', 'slope']]
     
     if analysis_type == 'disease' or analysis_type == 'aging':
         _plot_age_stratified_disease(stats, stats_sig, dataset, target_cell_types, top_aging_tfs, aging_stats_sig, palette_all, output_dir)
@@ -674,17 +732,17 @@ def _plot_age_stratified_disease(stats, stats_sig, disease_name, target_cell_typ
     for cell_type in target_cell_types:
         print(f"  Processing cell type: {cell_type}")
         
-        # --- Aging TFs ---
+        # --- Aging genes ---
         aging_df = aging_stats_sig[aging_stats_sig['cell_type'] == cell_type]
         net = retrieve_net_consensus(datasets_all, cell_type)
         c_df = net.groupby('source').size().reset_index(name='degree')
-        aging_df = aging_df.merge(c_df, left_on='tf', right_on='source', how='left')[['tf', 'slope', 'degree']]
+        aging_df = aging_df.merge(c_df, left_on='gene', right_on='source', how='left')[['gene', 'slope', 'degree']]
         aging_df['degree'] = aging_df['degree'].div(aging_df['degree'].max())  # Normalize degree
         aging_df['trend'] = ['Increase in aging' if x > 0 else 'Decrease in aging' for x in aging_df['slope']]
         aging_df['analysis'] = 'Age-associated'
         
 
-        # --- Disease/Aging Condition TFs ---
+        # --- Disease/Aging Condition genes ---
         stats_store = []
         for age_group in age_groups:
             stats_d = stats[
@@ -692,7 +750,7 @@ def _plot_age_stratified_disease(stats, stats_sig, disease_name, target_cell_typ
                 (stats['cell_type'] == cell_type) &
                 (~stats['slope_condition'].isna())
             ].copy()
-            stats_d = stats_d[['tf', 'cell_type', 'slope_condition', 'p_value_adj']].drop_duplicates()
+            stats_d = stats_d[['gene', 'cell_type', 'slope_condition', 'p_value_adj']].drop_duplicates()
             # Map age group name for display
             display_name = age_group_display_map.get(age_group, age_group)
             stats_d['analysis'] = display_name
@@ -711,21 +769,21 @@ def _plot_age_stratified_disease(stats, stats_sig, disease_name, target_cell_typ
             pd.CategoricalDtype(categories=display_age_groups, ordered=True)
         )
         
-        # --- Restrict to overlapping TFs ---
-        common_tfs = set(aging_df['tf']) & set(stats_condition['tf'])
-        aging_df = aging_df[aging_df['tf'].isin(common_tfs)]
+        # --- Restrict to overlapping genes ---
+        common_tfs = set(aging_df['gene']) & set(stats_condition['gene'])
+        aging_df = aging_df[aging_df['gene'].isin(common_tfs)]
         
-        # Order TFs by degree
-        top_tfs = aging_df.sort_values('degree', ascending=False).head(top_aging_tfs)['tf'].unique()
+        # Order genes by degree
+        top_tfs = aging_df.sort_values('degree', ascending=False).head(top_aging_tfs)['gene'].unique()
         tf_order = list(top_tfs)
         
         # --- Combine and filter ---
-        aging_df = aging_df[aging_df['tf'].isin(top_tfs)]
+        aging_df = aging_df[aging_df['gene'].isin(top_tfs)]
         stats_combined = pd.concat([aging_df, stats_condition])
-        df = stats_combined[stats_combined['tf'].isin(top_tfs)].copy()
+        df = stats_combined[stats_combined['gene'].isin(top_tfs)].copy()
         
         # Set TF categorical order
-        df['tf'] = pd.Categorical(df['tf'], categories=tf_order, ordered=True)
+        df['gene'] = pd.Categorical(df['gene'], categories=tf_order, ordered=True)
         
         plot_analysis_and_centrality(
             df, 
@@ -757,12 +815,12 @@ def _plot_perturbation_comparison(stats, dataset, target_cell_types, top_aging_t
     for cell_type in target_cell_types:
         print(f"  Processing cell type: {cell_type}")
         
-        # Aging TFs
+        # Aging genes
         stats_aging = aging_stats_sig[aging_stats_sig['cell_type'] == cell_type].copy()
         stats_aging['analysis'] = 'Age-associated'
         stats_aging['trend'] = ['Increase in aging' if x > 0 else 'Decrease in aging' for x in stats_aging['slope']]
         
-        # Perturbation TFs
+        # Perturbation genes
         comparisons = target_treatments
         stats_store = []
         for comparison in comparisons:
@@ -784,18 +842,18 @@ def _plot_perturbation_comparison(stats, dataset, target_cell_types, top_aging_t
             
         stats_condition = pd.concat(stats_store)
         
-        # Subset to overlapping TFs
-        drug_tfs = stats_condition['tf'].unique()
-        aging_tfs = stats_aging['tf'].unique()
+        # Subset to overlapping genes
+        drug_tfs = stats_condition['gene'].unique()
+        aging_tfs = stats_aging['gene'].unique()
         common_tfs = np.intersect1d(drug_tfs, aging_tfs)
         
         if len(common_tfs) == 0:
-            print(f"    Warning: No common TFs for {cell_type}")
+            print(f"    Warning: No common genes for {cell_type}")
             continue
         
         # Merge
         df = pd.concat([stats_aging, stats_condition])
-        df = df[df['tf'].isin(common_tfs)]
+        df = df[df['gene'].isin(common_tfs)]
         
         df['analysis'] = pd.Categorical(
             df['analysis'], 
@@ -806,12 +864,12 @@ def _plot_perturbation_comparison(stats, dataset, target_cell_types, top_aging_t
         # Add centrality information
         net = retrieve_net_consensus(datasets_all, cell_type)
         c_df = net.groupby('source').size().reset_index(name='degree')
-        df = df.merge(c_df, left_on='tf', right_on='source', how='left')
+        df = df.merge(c_df, left_on='gene', right_on='source', how='left')
         
-        top_tfs = df.drop_duplicates(subset=['cell_type', 'tf']).sort_values(
+        top_tfs = df.drop_duplicates(subset=['cell_type', 'gene']).sort_values(
             'degree', ascending=False
-        ).head(top_aging_tfs)['tf'].unique()
-        df = df[df['tf'].isin(top_tfs)].sort_values('degree', ascending=False)
+        ).head(top_aging_tfs)['gene'].unique()
+        df = df[df['gene'].isin(top_tfs)].sort_values('degree', ascending=False)
         df['degree'] = df['degree'].div(df['degree'].max())  # Normalize degree
         
         # Filter palette to only include trends that exist in the data
@@ -839,11 +897,19 @@ def _plot_perturbation_comparison(stats, dataset, target_cell_types, top_aging_t
         print(f"    Saved: {output_path}")
 
 
-def plot_case_studies(dataset, data_type, analysis_type, case_tfs, case_cell_type, target_cell_types, output_dir):
+def plot_case_studies(args):
     """
     Plot case studies: healthy vs disease trends (disease/aging) or donor-level effects (perturbation).
     """
-    print(f"Generating {'case TF trends' if (analysis_type == 'disease' or analysis_type == 'aging') else 'donor-level perturbation plots'}...")
+    print(f"Generating {'case TF trends' if (args.analysis_type == 'disease' or args.analysis_type == 'aging') else 'donor-level perturbation plots'}...")
+    
+    dataset = args.dataset
+    data_type = args.data_type
+    analysis_type = args.analysis_type
+    case_tfs = args.case_tfs
+    case_cell_type = args.case_cell_type
+    target_cell_types = args.cell_types
+    output_dir = args.output_dir
     
     if analysis_type == 'disease' or analysis_type == 'aging':
         _plot_disease_case_tfs(dataset, data_type, case_tfs, case_cell_type, output_dir)
@@ -852,7 +918,7 @@ def plot_case_studies(dataset, data_type, analysis_type, case_tfs, case_cell_typ
 
 
 def _plot_disease_case_tfs(dataset, data_type, case_tfs, cell_type, output_dir):
-    """Plot healthy vs disease trends for specific TFs."""
+    """Plot healthy vs disease trends for specific genes."""
     # Determine condition column based on dataset
     if dataset == 'SLE_European':
         condition_col = 'condition'
@@ -884,7 +950,7 @@ def _plot_disease_case_tfs(dataset, data_type, case_tfs, cell_type, output_dir):
 
 
 def _plot_perturbation_donor_level(dataset, target_cell_types, output_dir):
-    """Plot donor-level perturbation effects for case TFs."""
+    """Plot donor-level perturbation effects for case genes."""
     cfg = get_config(dataset)[0]
     stats_path = f'{SAVE_DIR}/stats/stats_{dataset}_*_tf_activity_{cfg.test_type}.csv'
     
@@ -916,13 +982,13 @@ def _plot_perturbation_donor_level(dataset, target_cell_types, output_dir):
     
     for comparison in comparisons:
         for cell_type in target_cell_types:
-            # Cell type specific TFs
+            # Cell type specific genes
             if cell_type == 'CD4T':
                 case_tfs = ['KLF6', 'PRDM1']
             elif cell_type == 'CD8T':
                 case_tfs = ['LEF1', 'ZEB2']
             else:
-                print(f"    Warning: No case TFs defined for {cell_type}")
+                print(f"    Warning: No case genes defined for {cell_type}")
                 continue
             
             fig, axes = plt.subplots(1, 2, figsize=(2.5, 1.2), sharex=False, sharey=False)
@@ -930,7 +996,7 @@ def _plot_perturbation_donor_level(dataset, target_cell_types, output_dir):
             for i, case_tf in enumerate(case_tfs):
                 stats_case = stats[
                     (stats['condition'] == comparison) & 
-                    (stats['tf'] == case_tf) & 
+                    (stats['gene'] == case_tf) & 
                     (stats['cell_type'] == cell_type)
                 ].copy()
                 
@@ -979,14 +1045,21 @@ def _plot_perturbation_donor_level(dataset, target_cell_types, output_dir):
             print(f"    Saved: {output_path}")
 
 
-def plot_pathway_analysis(stats, dataset, data_type, feature_type, analysis_type, pathway_cell_types, output_dir):
+def plot_pathway_analysis(stats, args):
     """Perform pathway analysis comparing aging and condition (disease or perturbation)."""
     print("Generating pathway analysis...")
+    
+    dataset = args.dataset
+    data_type = args.data_type
+    feature_type = args.feature_type
+    analysis_type = args.analysis_type
+    pathway_cell_types = args.cell_types
+    output_dir = args.output_dir
     
     cfg = get_config(dataset)[0]
     
     # Determine feature column based on feature type
-    feature_col = 'target' if feature_type == 'gene_expression' else 'tf'
+    feature_col = 'target' if feature_type == 'gene_expression' else 'gene'
     
     # Get aging stats with the same feature type
     # Note: Aging stats are always 'bulk' type regardless of condition data type
@@ -1159,28 +1232,8 @@ def _plot_perturbation_pathway_gsea(stats_sig, dataset, output_dir, feature_col)
     except Exception as e:
         print(f"    Warning: GSEA analysis failed: {e}")
 
-
-def main():
-    parser = argparse.ArgumentParser(
-        description='Unified Condition Analysis - Post-run visualization for disease and perturbation experiments',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Disease analysis
-  python post_condition_analysis.py --dataset SLE_European --analysis-type disease --data-type bulk --feature-type tf_activity
-  
-  # Perturbation analysis
-  python post_condition_analysis.py --dataset CXCL9 --analysis-type perturbation --data-type sc --feature-type tf_activity
-  
-  # Soundlife aging analysis (CMV-negative cohort)
-  python post_condition_analysis.py --dataset soundlife --config-label aging_cmv_neg --analysis-type aging --data-type bulk --feature-type tf_activity
-  
-  # Soundlife CMV disease analysis (combines cmv_young and cmv_old)
-  python post_condition_analysis.py --dataset soundlife --config-label cmv --analysis-type disease --data-type bulk --feature-type tf_activity
-        """
-    )
-    
-    # Required arguments
+def parse_args():
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         '--dataset',
         type=str,
@@ -1213,11 +1266,10 @@ Examples:
         help='Configuration label for datasets with multiple configs (e.g., aging_cmv_neg, cmv for soundlife). Use "cmv" to combine cmv_young and cmv_old.'
     )
     
-    # Optional arguments
     parser.add_argument(
         '--output-dir',
         type=str,
-        default=None,
+        default=PLOTS_DIR,
         help='Output directory for plots (default: PLOTS_DIR from common.py)'
     )
     parser.add_argument(
@@ -1232,7 +1284,7 @@ Examples:
         type=str,
         nargs='+',
         default=['LEF1', 'ZEB2'],
-        help='Case TFs for trend plotting (disease only, default: LEF1 ZEB2)'
+        help='Case genes for trend plotting (disease only, default: LEF1 ZEB2)'
     )
     parser.add_argument(
         '--case-cell-type',
@@ -1244,7 +1296,7 @@ Examples:
         '--top-aging-tfs',
         type=int,
         default=15,
-        help='Number of top aging TFs to show (default: 15)'
+        help='Number of top aging genes to show (default: 15)'
     )
     parser.add_argument(
         '--agreement',
@@ -1282,10 +1334,54 @@ Examples:
     )
     
     args = parser.parse_args()
+    return args
+def wrapper_tf_act_plots(stats, stats_sig, args):
+    if not args.skip_overview:
+        plot_overview_heatmap(stats_sig, args)
     
-    # Set output directory
-    output_dir = args.output_dir if args.output_dir else PLOTS_DIR
-    os.makedirs(output_dir, exist_ok=True)
+    # 2. Aging overlap
+    plot_aging_overlap(
+        stats_sig, 
+        args
+    )
+        
+    # 2b. Directional consistency scatter plots (for aging analysis)
+    if args.analysis_type == 'aging':
+        plot_directional_consistency_scatter(
+            stats_sig,
+            args
+        )
+    
+    # 3. Aging-experiment heatmap
+    if not args.skip_heatmap and len(stats_sig) > 0:
+        if args.analysis_type == 'perturbation':
+            plot_aging_experiment_heatmap(stats_sig, args)
+        elif args.analysis_type == 'disease' or args.analysis_type == 'aging':
+            # For disease/aging, also generate the overlap heatmap
+            plot_aging_disease_overlap_heatmap(stats_sig, args)
+    
+    # 4. Age-stratified or comparison analysis
+    plot_age_stratified_or_comparison(
+        stats, 
+        stats_sig, 
+        args
+    )
+    
+    # 5. Case studies (TF trends or donor-level)
+    if not args.skip_case_studies:
+        plot_case_studies(
+            args
+        )
+    
+    # 6. Pathway analysis (optional)
+    if not args.skip_pathway:
+        plot_pathway_analysis(
+            stats,
+            args
+        )
+def main():
+    args = parse_args()
+    os.makedirs(args.output_dir, exist_ok=True)
     
     print("="*60)
     print(f"Unified Condition Analysis - {args.analysis_type.capitalize()}")
@@ -1296,120 +1392,26 @@ Examples:
     print(f"Analysis type: {args.analysis_type}")
     print(f"Data type: {args.data_type}")
     print(f"Feature type: {args.feature_type}")
-    print(f"Output directory: {output_dir}")
+    print(f"Output directory: {args.output_dir}")
     print(f"Cell types: {', '.join(args.cell_types)}")
     print(f"Significance threshold: {args.sig_threshold}")
     print("="*60)
     
     # Load statistics
-    print("\nLoading statistics...")
-    stats, cfg = load_stats(args.dataset, args.data_type, args.feature_type, args.config_label)
+    stats, stats_sig = load_stats(args)
     
-    # For soundlife with config_label, filter to the specific config
-    # Skip filtering if config_label is 'cmv' (already combined in load_stats)
-    if args.config_label and args.dataset == 'soundlife' and 'config_label' in stats.columns and args.config_label != 'cmv':
-        print(f"Filtering stats to config_label: {args.config_label}")
-        stats = stats[stats['config_label'] == args.config_label].copy()
-        print(f"  Filtered to {len(stats)} rows")
+    print(f"Total significant features per cell type:")
+    print(stats_sig.groupby(['cell_type'])['gene'].nunique())
+   
     
-    # Standardize column names - ensure slope_condition exists
-    if 'slope' in stats.columns and 'slope_condition' not in stats.columns:
-        stats['slope_condition'] = stats['slope']
-    
-    # Filter based on analysis type
-    if args.analysis_type == 'disease' or args.analysis_type == 'aging':
-        stats = stats[~stats['slope_condition'].isna()].copy()
-        stats['major_cell_type'] = stats['cell_type'].apply(
-            lambda x: mapping_minor_2_major.get(x, x)
-        )
-    else:
-        stats['cell_type'] = pd.Categorical(stats['cell_type'], categories=cell_types, ordered=True)
-        stats['trend'] = [
-            'Increase after treatment' if x > 0 else 'Decrease after treatment' 
-            for x in stats['slope_condition']
-        ]
-    
-    stats_sig = stats[stats['p_value_adj'] < args.sig_threshold].copy()
-    
-    print(f"Total significant TFs per cell type:")
-    if len(stats_sig) > 0:
-        print(stats_sig.groupby(['cell_type'])['tf'].nunique())
-    else:
-        print("  No significant TFs found!")
-    print()
-    
-    # 1. Overview heatmap
-    if not args.skip_overview:
-        plot_overview_heatmap(stats_sig if (args.analysis_type == 'disease' or args.analysis_type == 'aging') else stats, 
-                             args.dataset, args.analysis_type, output_dir, args.config_label)
-    
-    # 2. Aging overlap
-    if len(stats_sig) > 0:
+    if args.feature_type == 'tf_activity':
+        wrapper_tf_act_plots(stats, stats_sig, args)
+    elif args.feature_type == 'aging_hallmarks':
         plot_aging_overlap(
             stats_sig, 
-            args.dataset,
-            args.cell_types, 
-            args.analysis_type,
-            args.agreement,
-            output_dir
-        )
-        
-        # 2b. Directional consistency scatter plots (for aging analysis)
-        if args.analysis_type == 'aging':
-            plot_directional_consistency_scatter(
-                stats_sig,
-                args.dataset,
-                args.cell_types,
-                output_dir
-            )
-    
-    # 3. Aging-experiment heatmap
-    if not args.skip_heatmap and len(stats_sig) > 0:
-        if args.analysis_type == 'perturbation':
-            plot_aging_experiment_heatmap(stats_sig, args.dataset, output_dir)
-        elif args.analysis_type == 'disease' or args.analysis_type == 'aging':
-            # For disease/aging, also generate the overlap heatmap
-            plot_aging_disease_overlap_heatmap(stats_sig, args.dataset, args.cell_types, output_dir)
-    
-    # 4. Age-stratified or comparison analysis
-    plot_age_stratified_or_comparison(
-        stats, 
-        stats_sig, 
-        args.dataset,
-        args.analysis_type,
-        args.cell_types,
-        args.top_aging_tfs,
-        output_dir
-    )
-    
-    # 5. Case studies (TF trends or donor-level)
-    if not args.skip_case_studies:
-        plot_case_studies(
-            args.dataset,
-            args.data_type,
-            args.analysis_type,
-            args.case_tfs,
-            args.case_cell_type,
-            args.cell_types,
-            output_dir
+            args
         )
     
-    # 6. Pathway analysis (optional)
-    if not args.skip_pathway:
-        plot_pathway_analysis(
-            stats,
-            args.dataset,
-            args.data_type,
-            args.feature_type,
-            args.analysis_type,
-            args.cell_types,
-            output_dir
-        )
-    
-    print("\n" + "="*60)
-    print("Analysis complete!")
-    print(f"All plots saved to: {output_dir}")
-    print("="*60)
 
 
 if __name__ == '__main__':

@@ -220,7 +220,7 @@ def run_ora_local(gene_list, background_genes, gene_sets, min_size=5, max_size=5
         df = df.sort_values("P-value")
     return df
 
-def gsea_func(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hallmark_2020'], feature_col='tf'):
+def gsea_func(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hallmark_2020'], feature_col='gene'):
     import gseapy as gp
     # from ciim.src.utils.util import get_genesets
     from gseapy import barplot, dotplot
@@ -301,11 +301,7 @@ def wrapper_gsea(stats, palette=None, **kwargs):
         palette = palette_trend_2
     
     # Handle feature_type parameter (convert to feature_col for gsea_func)
-    if 'feature_type' in kwargs:
-        feature_type = kwargs.pop('feature_type')
-        if 'feature_col' not in kwargs:
-            kwargs['feature_col'] = 'target' if feature_type == 'gene_expression' else 'tf'
-    
+    feature_col = 'gene'  # default
     pathway_scores = gsea_func(stats, **kwargs)
     n_terms = pathway_scores['Term'].nunique()
     cell_types = pathway_scores['cell_type'].unique()

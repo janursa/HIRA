@@ -121,7 +121,7 @@ DATASET_CONFIGS = {
         analysis_type='perturbation',
         condition_column='condition',  # Will auto-detect 'perturbation' if needed
         control_group='Dimethyl Sulfoxide',
-        treatment_groups='all',  # Auto-detect all drugs
+        treatment_groups=['Ruxolitinib'],  # Auto-detect all drugs
         test_type='mixed-effect',
         mixed_effects_formula='feature_values ~ condition',
         mixed_effects_group='plate_name',
@@ -139,6 +139,7 @@ DATASET_CONFIGS = {
             'rejuvenating': {'figsize': (7.5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
             'aging': {'figsize': (5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
         },
+        name_mapping = {}
     ),
     
     "CXCL9": ConditionConfig(
@@ -603,7 +604,7 @@ def get_config(dataset_name: str, config_label: Optional[str] = None) -> List[Co
         If dataset not found or config_label not found
     """
     if dataset_name not in DATASET_CONFIGS:
-        return None
+        raise ValueError(f"Dataset '{dataset_name}' not found in configurations.")
     
     config = DATASET_CONFIGS[dataset_name]
     

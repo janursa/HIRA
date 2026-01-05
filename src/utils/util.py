@@ -420,15 +420,12 @@ from scipy.stats import hypergeom
 import numpy as np
 
 
-def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_age', 
-                       formula=None, group_key=None, return_full_result=False, config=None):
+def test_mixed_effects(df, ctr, treatment, target_variable='predicted_age', config=None, group_key=None):
     """
     Flexible mixed-effects model testing.
     
     Parameters
     ----------
-    dataset : str
-        Dataset name (used to lookup config if not provided)
     df : pd.DataFrame
         Data containing samples
     ctr : str
@@ -460,19 +457,9 @@ def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_a
     warnings.filterwarnings("ignore")
     import statsmodels.formula.api as smf
     
-    # Priority: explicit args > config > raise error
-    if formula is None:
-        if config is not None and config.mixed_effects_formula is not None:
-            formula = config.mixed_effects_formula
-        else:
-            # Default fallback
-            formula = f"{target_variable} ~ condition"
-    
+    formula = config.mixed_effects_formula
     if group_key is None:
-        if config is not None and config.mixed_effects_group is not None:
-            group_key = config.mixed_effects_group
-        else:
-            raise ValueError(f"group_key not provided and no config available for dataset '{dataset}'")
+        group_key = config.mixed_effects_group
     
     # Determine the actual condition column name from config
     condition_col = config.condition_column if (config is not None and hasattr(config, 'condition_column')) else 'condition'
@@ -482,40 +469,28 @@ def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_a
         formula = formula.replace('C(condition)', f'C({condition_col})').replace(' condition ', f' {condition_col} ')
 
     # For interaction models (formula contains *), use ALL data without filtering
-    # For regular models, filter to comparison groups only
-    if '*' not in formula:
-        # Filter to comparison groups for non-interaction models
-        df = df[df[condition_col].isin([ctr, treatment])].copy()
-    # else: keep all data for interaction models
+    df = df[df[condition_col].isin([ctr, treatment])].copy()
     
-    # Diagnostic: Check data quality before modeling (skip for interaction models)
-    if '*' not in formula:
-        n_groups = df[group_key].nunique()
-        n_ctr = df[df[condition_col] == ctr].shape[0]
-        n_treat = df[df[condition_col] == treatment].shape[0]
-        
-        if n_groups < 2:
-            print(f"DIAGNOSTIC: Insufficient groups for {treatment} vs {ctr}: only {n_groups} {group_key}(s)")
-            return (np.nan, np.nan) if not return_full_result else None
-        
-        if n_ctr < 2 or n_treat < 2:
-            print(f"DIAGNOSTIC: Insufficient samples for {treatment} vs {ctr}: ctr={n_ctr}, treat={n_treat}")
-            return (np.nan, np.nan) if not return_full_result else None
-        
-        # Check variance
-        var_ctr = df[df[condition_col] == ctr][target_variable].var()
-        var_treat = df[df[condition_col] == treatment][target_variable].var()
-        
-        if var_ctr == 0 or var_treat == 0:
-            print(f"DIAGNOSTIC: Zero variance for {treatment} vs {ctr}: var_ctr={var_ctr}, var_treat={var_treat}")
-            return (np.nan, np.nan) if not return_full_result else None
+    n_groups = df[group_key].nunique()
+    n_ctr = df[df[condition_col] == ctr].shape[0]
+    n_treat = df[df[condition_col] == treatment].shape[0]
     
-    # Prepare data for model: encode categorical variables
-    # For formulas using C(), statsmodels will handle encoding automatically
-    # But we need to ensure the condition column is properly typed
+    if n_groups < 2:
+        print(f"DIAGNOSTIC: Insufficient groups for {treatment} vs {ctr}: only {n_groups} {group_key}(s)")
+        return (np.nan, np.nan) 
     
-    # Convert nullable integer types (Int64, Int32) to regular int
-    # statsmodels cannot handle pandas nullable integer types
+    if n_ctr < 2 or n_treat < 2:
+        print(f"DIAGNOSTIC: Insufficient samples for {treatment} vs {ctr}: ctr={n_ctr}, treat={n_treat}")
+        return (np.nan, np.nan)
+    
+    # Check variance
+    var_ctr = df[df[condition_col] == ctr][target_variable].var()
+    var_treat = df[df[condition_col] == treatment][target_variable].var()
+    
+    if var_ctr == 0 or var_treat == 0:
+        print(f"DIAGNOSTIC: Zero variance for {treatment} vs {ctr}: var_ctr={var_ctr}, var_treat={var_treat}")
+        return (np.nan, np.nan) 
+
     # Only convert if there are no NAs (conversion would fail otherwise)
     if hasattr(df[condition_col].dtype, 'name') and 'Int' in str(df[condition_col].dtype):
         if not df[condition_col].isna().any():
@@ -532,36 +507,30 @@ def test_mixed_effects(dataset, df, ctr, treatment, target_variable='predicted_a
         # df[condition_col] = df[condition_col].cat.codes  # 0 for ctr, 1 for treatment (matches legacy)
     
     # Fit mixed model
-    try:
-        model = smf.mixedlm(formula, df, groups=df[group_key])
-        result = model.fit()
-        
-        if return_full_result:
-            return result
-        else:
-            # Extract p-value and coefficient for main condition effect
-            # The coefficient name depends on the formula and encoding
-            coef_names = result.params.index.tolist()
+    model = smf.mixedlm(formula, df, groups=df[group_key])
+    result = model.fit()
+    
+    # Extract p-value and coefficient for main condition effect
+    # The coefficient name depends on the formula and encoding
+    coef_names = result.params.index.tolist()
+    
+    # Try to find the condition effect coefficient
+    # It could be named as the condition_col or C(condition_col)[T.treatment]
+    condition_coef_name = None
+    for name in coef_names:
+        if condition_col in name and name != 'Intercept':
+            condition_coef_name = name
+            break
+    
+    if condition_coef_name is None:
+        # Fallback: use the first non-intercept coefficient
+        condition_coef_name = [n for n in coef_names if n != 'Intercept'][0]
+    
+    pval = result.pvalues[condition_coef_name]
+    coef = result.params[condition_coef_name]
+    return pval, coef
             
-            # Try to find the condition effect coefficient
-            # It could be named as the condition_col or C(condition_col)[T.treatment]
-            condition_coef_name = None
-            for name in coef_names:
-                if condition_col in name and name != 'Intercept':
-                    condition_coef_name = name
-                    break
-            
-            if condition_coef_name is None:
-                # Fallback: use the first non-intercept coefficient
-                condition_coef_name = [n for n in coef_names if n != 'Intercept'][0]
-            
-            pval = result.pvalues[condition_coef_name]
-            coef = result.params[condition_coef_name]
-            return pval, coef
-            
-    except Exception as e:
-        print(f"ERROR fitting model for {treatment} vs {ctr}: {e}")
-        return (np.nan, np.nan) if not return_full_result else None
+
 
 def test_paired(df, ctr, treatment):
     import scipy.stats as stats

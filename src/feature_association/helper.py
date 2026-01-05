@@ -129,7 +129,7 @@ def determine_sig_network(type, race='both', min_degree=3):
 
     nets_stats_store = []
     for cell_type in cell_types:
-        stats_tfs_t = stats_tfs[stats_tfs['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'tf'])[['tf', 'meta_p_adj', 'slope', 'trend']]
+        stats_tfs_t = stats_tfs[stats_tfs['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'gene'])[['gene', 'meta_p_adj', 'slope', 'trend']]
         stats_targets_t = stats_targets[stats_targets['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'target'])[['target', 'meta_p_adj', 'slope', 'trend']]
         
         if len(stats_tfs_t) == 0:
@@ -141,12 +141,12 @@ def determine_sig_network(type, race='both', min_degree=3):
         
         # - get the nets
         net = retrieve_net_consensus(datasets, cell_type, min_degree=min_degree)
-        sig_tfs = stats_tfs_t['tf'].unique()
+        sig_tfs = stats_tfs_t['gene'].unique()
         sig_targets = stats_targets_t['target'].unique()
         net = net[(net['source'].isin(sig_tfs)) & (net['target'].isin(sig_targets))]
         net = net.groupby(['source', 'target'])['weight'].mean().reset_index() # probably not necessary
         # - get the stats
-        nets_stats = pd.merge(net, stats_tfs_t, left_on='source', right_on='tf', how='left')
+        nets_stats = pd.merge(net, stats_tfs_t, left_on='source', right_on='gene', how='left')
         nets_stats = pd.merge(nets_stats, stats_targets_t, left_on='target', right_on='target', how='left', suffixes=('_source', '_target'))
         nets_stats = nets_stats[['source', 'target', 'weight', 'slope_source', 'slope_target', 'meta_p_adj_source', 'meta_p_adj_target', 'trend_source', 'trend_target']]
         nets_stats['cell_type'] = cell_type
@@ -173,16 +173,13 @@ def bin_feature_values(adata):
 
 
 
-def determine_stats_condition(adata, association_type='spearman', ctr_group='normal', condition_col='condition', test_type='unpaired', conditions=None, config=None):
-    from scipy.stats import wilcoxon
+def determine_stats_condition(adata, ctr_group='normal', condition_col='condition', test_type='unpaired', conditions=None, config=None):
     from scipy.sparse import issparse
     from scipy.stats import mannwhitneyu
     from scipy.stats import ttest_rel
-    import statsmodels.formula.api as smf
     if conditions is None:
         conditions = adata.obs[condition_col].unique()
     dataset = adata.obs['dataset'].unique()[0]
-    # name_mapping = {'normal': 'healthy', 'systemic lupus erythematosus': 'SLE'}
     name_mapping = {} if config is None else config.name_mapping if hasattr(config, 'name_mapping') else {}
     stats_all = []
     # if 'SLE' in dataset:
@@ -234,7 +231,7 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
                 coef = np.median(values_case) - np.median(values_control)
                 
                 return {
-                    "tf": gene,
+                    'gene': gene,
                     "p_value": pval,
                     "slope_condition": coef,
                     'ctrl': ctr_group,
@@ -245,7 +242,7 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
                 coef = np.median(values_case) - np.median(values_control)
                 
                 return {
-                    "tf": gene,
+                    'gene': gene,
                     "p_value": pval,
                     "slope_condition": coef,
                     'ctrl': ctr_group,
@@ -263,48 +260,20 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
                 
                 df = pd.concat([obs_ctr, obs_case])
                 
-                # Check if formula contains interactions (*)
-                if config and hasattr(config, 'mixed_effects_formula') and '*' in config.mixed_effects_formula:
-                    # For interaction models, fit on ALL data and return full model
-                    # Use all data from adata, not just ctr vs treatment
-                    df_full = adata.obs.copy()
-                    df_full['feature_values'] = adata[:, gene].X.toarray().flatten()
-                    
-                    result = test_mixed_effects(dataset, df_full, ctr_group, condition, 
-                                               target_variable='feature_values', config=config,
-                                               return_full_result=True)
-                    
-                    if result is None:
-                        return None
-                    
-                    # Extract ALL coefficients (except Intercept and Group Var)
-                    results_list = []
-                    for param_name in result.params.index:
-                        if param_name in ['Intercept', 'Group Var']:
-                            continue
-                        results_list.append({
-                            "tf": gene,
-                            "coefficient": param_name,
-                            "coef": result.params[param_name],
-                            "p_value": result.pvalues[param_name],
-                            "std_err": result.bse[param_name]
-                        })
-                    return results_list
-                else:
-                    # Original behavior for non-interaction models
-                    pval, coef = test_mixed_effects(dataset, df, ctr_group, condition, 
-                                                   target_variable='feature_values', config=config)
-       
-                    if np.isnan(pval):
-                        raise ValueError('NaN p-value encountered in mixed-effects model', dataset, gene, condition)
-                    
-                    return {
-                        "tf": gene,
-                        "p_value": pval,
-                        "slope_condition":  coef ,
-                        'ctrl': ctr_group,
-                        'condition': name_mapping.get(condition, condition)
-                    }
+                # Original behavior for non-interaction models
+                pval, coef = test_mixed_effects(df, ctr_group, condition, 
+                                                target_variable='feature_values', config=config)
+    
+                if np.isnan(pval):
+                    return None
+                
+                return {
+                    'gene': gene,
+                    "p_value": pval,
+                    "slope_condition":  coef ,
+                    'ctrl': ctr_group,
+                    'condition': name_mapping.get(condition, condition)
+                }
    
             else:
                 raise ValueError('Unknown test type')
@@ -389,12 +358,14 @@ def determine_stats_condition(adata, association_type='spearman', ctr_group='nor
 def wrapper_meta_analysis(par):
     from ciim.src.feature_association.meta_analysis.helper import run_meta_analysis
     stats_features = pd.read_csv(par['stats_features'])    
-    if 'tf' in stats_features.columns:
-        feature_col = 'tf'
+    if 'gene' in stats_features.columns:
+        feature_col = 'gene'
     elif 'target' in stats_features.columns:
         feature_col = 'target'
     elif 'pathway' in stats_features.columns:
         feature_col = 'pathway'
+    elif 'gene' in stats_features.columns:
+        feature_col = 'gene'
     else:
         print(stats_features)
         raise ValueError('Unknown feature column')
@@ -416,7 +387,7 @@ def wrapper_meta_analysis(par):
                 raise ValueError(f'NaN p-values found in stats in {cell_type}: {nan_sim} NaNs')
             meta_stats = run_meta_analysis(stats, temp_dir=par['temp_dir'], meta_analysis_type=meta_analysis_type, min_degree=min_degree)
             pval_col = 'meta_p_adj'
-            meta_stats = compute_trend(meta_stats, pval_col=pval_col, slope_col='slope', col=feature_col, min_degree=min_degree)
+            meta_stats = compute_trend(meta_stats, pval_col=pval_col, slope_col='slope', col=feature_col)
             stats_store.append(meta_stats)
         if len(stats_store) > 0:
             stats_discovery = pd.concat(stats_store)
@@ -583,7 +554,7 @@ def wrapper_association_with_age_condition(par, features=None, test_type=None, c
     print(stats_all['cell_type'].unique())
     
     if feature_type == 'gene_expression':
-        stats_all.rename(columns={'tf': 'target'}, inplace=True)
+        stats_all.rename(columns={'gene': 'target'}, inplace=True)
 
     return stats_all
 
@@ -622,7 +593,6 @@ def _compute_condition_stats_from_config(adata, config, test_type, association_t
                 condition_col=condition_col,
                 test_type=test_type,
                 conditions=[treatment],
-                association_type=association_type,
                 config=config
             )
             # print('\n Control used for', treatment, 'is', control)
@@ -640,7 +610,6 @@ def _compute_condition_stats_from_config(adata, config, test_type, association_t
             condition_col=condition_col,
             test_type=test_type,
             conditions=treatment_groups,
-            association_type=association_type,
             config=config
         )
         if config.name_mapping:
@@ -756,6 +725,43 @@ def wrapper_gene_expression(par):
                 sc.pp.log1p(adata)
             write_feature_data(adata, dataset, cell_type, type, feature_type='gene_expression')
 
+def wrapper_aging_hallmarks(par):
+    from ciim.src.common import PRIOR_DIR
+    # --------- load data
+    cell_types = par['cell_types']
+    type = par['type']
+    datasets = par['datasets']
+    print('Loading data...')
+    # Load aging hallmark genes
+    aging_hallmark_genes_path = f'{PRIOR_DIR}/aging_hallmark_genes.csv'
+    if not os.path.exists(aging_hallmark_genes_path):
+        raise FileNotFoundError(f'Aging hallmark genes file not found at {aging_hallmark_genes_path}')
+    
+    aging_hallmark_genes_df = pd.read_csv(aging_hallmark_genes_path)
+    aging_hallmark_genes = aging_hallmark_genes_df['gene'].tolist()
+    
+    print(f'Loaded {len(aging_hallmark_genes)} aging hallmark genes')
+
+    adata_dict = {dataset: retrieve_adata(dataset, type) for dataset in datasets}
+
+    print('Calculating aging hallmark gene expression...')
+    
+    for cell_type in tqdm(cell_types, desc='cell types'):
+        for dataset in datasets:
+            adata = adata_dict[dataset][adata_dict[dataset].obs['cell_type']==cell_type]
+            # Filter to only aging hallmark genes
+            available_genes = [g for g in aging_hallmark_genes if g in adata.var_names]
+            if len(available_genes) == 0:
+                raise ValueError(f'Warning: No aging hallmark genes found in dataset {dataset}, cell type {cell_type}')
+            
+            adata = adata[:, available_genes].copy()
+            if type == 'sc':
+                sc.pp.normalize_total(adata)
+                sc.pp.log1p(adata)
+            
+            
+            write_feature_data(adata, dataset, cell_type, type, feature_type='aging_hallmarks')
+
 def determine_std(adata):
     # Ensure .X is dense
     if isinstance(adata.X, np.ndarray):
@@ -798,7 +804,7 @@ def determine_std(adata):
 
     return std_adata
 
-def association_with_age(adata, association_type, gene_col='tf'):
+def association_with_age(adata, association_type, gene_col='gene'):
     '''
     Calculate p-values for the linear regression or Spearman correlation
     of the top tfs across datasets with ageing, and apply FDR correction
@@ -866,7 +872,7 @@ def association_with_age(adata, association_type, gene_col='tf'):
 
     return stats_df
 
-def compute_trend(df, pval_col='meta_p_adj', slope_col='slope', col='tf', min_degree=None):
+def compute_trend(df, pval_col='meta_p_adj', slope_col='slope', col='gene'):
     # Compute -log10(p_value_adj) for dot size
     df["neg_log10_adj_pval"] = -np.log10(df[pval_col])
     if 'trend' in df.columns:
@@ -877,28 +883,14 @@ def compute_trend(df, pval_col='meta_p_adj', slope_col='slope', col='tf', min_de
         pos = (x > 0).sum()
         neg = (x < 0).sum()
         total = len(x)
+        threshold = total
         
-        if col=='tf':
-            threshold = total
-        elif col =='target':
-            threshold = total -1
-        else:
-            threshold = total -1
         # print(pos, neg, total, threshold)
         if pos >= (threshold):
             return 'Increase in aging'
         elif neg >= (threshold):
             return 'Decrease in aging'
         else:
-            # if min_degree is not None:
-            #     if pos >= min_degree:
-            #         return 'Increase in aging'
-            #     elif neg >= min_degree:
-            #         return 'Decrease in aging'
-            #     else:
-            #         return 'Inconsistent'
-            # else:
-            #     return 'Inconsistent'
             return 'Inconsistent'
 
     # Apply the function group-wise
@@ -1007,9 +999,9 @@ def filter_for_consistent_trends(df):
         Filtered dataframe with only consistent trends
     """
     consistent_groups = (
-        df.groupby(['cell_type', 'tf'])['slope']
+        df.groupby(['cell_type', 'gene'])['slope']
         .apply(lambda x: np.sign(x).nunique() == 1)
     )
     valid_tuples = consistent_groups[consistent_groups].index
-    filtered_df = df.set_index(['cell_type', 'tf']).loc[valid_tuples].reset_index()
+    filtered_df = df.set_index(['cell_type', 'gene']).loc[valid_tuples].reset_index()
     return filtered_df
