@@ -60,8 +60,10 @@ def retrieve_feature_data(dataset, smoothened=False, cell_type=None, type='bulk'
     adata.obs['condition'] = adata.obs['condition'].map(lambda x: x.replace('normal', 'healthy')) # watch out this one
     
     # Apply dataset-specific condition mapping if configured
-    
-    cfg_list = get_config(dataset)
+    try: 
+        cfg_list = get_config(dataset)
+    except Exception as e:
+        cfg_list = None
     if cfg_list:
         cfg = cfg_list[0] if isinstance(cfg_list, list) else cfg_list
         if cfg.condition_mapping and 'condition' in adata.obs.columns:
@@ -82,8 +84,10 @@ def retrieve_feature_data(dataset, smoothened=False, cell_type=None, type='bulk'
     return adata
 
 def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activity', suffix=''):
-    # print('writing here: ', f'{SAVE_DIR}/{feature_type}/{dataset}_{cell_type}_{type}.h5ad')
-    adata.write_h5ad(f'{SAVE_DIR}/{feature_type}/{dataset}_{cell_type}_{type}{suffix}.h5ad')
+    import os
+    output_dir = f'{SAVE_DIR}/{feature_type}'
+    os.makedirs(output_dir, exist_ok=True)
+    adata.write_h5ad(f'{output_dir}/{dataset}_{cell_type}_{type}{suffix}.h5ad')
 
 def retrieve_sig_stats(type='bulk', feature_type='tf_activity', race='both', filter_inconsistent=True, cell_type=None):
     from ciim.src.common import SAVE_DIR

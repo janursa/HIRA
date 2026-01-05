@@ -259,7 +259,7 @@ def plot_aging_overlap(stats_sig, args):
         print(f"  Processing CMV configs separately: {conditions_to_plot}")
     else:
         conditions_to_plot = [None]  # For disease/aging, process all together
-    # print(stats_sig.groupby(['cell_type','condition'])['gene'].nunique())
+    print(stats_sig.groupby(['cell_type','condition'])['gene'].nunique())
 
     for cell_type in included_cell_types:
         print(f"  Processing cell type: {cell_type}")

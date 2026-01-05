@@ -51,19 +51,6 @@ warnings.filterwarnings("ignore")
 plt.rcParams["figure.dpi"] = 150
 plt.rcParams["font.family"] = "Arial"
 
-type = 'bulk'
-stats_all = retrieve_stats_features(type, feature_type='tf_activity', condition='healthy')
-
-# - add sig signs
-stats_sig = retrieve_sig_stats(type)
-
-tuple_index = stats_sig.set_index(['cell_type', 'gene', 'dataset']).index
-
-stats_all = stats_all.set_index(['cell_type', 'gene', 'dataset'])
-stats_all['is_significant'] = False
-stats_all.loc[tuple_index, 'is_significant'] = True
-
-stats_all = stats_all.reset_index()[['gene', 'cell_type', 'dataset', 'slope', 'is_significant']].drop_duplicates()
 
 
 ## Heatmap of sig TFs across cell types and cohorts
@@ -510,6 +497,19 @@ if __name__ == "__main__":
     parser.add_argument('--feature-type', type=str, required=True, help='Feature type to analyze')
     args = parser.parse_args()
     feature_type = args.feature_type
+
+    type = 'bulk'
+    stats_all = retrieve_stats_features(type, feature_type=feature_type, condition='healthy')
+
+    # - add sig signs
+    stats_sig = retrieve_sig_stats(type, feature_type=feature_type)
+    tuple_index = stats_sig.set_index(['cell_type', 'gene', 'dataset']).index
+
+    stats_all = stats_all.set_index(['cell_type', 'gene', 'dataset'])
+    stats_all['is_significant'] = False
+    stats_all.loc[tuple_index, 'is_significant'] = True
+
+    stats_all = stats_all.reset_index()[['gene', 'cell_type', 'dataset', 'slope', 'is_significant']].drop_duplicates()
 
     if feature_type == 'tf_activity':
         plot_heatmap_overal()
