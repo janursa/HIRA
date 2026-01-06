@@ -52,14 +52,50 @@ plt.rcParams["figure.dpi"] = 150
 plt.rcParams["font.family"] = "Arial"
 
 def load_stats_soundlife(args):
-    print("Loading cmv_young and cmv_old configs (keeping separate)...")
     cfg_list = get_config(args.dataset)
-    # Load both configs
+    
+    # If a specific config_label is provided (and it's not 'cmv'), use standard loading
+    if args.config_label and args.config_label not in ['cmv', 'cmv_young', 'cmv_old']:
+        print(f"Loading config: {args.config_label}")
+        cfg = next((c for c in cfg_list if c.config_label == args.config_label), None)
+        if cfg is None:
+            raise ValueError(f"Config with label '{args.config_label}' not found for dataset '{args.dataset}'")
+        
+        stats_path = f'{SAVE_DIR}/stats/stats_{args.dataset}_{args.data_type}_{args.feature_type}_{cfg.test_type}.csv'
+        
+        if not os.path.exists(stats_path):
+            raise FileNotFoundError(f"Stats file not found: {stats_path}")
+        
+        stats = pd.read_csv(stats_path)
+        
+        # Filter to the specific config if config_label column exists
+        if 'config_label' in stats.columns:
+            print(f"Filtering stats to config_label: {args.config_label}")
+            stats = stats[stats['config_label'] == args.config_label].copy()
+            print(f"  Filtered to {len(stats)} rows")
+        
+        return stats
+    
+    # Otherwise, handle cmv_young and cmv_old (keeping separate)
+    print("Loading cmv_young and cmv_old configs (keeping separate)...")
     cfg_young = next((c for c in cfg_list if c.config_label == 'cmv_young'), None)
     cfg_old = next((c for c in cfg_list if c.config_label == 'cmv_old'), None)
     
     if cfg_young is None or cfg_old is None:
-        raise ValueError(f"Cannot find both cmv_young and cmv_old configs for dataset '{args.dataset}'")
+        print(f"Warning: Cannot find both cmv_young and cmv_old configs for dataset '{args.dataset}'")
+        print(f"Available configs: {[c.config_label for c in cfg_list]}")
+        # If either is missing, try to load with the first available config
+        cfg = cfg_list[0] if cfg_list else None
+        if cfg is None:
+            raise ValueError(f"No configs found for dataset '{args.dataset}'")
+        
+        stats_path = f'{SAVE_DIR}/stats/stats_{args.dataset}_{args.data_type}_{args.feature_type}_{cfg.test_type}.csv'
+        if not os.path.exists(stats_path):
+            raise FileNotFoundError(f"Stats file not found: {stats_path}")
+        
+        stats = pd.read_csv(stats_path)
+        print(f"  Loaded {len(stats)} rows from stats file")
+        return stats
     
     # Load stats file
     stats_path = f'{SAVE_DIR}/stats/stats_{args.dataset}_{args.data_type}_{args.feature_type}_{cfg_young.test_type}.csv'
@@ -83,15 +119,7 @@ def load_stats_soundlife(args):
         print(f"  Loaded {len(stats_old)} rows from cmv_old")
         print(f"  Combined: {len(stats)} rows (kept config_label distinct)")
     else:
-        raise ValueError("Stats file does not contain 'config_label' column for filtering")
-    
-    # For soundlife with config_label, filter to the specific config
-    # Skip filtering if config_label is 'cmv' (already combined in load_stats)
-    if args.config_label and args.dataset == 'soundlife' and 'config_label' in stats.columns and args.config_label != 'cmv':
-        print(f"Filtering stats to config_label: {args.config_label}")
-        stats = stats[stats['config_label'] == args.config_label].copy()
-        print(f"  Filtered to {len(stats)} rows")
-    
+        print("Warning: Stats file does not contain 'config_label' column")
     
     return stats
 def load_stats(args):
