@@ -29,7 +29,7 @@ from ciim.src.common import (
     colors_blind
 )
 
-from ciim.src.feature_association.config import get_config
+from ongoing.ciim.src.config import get_config
 from ciim.src.utils.util import test_mixed_effects, test_paired, test_unpaired
 from ciim.src.clock.plots import (
     wrapper_age_acceleration_disease,

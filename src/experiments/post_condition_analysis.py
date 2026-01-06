@@ -32,7 +32,7 @@ from ciim.src.common import (
     surrogate_names,
     mapping_minor_2_major
 )
-from ciim.src.feature_association.config import get_config
+from ongoing.ciim.src.config import get_config
 from ciim.src.feature_association.helper import retrieve_sig_stats
 from ciim.src.feature_association.plots import (
     heamap_plot_minor_cell_types,

@@ -1,19 +1,6 @@
-import os
-# default_n_threads = 3 # Change this based on the number of threads you want to use (equal to the number of cores in your machine (--cpus-per-task in the SLURM script))
-# os.environ['OPENBLAS_NUM_THREADS'] = f"{default_n_threads}"
-# os.environ['MKL_NUM_THREADS'] = f"{default_n_threads}"
-# os.environ['OMP_NUM_THREADS'] = f"{default_n_threads}"
-###
-import numpy as np
-import scanpy as sc
-import seaborn as sns
-import pandas as pd
+
 import anndata as ad
-import gc
-import time
-import matplotlib
-import matplotlib.pyplot as plt
-from tqdm import tqdm
+from ciim.src.config import DATASET_NAME_MAPPING
 import argparse
 
 ## VIASH START
@@ -32,7 +19,7 @@ parser.add_argument('--input_file',
     )
 
 parser.add_argument('--n_cell_t', help='number of cells threshold', default=200) # optio
-parser.add_argument('--dataset_name', help='dataset to process', required=True)
+parser.add_argument('--dataset', help='dataset to process', required=True)
 
 par = vars(parser.parse_args())
 
@@ -49,28 +36,30 @@ def all_preprocessing_steps(adata):
     return adata
 
 def main(par):
-    dataset_name = par['dataset_name']
+    dataset = par['dataset']
     file_name = par['input_file']
     
     adata = ad.read_h5ad(file_name, backed='r')
-    if dataset_name == 'CXCL9':
-        adata = adata[adata.obs['treatment'].isin(['24 h RPMI', '24 h RPMI + ruxolitinib', '24 h LPS + ruxolitinib', '24 h LPS'])] 
-
+    # if dataset == 'CXCL9':
+    #     adata = adata[adata.obs['treatment'].isin(['24 h RPMI', '24 h RPMI + ruxolitinib', '24 h LPS + ruxolitinib', '24 h LPS'])] 
+    dataset_pretty = DATASET_NAME_MAPPING.get(dataset, dataset)
     if 'race' in adata.obs.columns:
         races = adata.obs['race'].unique()
         for race in races:
+            race = race.lower()
             mask = adata.obs['race']==race
             adata = adata[mask].to_memory()
-            adata = format_data(adata, dataset_name)
+            adata = format_data(adata, dataset)
             adata = all_preprocessing_steps(adata)
-            adata.obs['dataset'] = f"{dataset_name}_{race}"
-            adata.write_h5ad(f"{par['processed_files_dir']}/{dataset_name}_{race}_sc.h5ad", compression='gzip')
+            
+            adata.obs['dataset'] = f"{dataset_pretty}_{race}"
+            adata.write_h5ad(f"{par['processed_files_dir']}/{dataset_pretty}_{race}.h5ad", compression='gzip')
     else:
         adata = adata.to_memory()
-        adata = format_data(adata, dataset_name)
+        adata = format_data(adata, dataset)
         adata = all_preprocessing_steps(adata)
-        adata.obs['dataset'] = f"{dataset_name}"
-        adata.write_h5ad(f"{par['processed_files_dir']}/{dataset_name}_sc.h5ad", compression='gzip')
+        adata.obs['dataset'] = f"{dataset_pretty}"
+        adata.write_h5ad(f"{par['processed_files_dir']}/{dataset_pretty}.h5ad", compression='gzip')
 
     del adata.uns
     del adata.raw
