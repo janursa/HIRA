@@ -8,9 +8,9 @@ from concurrent.futures import ThreadPoolExecutor
 import scanpy as sc
 import anndata as ad
 from statsmodels.stats.multitest import multipletests
-from ciim.src.common import datasets_e, datasets_a, surrogate_names, datasets_all
+from ciim.src.common import FEATURES_DIR, datasets_e, datasets_a, surrogate_names, datasets_all
 from tqdm import tqdm
-from ciim.src.common import cell_types, SAVE_DIR, minor_cell_types
+from ciim.src.common import SAVE_DIR, FEATURES_DIR
 from scipy.sparse import issparse
 from ciim.src.utils.util import retrieve_adata, retrieve_net_consensus
 import warnings
@@ -18,9 +18,9 @@ warnings.filterwarnings("ignore")
 
 
 def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datasets=None, condition=None):
-    from ciim.src.common import SAVE_DIR, datasets_e, datasets_a, datasets_all
+    from ciim.src.common import FEATURES_DIR, datasets_e, datasets_a, datasets_all
     
-    stats = pd.read_csv(f'{SAVE_DIR}/{feature_type}/stats_features_{type}.csv')
+    stats = pd.read_csv(f'{FEATURES_DIR}/{feature_type}/stats_features_{type}.csv')
     # print(stats)
     if cell_type is not None: 
         if cell_type not in stats['cell_type'].unique():
@@ -45,31 +45,19 @@ def retrieve_stats_features(type, feature_type, race=None, cell_type=None, datas
 
 def retrieve_feature_data(dataset, smoothened=False, cell_type=None, type='bulk', feature_type='tf_activity', condition='healthy', suffix=''):
     
-    from ciim.src.common import SAVE_DIR, datasets_e, datasets_a, datasets_all
-    from ciim.src.feature_association.config import get_config
+    from ongoing.ciim.src.config import get_config
     
     if smoothened:
-        file_path = f'{SAVE_DIR}/{feature_type}_smoothed/{dataset}_{cell_type}_{type}{suffix}.h5ad'
+        file_path = f'{FEATURES_DIR}/{feature_type}_smoothed/{dataset}_{cell_type}_{type}{suffix}.h5ad'
         
     else:
-        file_path = f'{SAVE_DIR}/{feature_type}/{dataset}_{cell_type}_{type}{suffix}.h5ad'
+        file_path = f'{FEATURES_DIR}/{feature_type}/{dataset}_{cell_type}_{type}{suffix}.h5ad'
     if os.path.exists(file_path) == False:
         raise ValueError(f'File {file_path} does not exist')
 
     adata = ad.read_h5ad(file_path)
     adata.obs['condition'] = adata.obs['condition'].map(lambda x: x.replace('normal', 'healthy')) # watch out this one
-    
-    # Apply dataset-specific condition mapping if configured
-    try: 
-        cfg_list = get_config(dataset)
-    except Exception as e:
-        cfg_list = None
-    if cfg_list:
-        cfg = cfg_list[0] if isinstance(cfg_list, list) else cfg_list
-        if cfg.condition_mapping and 'condition' in adata.obs.columns:
-            # Use .replace() instead of .map() to handle categorical columns properly
-            adata.obs['condition'] = adata.obs['condition'].astype(str).replace(cfg.condition_mapping)
-    
+
     # Filter by condition
     if condition is not None and 'condition' in adata.obs.columns:
         if condition not in adata.obs['condition'].unique():
@@ -85,13 +73,13 @@ def retrieve_feature_data(dataset, smoothened=False, cell_type=None, type='bulk'
 
 def write_feature_data(adata, dataset, cell_type, type, feature_type='tf_activity', suffix=''):
     import os
-    output_dir = f'{SAVE_DIR}/{feature_type}'
+    output_dir = f'{FEATURES_DIR}/{feature_type}'
     os.makedirs(output_dir, exist_ok=True)
     adata.write_h5ad(f'{output_dir}/{dataset}_{cell_type}_{type}{suffix}.h5ad')
 
 def retrieve_sig_stats(type='bulk', feature_type='tf_activity', race='both', filter_inconsistent=True, cell_type=None):
-    from ciim.src.common import SAVE_DIR
-    stats_all = pd.read_csv(f'{SAVE_DIR}/{feature_type}/stats_all_{type}.csv')
+    from ciim.src.common import FEATURES_DIR
+    stats_all = pd.read_csv(f'{FEATURES_DIR}/{feature_type}/stats_all_{type}.csv')
     
     mask = (stats_all['condition']=='healthy') & (stats_all['meta_p_adj'] < 0.05) 
 
@@ -132,7 +120,7 @@ def determine_sig_network(type, race='both', min_degree=3):
         raise ValueError('')
 
     nets_stats_store = []
-    for cell_type in cell_types:
+    for cell_type in CELL_TYPES:
         stats_tfs_t = stats_tfs[stats_tfs['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'gene'])[['gene', 'meta_p_adj', 'slope', 'trend']]
         stats_targets_t = stats_targets[stats_targets['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'target'])[['target', 'meta_p_adj', 'slope', 'trend']]
         
@@ -186,23 +174,6 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
     dataset = adata.obs['dataset'].unique()[0]
     name_mapping = {} if config is None else config.name_mapping if hasattr(config, 'name_mapping') else {}
     stats_all = []
-    # if 'SLE' in dataset:
-    #     # case 1: association with age in healthy and disease samples
-    #     def process_condition_group(group):
-    #         adata_sub = adata[adata.obs[condition_col] == group]
-    #         stats_df = association_with_age(adata_sub, association_type=association_type)
-            
-    #         stats_df['p_value_adj'] = multipletests(stats_df["p_value"], method="fdr_bh")[1]
-    #         stats_df['condition'] = name_mapping.get(group, group)
-            
-    #         return stats_df
-        
-    #     # Parallelize condition group processing
-    #     with ThreadPoolExecutor(max_workers=20) as executor:
-    #         condition_results = list(executor.map(process_condition_group, conditions))
-        
-    #     stats_all.extend(condition_results)
-        
     def stats_condition_vs_ctr(adata, condition):  
 
         mask_ctr = adata.obs[condition_col] == ctr_group
@@ -462,7 +433,7 @@ def wrapper_association_with_age_condition(par, features=None, test_type=None, c
     config : ConditionConfig, optional
         Configuration object (will auto-load if None)
     """
-    from ciim.src.feature_association.config import get_config
+    from ongoing.ciim.src.config import get_config
     
     datasets = par['datasets']
     feature_type = par['feature_type']
@@ -569,7 +540,7 @@ def _compute_condition_stats_from_config(adata, config, test_type, association_t
     
     This replaces the large if-elif chain with config-driven logic.
     """
-    from ciim.src.feature_association.config import ConditionConfig
+    from ongoing.ciim.src.config import ConditionConfig
     
     # Auto-detect condition column for datasets with variants
     condition_col = config.condition_column
@@ -628,17 +599,15 @@ def wrapper_tf_activity(par):
     data_type = par['type']
     cell_types = par['cell_types']
     datasets = par['datasets']
-    cell_type_col = par['cell_type_resolution']
     only_promotor_based = par.get('only_promotor_based', False)
     print('Calculating TF activity...')
     print(f'  - Promotor-based only: {only_promotor_based}')
     for dataset in datasets:
         print(dataset, data_type)
-        adata = retrieve_adata(dataset, data_type)
-        cell_types_l = adata.obs[cell_type_col].unique()
-        cell_types_l = [ct for ct in cell_types_l if ct in cell_types]
-        for cell_type in tqdm(cell_types_l, desc='cell types'):
-            adata_t = adata[adata.obs[cell_type_col]==cell_type]
+        adata = retrieve_adata(dataset=dataset, data_type=data_type)
+
+        for cell_type in tqdm(cell_types, desc='cell types'):
+            adata_t = adata[adata.obs['cell_type']==cell_type]
             net = retrieve_net_consensus(datasets=datasets_all, cell_type=cell_type, only_promotor_based=only_promotor_based)
             if adata_t.shape[0] < 10:
                 continue

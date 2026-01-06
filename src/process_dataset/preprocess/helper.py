@@ -10,27 +10,7 @@ import seaborn as sns
 import pandas as pd
 import anndata as ad
 import gc
-import time
-import matplotlib
-import matplotlib.pyplot as plt
-from tqdm import tqdm
-import argparse
-### Load the .h5ad files
-def merge_datasets(par) -> ad.AnnData:
-    print('Merging datasets...')
-    gc.collect()
 
-    for i, dataset_name in tqdm(enumerate(par['datasets']), desc='Merging datasets', total=len(par['datasets'])):
-        if i == 0:
-            adata = ad.read_h5ad(f"{par['inp_CMtx']}{dataset_name}_CMtx.h5ad")
-            adata.obs['dataset'] = dataset_name
-        else:
-            adata = adata.concatenate(ad.read_h5ad(f"{par['inp_CMtx']}{dataset_name}_CMtx.h5ad"), batch_key="dataset", join="inner")
-
-    # Merge the AnnData objects
-    gc.collect()
-
-    return adata
 
 ### QC Check
 def qc_check(adata):
@@ -90,7 +70,6 @@ def format_data(adata, dataset_name):
 def annotate_celltypes(adata):
     print('Annotating cell types...')
     adata.layers['counts'] = adata.X.copy()
-    original_cols = adata.obs.columns
     ### Celltype annotation via Celltypist:
     import celltypist
     from celltypist import models

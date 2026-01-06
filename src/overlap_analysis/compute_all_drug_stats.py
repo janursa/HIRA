@@ -15,7 +15,7 @@ from ciim.src.feature_association.helper import (
     wrapper_gene_expression,
     wrapper_association_with_age_condition
 )
-from ciim.src.feature_association.config import get_config
+from ongoing.ciim.src.config import get_config
 
 
 def compute_all_drug_stats(

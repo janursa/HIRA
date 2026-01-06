@@ -53,24 +53,25 @@ def main(par):
     file_name = par['input_file']
     
     adata = ad.read_h5ad(file_name, backed='r')
-    if dataset_name == 'CXCL9':
-        adata = adata[adata.obs['treatment'].isin(['24 h RPMI', '24 h RPMI + ruxolitinib', '24 h LPS + ruxolitinib', '24 h LPS'])] 
+    # if dataset_name == 'CXCL9':
+    #     adata = adata[adata.obs['treatment'].isin(['24 h RPMI', '24 h RPMI + ruxolitinib', '24 h LPS + ruxolitinib', '24 h LPS'])] 
 
     if 'race' in adata.obs.columns:
         races = adata.obs['race'].unique()
         for race in races:
+            race = race.lower()
             mask = adata.obs['race']==race
             adata = adata[mask].to_memory()
             adata = format_data(adata, dataset_name)
             adata = all_preprocessing_steps(adata)
             adata.obs['dataset'] = f"{dataset_name}_{race}"
-            adata.write_h5ad(f"{par['processed_files_dir']}/{dataset_name}_{race}_sc.h5ad", compression='gzip')
+            adata.write_h5ad(f"{par['processed_files_dir']}/{dataset_name}_{race}.h5ad", compression='gzip')
     else:
         adata = adata.to_memory()
         adata = format_data(adata, dataset_name)
         adata = all_preprocessing_steps(adata)
         adata.obs['dataset'] = f"{dataset_name}"
-        adata.write_h5ad(f"{par['processed_files_dir']}/{dataset_name}_sc.h5ad", compression='gzip')
+        adata.write_h5ad(f"{par['processed_files_dir']}/{dataset_name}.h5ad", compression='gzip')
 
     del adata.uns
     del adata.raw

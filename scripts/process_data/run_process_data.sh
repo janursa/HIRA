@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=all_steps
+#SBATCH --job-name=process_data
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
 #SBATCH --ntasks=1
@@ -15,26 +15,37 @@ declare -A dependencies
 dependencies=(
     ["process_dataset"]="src/process_dataset/preprocess/script.py"
     ["bulkify_code"]="src/process_dataset/bulkify/script.py"
-    ["grn_inference"]="src/workflows/grn_inference/script.py"
-    
 )
+
+# Import dataset name mapping from config.py
+declare -A dataset_mapping
+while IFS='=' read -r key value; do
+    dataset_mapping["$key"]="$value"
+done < <(python -c "
+import sys
+sys.path.insert(0, 'src')
+from config import DATASET_NAME_MAPPING
+for k, v in DATASET_NAME_MAPPING.items():
+    print(f'{k}={v}')
+")
 
 set -e
 # Define run flags
 RUN_PROCESS_DATASET=true
 RUN_PSEUDOBULK=true
-RUN_GRN=true
-CELL_TYPE_GRANULARITY='major'
 MAIN_DIR='/vol/projects/jnourisa/'
-RUN_ASSOCIATION=false
-
-MAX_WORKERS=10
-data_type='sc'
 
 # datasets to include -> preprocessing 
-datasets=" CXCL9" #data12 data7_allTPs_jalil data1 data13 SLE   CXCL9 
+datasets=" CXCL9" #data12 data7_allTPs_jalil data1 data13_Korean data13_Japanese SLE CXCL9
 
 for dataset in $datasets; do
+        # Get mapped name for processed files
+        if [ -n "${dataset_mapping[$dataset]}" ]; then
+                mapped_name="${dataset_mapping[$dataset]}"
+        else
+                mapped_name="$dataset"
+        fi
+        
         if [ "$dataset" = "op" ]; then
                 input_file="/home/jnourisa/projs/ongoing/task_grn_inference/resources/datasets_raw/op_perturbation_sc_counts.h5ad"
         elif [ "$dataset" = "CXCL9" ]; then
@@ -47,7 +58,7 @@ for dataset in $datasets; do
         
         # Define the command
         if [ "$RUN_PROCESS_DATASET" = true ]; then
-                args="--dataset_name $dataset --processed_files_dir $PROCESSED_FILES_DIR --input_file $input_file"
+                args="--dataset_name $mapped_name --processed_files_dir $PROCESSED_FILES_DIR --input_file $input_file"
                 cmd="python ${dependencies["process_dataset"]} $args"
                 echo "Running (bash): $cmd"
                 $cmd
@@ -55,15 +66,19 @@ for dataset in $datasets; do
         
 done
 
-datasets=" CXCL9 " #CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_European
-
-
 for dataset in $datasets; do
-        PROCESSED_DATASET_FILE="${MAIN_DIR}/datasets/sc/${dataset}_sc.h5ad"
-        BULK_ALL="${MAIN_DIR}/datasets/bulk/${dataset}_bulk.h5ad"
-        BULK_MINOR_CELLTYPE="${MAIN_DIR}/datasets/bulk/${dataset}_bulk_minor.h5ad"
-        BULK_M="${MAIN_DIR}/datasets/bulk/${dataset}_bulk_M.h5ad"
-        BULK_F="${MAIN_DIR}/datasets/bulk/${dataset}_bulk_F.h5ad"
+        # Get mapped name for processed files
+        if [ -n "${dataset_mapping[$dataset]}" ]; then
+                mapped_name="${dataset_mapping[$dataset]}"
+        else
+                mapped_name="$dataset"
+        fi
+        
+        PROCESSED_DATASET_FILE="${MAIN_DIR}/datasets/sc/${mapped_name}.h5ad"
+        BULK_ALL="${MAIN_DIR}/datasets/bulk/${mapped_name}.h5ad"
+        BULK_MINOR_CELLTYPE="${MAIN_DIR}/datasets/bulk/${mapped_name}_minor.h5ad"
+        BULK_M="${MAIN_DIR}/datasets/bulk/${mapped_name}_M.h5ad"
+        BULK_F="${MAIN_DIR}/datasets/bulk/${mapped_name}_F.h5ad"
         
         if [ "$RUN_PSEUDOBULK" = true ]; then
                 # set the flags
@@ -79,29 +94,5 @@ for dataset in $datasets; do
                 echo "Running (bash): $cmd"
                 $cmd
         fi
-        if [ "$RUN_GRN" = true ]; then
-                FORCE=true # If true, overwrite the existing files in grns directory
-                SAVE_GRNS_DIR="${MAIN_DIR}/output/grns/${dataset}/"
-                
-                DATASET_FILE="/vol/projects/jnourisa/datasets/sc/${dataset}_${data_type}.h5ad" # tailors raw based on the given flags such as make, downsample, etc.
-
-                args="  
-                        --dataset_file $DATASET_FILE \
-                        --save_grns_dir $SAVE_GRNS_DIR \
-                        --num_workers $MAX_WORKERS \
-                        --data_type $data_type \
-                        --cell_type_granularity $CELL_TYPE_GRANULARITY \
-                        "
-
-                [ "$FORCE" = true ] && args="${args} --force"
-
-                cmd="python ${dependencies["grn_inference"]} $args"
-                echo "Running (bash): $cmd"
-                $cmd
-        fi
 
 done
-
-if [ "$RUN_ASSOCIATION" = true ]; then
-        bash scripts/run_association_analysis.sh
-fi
