@@ -14,10 +14,7 @@ DATASET_NAME_MAPPING = {
     "data1": "onek1k",
     "data7_allTPs_jalil": "abf300",
     "data12": "zhang",
-    "data13_Korean": "aida_korean",
-    "data13_Japanese": "aida_japanese",
-    "CXCL9": "ruxolitinib",
-    "SLE": "perez_sle"
+    "data13": "aida"
 }
 
 

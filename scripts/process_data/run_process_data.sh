@@ -39,12 +39,6 @@ MAIN_DIR='/vol/projects/jnourisa/'
 datasets=" CXCL9" #data12 data7_allTPs_jalil data1 data13_Korean data13_Japanese SLE CXCL9
 
 for dataset in $datasets; do
-        # Get mapped name for processed files
-        if [ -n "${dataset_mapping[$dataset]}" ]; then
-                mapped_name="${dataset_mapping[$dataset]}"
-        else
-                mapped_name="$dataset"
-        fi
         
         if [ "$dataset" = "op" ]; then
                 input_file="/home/jnourisa/projs/ongoing/task_grn_inference/resources/datasets_raw/op_perturbation_sc_counts.h5ad"
@@ -58,7 +52,7 @@ for dataset in $datasets; do
         
         # Define the command
         if [ "$RUN_PROCESS_DATASET" = true ]; then
-                args="--dataset_name $mapped_name --processed_files_dir $PROCESSED_FILES_DIR --input_file $input_file"
+                args="--dataset $dataset --processed_files_dir $PROCESSED_FILES_DIR --input_file $input_file"
                 cmd="python ${dependencies["process_dataset"]} $args"
                 echo "Running (bash): $cmd"
                 $cmd
