@@ -21,10 +21,10 @@ warnings.filterwarnings("ignore")
 plt.rcParams["figure.figsize"] = 4, 4
 
 # --- Directories and Imports ---
-from ciim.src.common import (
+from ciim.src.config import (
     aging_clock_train_datasets, palette_genders, palette_treatment,
     mapping_major_2_minor, mapping_minor_2_major, cell_types,
-    datasets_e, datasets_all, datasets_a, palette_datasets,
+    datasets_e, DISCOVERY_COHORTS, datasets_a, palette_datasets,
     datasets_disease, datasets_drug_perturbation, SAVE_DIR,
     palette_datasets_pretty, surrogate_names, colors_blind,
     palette_trend, palette_trend_2, palette_regulation, palette_cell_types

@@ -17,18 +17,18 @@ from pandas.api.types import CategoricalDtype
 pd.set_option("display.max_columns", None)
 
 # Import common utilities and configuration
-from ciim.src.common import (
+from ciim.src.config import (
     PLOTS_DIR, 
     SAVE_DIR,
-    cell_types, 
-    datasets_all,
+    CELL_TYPES, 
+    DISCOVERY_COHORTS,
     palette_trend,
     palette_disease_effect,
     palette_treatment,
     surrogate_names,
     mapping_minor_2_major
 )
-from ongoing.ciim.src.config import get_config
+from ciim.src.config import get_config
 from ciim.src.feature_association.helper import retrieve_sig_stats
 from ciim.src.feature_association.plots import (
     heamap_plot_minor_cell_types,
@@ -40,8 +40,8 @@ from ciim.src.feature_association.disease import plot_healthy_disease_trend
 from ciim.src.utils.util import retrieve_net_consensus
 from ciim.src.pathway_analysis.util import pathway_kde_func
 from ciim.src.pathway_analysis.plots import plot_pathway_kde
-from ciim.src.common import palette_cell_types, palette_datasets, palette_trend_2, colors_blind
-from ciim.src.feature_association.helper import retrieve_sig_net, calculate_tf_activity, retrieve_sig_stats, retrieve_stats_features
+from ciim.src.config import palette_cell_types, palette_datasets, palette_trend_2, colors_blind
+from ciim.src.feature_association.helper import retrieve_sig_net, calculate_tf_activity, retrieve_sig_stats, retrieve_features_stats
 from ciim.src.feature_association.plots import plot_net_nx, plot_sig_tfs_stats, plot_analysis_and_centrality, plot_overlap
 
 
@@ -57,8 +57,8 @@ plt.rcParams["font.family"] = "Arial"
 def plot_heatmap_overal():
     from ciim.src.feature_association.plots import plot_overall_heatmap
 
-    stats_all['cell_type'] = pd.Categorical(stats_all['cell_type'], categories=cell_types, ordered=True)
-    stats_all['dataset'] = pd.Categorical(stats_all['dataset'], categories=datasets_all, ordered=True)
+    stats_all['cell_type'] = pd.Categorical(stats_all['cell_type'], categories=CELL_TYPES, ordered=True)
+    stats_all['dataset'] = pd.Categorical(stats_all['dataset'], categories=DISCOVERY_COHORTS, ordered=True)
 
     plot_overall_heatmap(stats_all, 
                         sig_dots_y_offset=3, 
@@ -75,10 +75,10 @@ def plot_heatmap_overal():
 
 
 ## Sig TFs counts
-def plot_sig_tf_counts():
-    aging_stats_sig = retrieve_sig_stats(type='bulk', filter_inconsistent=True).drop_duplicates(subset=['cell_type', 'gene'])
+def plot_sig_tf_counts(args):
+    aging_stats_sig = retrieve_sig_stats(data_type=args.data_type, filter_inconsistent=True).drop_duplicates(subset=['cell_type', 'gene'])
     # plt.savefig(f'../output/tf_activity/trends.png', dpi=300)
-    aging_stats_sig['cell_type'] = pd.Categorical(aging_stats_sig['cell_type'], categories=cell_types, ordered=True)
+    aging_stats_sig['cell_type'] = pd.Categorical(aging_stats_sig['cell_type'], categories=CELL_TYPES, ordered=True)
     plot_sig_tfs_stats(aging_stats_sig, figsize=(2, 1.5), palette=palette_trend_2)
     # plt.title(f'Number of aging TFs', pad=15, fontsize=10, weight='bold')
     file_name = f"{PLOTS_DIR}/aging_tfs_count.png"
@@ -87,21 +87,21 @@ def plot_sig_tf_counts():
 
 
 ## Identify sig networks
-def plot_sig_networks(type = 'bulk'):
+def plot_sig_networks(data_type = 'bulk'):
     from ciim.src.feature_association.helper import determine_sig_network
     
     
 
     if False:
         if True:
-            determine_sig_network(type, min_degree=3)
+            determine_sig_network(data_type, min_degree=3)
         sig_net = retrieve_sig_net()
         sig_net_size = sig_net.groupby('cell_type').size()
-        sig_net_size = sig_net_size.reindex(cell_types, fill_value=0).reset_index()
+        sig_net_size = sig_net_size.reindex(CELL_TYPES, fill_value=0).reset_index()
         sig_net_size.columns = ['cell_type', 'edge_count']
 
         # Ensure categorical order for plotting
-        sig_net_size['cell_type'] = pd.Categorical(sig_net_size['cell_type'], categories=cell_types, ordered=True)
+        sig_net_size['cell_type'] = pd.Categorical(sig_net_size['cell_type'], categories=CELL_TYPES, ordered=True)
         sig_net_size = sig_net_size.sort_values('cell_type')
 
         # Plot
@@ -160,7 +160,7 @@ def plot_sig_networks(type = 'bulk'):
         legend_elements = [Patch(facecolor=color, label=label) for label, color in palette_trend_2.items()]
         # fig.legend(handles=legend_elements, bbox_to_anchor=(1.5, .8), fontsize=10, frameon=False, title='Trend', title_fontsize=10)
         fig.tight_layout()
-def plot_central_features(type = 'bulk'):
+def plot_central_features(data_type = 'bulk'):
     if True:
         from matplotlib.patches import Patch
 
@@ -249,10 +249,10 @@ def plot_central_features(type = 'bulk'):
         file_name = os.path.join(PLOTS_DIR, f'central_aging_{focus}.png')
         print(f"Saving figure to {file_name}")
         plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
-def plot_interaction_of_aging_TFs_between_cell_types(type = 'bulk'):
+def plot_interaction_of_aging_TFs_between_cell_types(data_type = 'bulk'):
     from grn_benchmark.src.exp_analysis.helper import plot_interactions, create_interaction_df
 
-    stats_sig = retrieve_sig_stats(type=type).drop_duplicates(subset=['cell_type', 'gene'])
+    stats_sig = retrieve_sig_stats(data_type=data_type).drop_duplicates(subset=['cell_type', 'gene'])
     df_dict = stats_sig.groupby(['cell_type'])['gene'].apply(list).to_dict()
     interaction_main_df = create_interaction_df(df_dict)
     aa = plot_interactions(interaction_main_df, min_subset_size=5, min_degree=1, color_map=palette_cell_types)
@@ -261,14 +261,13 @@ def plot_interaction_of_aging_TFs_between_cell_types(type = 'bulk'):
     plt.savefig(file_name, dpi=300, transparent=True, bbox_inches='tight')
     # plt.title(surrogate_names[race], pad=40, fontsize=10, fontweight='bold')
 
-
     from ciim.src.feature_association.plots import plot_features_vs_datasets
     ttypes = ['CD8T', 'CD4T', 'NK']
     mask = interaction_main_df[ttypes].sum(axis=1)==len(ttypes)
     features = mask[mask].index.unique()
     print(len(features))
     for cell_type in ttypes:
-        plot_features_vs_datasets(cell_type=cell_type, type=type, datasets=datasets_all, features=features, 
+        plot_features_vs_datasets(cell_type=cell_type, data_type=data_type, datasets=DISCOVERY_COHORTS, features=features, 
                                     feature_type='tf_activity', sizes=(90, 100), min_degree=1, race='both', 
                                     filter_meta_significant=True,
                                     )
@@ -295,116 +294,45 @@ def gsea_analysis():
     print(f"Saving figure to {file_name}")
     plt.savefig(file_name, bbox_inches='tight', dpi=200)
 
-def plot_case_tf():
-    case_tf = 'SATB1'  # 'TCF7' 'SATB1' 
-    type = 'bulk'
+def plot_case_tf(data_type='bulk'):
+    from ciim.src.feature_association.plots import plot_feature_values_all_datasets, plot_feature_values_per_datasets
     n_top_targets = 10
     selected_cell_types = ['CD8T', 'CD4T', 'NK'] # ['CD8T', 'CD4T', 'NK'] #Tcm_Naive_CD8
     n_panels = len(selected_cell_types)
-    from ciim.src.feature_association.plots import plot_feature_values_all_datasets, plot_feature_values_per_datasets
-
-    datasets = datasets_all
-
+    datasets = DISCOVERY_COHORTS
     plot_both = True
     show_cbar=False
-
-
-    for i, cell_type in enumerate(selected_cell_types):
-        if i == 0:
-            show_ylabels=True
-        else:
-            show_ylabels=False
-        
-        if plot_both:
-            fig, axes = plt.subplots(2, 1, figsize=(2, 2.2), sharex=True)
-        else:
-            fig, ax = plt.subplots(1, 1, figsize=(2, .7))
-
-        ax = axes[0] if plot_both else ax
-        plot_feature_values_all_datasets(cell_type, feature=case_tf, feature_type='tf_activity', type=type, datasets=datasets, show_cbar=show_cbar, ax=ax,
-                                        show_ylabels=show_ylabels)
-        if plot_both:
-            ax.set_xlabel('')
-            ax = axes[1]
-            plot_feature_values_all_datasets(cell_type, feature=case_tf, feature_type='gene_expression', 
-                                            type=type, datasets=datasets, show_cbar=show_cbar, ax=ax, show_ylabels=show_ylabels)
-        
-        plt.suptitle(f'{cell_type}', y=1.05)
-        file_name = f"{PLOTS_DIR}/case_tf_{case_tf}_{cell_type}.png"
-        print(f"Saving figure to {file_name}")
-        plt.savefig(file_name, bbox_inches='tight', dpi=300)
-
-    if False:
-        nets_sig = pd.read_csv(f'{SAVE_DIR}/sig_nets/sig_nets_{type}_{race}.csv')
-        nets_sig = nets_sig[(nets_sig['source']==case_tf) & (nets_sig['cell_type'].isin(selected_cell_types))].copy()
-        n_targets = 10
-
-        stats_targets = retrieve_sig_stats(type, feature_type='gene_expression', race=race)
-
-        targets_store = []
-        for cell_type in selected_cell_types:
-            net = nets_sig[nets_sig['cell_type']==cell_type]
-            targets = net.sort_values('weight', ascending=False, key=abs).head(n_targets)['target'].unique()
-            targets_store.append(targets)
-        all_targets = np.concatenate(targets_store)
-
-        net_store = []
-        for cell_type in selected_cell_types:
-            net = select_top_targets(cell_type, case_tf, datasets, all_targets, n_top=n_top_targets)
-            net['cell_type'] = cell_type
-            net_store.append(net)
-        net_tf = pd.concat(net_store)
-
-        from ciim.src.feature_association.plots import wrapper_flesh_out_tf_interactions, plot_tf_interactions_plus_target_stats_binary
-
-        n_top_genes_per_dataset=10
-        # - select 
-        shared_state = net_tf.groupby(['cell_type','target'])['dataset'].nunique()
-        selected_tuple = shared_state[shared_state>=3].index
-        net_tf = net_tf.set_index(['cell_type', 'target']).loc[selected_tuple].reset_index()
-
-        n_targets = net_tf['target'].nunique()
-        net_tf['target'] = net_tf['target'].astype('category')
-        net_tf['dataset'] = pd.Categorical(net_tf['dataset'], categories=datasets_all, ordered=True)
-        fig, axes = plt.subplots(n_panels, 1, figsize=(n_targets*.16 +1, len(datasets_all)*.5 + 1), sharex=True)
-
-        for i, (cell_type) in enumerate(net_tf['cell_type'].unique()):
-            ax = axes[i] if n_panels > 1 else axes
-            if i == 1:
-                show_legend = True
+    for case_tf in ['SATB1', 'GATA3']:  # 'TCF7' 'SATB1' 
+        for i, cell_type in enumerate(selected_cell_types):
+            if i == 0:
+                show_ylabels=True
             else:
-                show_legend = False
-            net = net_tf[net_tf['cell_type'] == cell_type]   
-            net = net[net['neg_log10_adj_pval'] > 1.4]
+                show_ylabels=False
             
-            plot_tf_interactions_plus_target_stats_binary(net.copy(), ax=ax, show_legend=show_legend, sizes=(50, 200), annotate_sig=False, annotate_targets=True)
+            if plot_both:
+                fig, axes = plt.subplots(2, 1, figsize=(2, 2.2), sharex=True)
+            else:
+                fig, ax = plt.subplots(1, 1, figsize=(2, .7))
 
-            ax.margins(y=0.2, x=0.1)
-            ax.set_title(cell_type)
-            ax.set_xlabel('Target genes')
-            ax.grid(True, linestyle='--', alpha=0.5)
-            if i != n_panels - 1:
-                ax.set_ylabel('')
-        plt.suptitle(f'Targets of {case_tf}', y=1.1, weight='bold', fontsize=12)
-        plt.subplots_adjust(hspace=0.6)
-    if False:
-        type = 'bulk'
-        cell_type = 'CD4T' #'Tcm_Naive_CD8'
-        n_top=10
-        # features = ['FOXO1', 'FOXO3', 'NFE2L2', 'TP53', 'SIRT1', 'HIF1A']
-        # features = ['GATA3', 'S100A4', 'GZMK', 'KLF6', 'COTL1', 'TCF7', 'ANXA1']
-        # features = ['GATA3', 'S100A4', 'GZMK', 'COTL1']
-        features = ['FOS', 'FOSB', 'JUND']
-        from ciim.src.feature_association.plots import wrapper_draw_net
-        for cell_type in ['MONO']:
-            wrapper_draw_net(cell_type, datasets_all, features, min_degree=3, indivitual_net=False, draw_evidence=True, draw_collectri=True, figsize=(2.5, 2.5), figsize_collectri=(4, 4), 
-                            offset_evidence=.13, arc_offset=.05, only_promotor_based=False)
-def plot_sig_genes_counts_hallmarks():
-    from ciim.src.common import PRIOR_DIR
+            ax = axes[0] if plot_both else ax
+            plot_feature_values_all_datasets(cell_type, feature=case_tf, feature_type='tf_activity', data_type=data_type, datasets=datasets, show_cbar=show_cbar, ax=ax,
+                                            show_ylabels=show_ylabels)
+            if plot_both:
+                ax.set_xlabel('')
+                ax = axes[1]
+                plot_feature_values_all_datasets(cell_type, feature=case_tf, feature_type='gene_expression', 
+                                                data_type=data_type, datasets=datasets, show_cbar=show_cbar, ax=ax, show_ylabels=show_ylabels)
+            
+            plt.suptitle(f'{cell_type}', y=1.05)
+            file_name = f"{PLOTS_DIR}/case_tf_{case_tf}_{cell_type}.png"
+            print(f"Saving figure to {file_name}")
+            plt.savefig(file_name, bbox_inches='tight', dpi=300)
+
+def plot_sig_genes_counts_hallmarks(data_type='bulk'):
+    from ciim.src.config import PRIOR_DIR
     # Load aging hallmark genes with gene set information
     gene_col = 'gene' 
     geneset_col = 'gene_set'
-    type = 'bulk'
     aging_hallmark_path = f'{PRIOR_DIR}/aging_hallmark_genes.csv'
     if not os.path.exists(aging_hallmark_path):
         raise FileNotFoundError(f'Aging hallmark genes file not found at {aging_hallmark_path}')
@@ -412,7 +340,7 @@ def plot_sig_genes_counts_hallmarks():
     aging_hallmark_df = pd.read_csv(aging_hallmark_path)   
     
     # Load significant stats for aging hallmarks
-    stats_sig = retrieve_sig_stats(type, feature_type='aging_hallmarks', filter_inconsistent=True)
+    stats_sig = retrieve_sig_stats(data_type, feature_type='aging_hallmarks', filter_inconsistent=True)
     # Merge with gene set information
     stats_with_geneset = stats_sig.merge(
         aging_hallmark_df[[gene_col, geneset_col]],
@@ -495,14 +423,15 @@ def plot_sig_genes_counts_hallmarks():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--feature-type', type=str, required=True, help='Feature type to analyze')
+    parser.add_argument('--data-type', type=str, default='bulk', required=False, help='Data type to analyze')
     args = parser.parse_args()
     feature_type = args.feature_type
+    data_type = args.data_type
 
-    type = 'bulk'
-    stats_all = retrieve_stats_features(type, feature_type=feature_type, condition='healthy')
+    stats_all = retrieve_features_stats(data_type, feature_type=feature_type)
 
     # - add sig signs
-    stats_sig = retrieve_sig_stats(type, feature_type=feature_type)
+    stats_sig = retrieve_sig_stats(data_type, feature_type=feature_type)
     tuple_index = stats_sig.set_index(['cell_type', 'gene', 'dataset']).index
 
     stats_all = stats_all.set_index(['cell_type', 'gene', 'dataset'])
@@ -513,12 +442,13 @@ if __name__ == "__main__":
 
     if feature_type == 'tf_activity':
         plot_heatmap_overal()
-        plot_sig_tf_counts()
-        # plot_sig_networks()
+        plot_sig_tf_counts(args)
         plot_central_features()
         plot_interaction_of_aging_TFs_between_cell_types()
         gsea_analysis()
         plot_case_tf()
+
+        # plot_sig_networks()
     elif feature_type == 'aging_hallmarks':
         plot_sig_genes_counts_hallmarks()
     else:

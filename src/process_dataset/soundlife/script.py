@@ -24,14 +24,14 @@ parser.add_argument(
 parser.add_argument(
     '--output_bulk',
     type=str,
-    default='/vol/projects/jnourisa/datasets/bulk/soundlife_bulk.h5ad',
+    default='/vol/projects/jnourisa/datasets/bulk/soundlife.h5ad',
     help="Output path for final merged bulk data"
 )
 
 parser.add_argument(
     '--output_metacell',
     type=str,
-    default='/vol/projects/jnourisa/datasets/bulk/soundlife_metacell.h5ad',
+    default='/vol/projects/jnourisa/datasets/bulk/soundlife.h5ad',
     help="Output path for final merged metacell data"
 )
 

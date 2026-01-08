@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from collections import defaultdict
 import matplotlib.pyplot as plt
-from ciim.src.common import surrogate_names
+from ciim.src.config import surrogate_names
 from ciim.src.feature_association.helper import retrieve_feature_data
 from ciim.src.feature_association.plots import heatplot_age_trend
 

@@ -13,7 +13,7 @@ os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 import cpa
 from ciim.src.clock.NN.helper import  get_params, save_path_train, save_path_test, batch_key, data_type, cell_type_train
 from ciim.src.clock.helper import  format_data
-from ciim.src.common import aging_clock_train_datasets as train_datasets
+from ciim.src.config import aging_clock_train_datasets as train_datasets
 
 
 import argparse 

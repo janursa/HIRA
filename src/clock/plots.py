@@ -6,7 +6,7 @@ from scipy.stats import ttest_ind
 import numpy as np
 from pandas.api.types import CategoricalDtype
 from statsmodels.stats.multitest import multipletests
-from ciim.src.common import surrogate_names, cell_types, palette_genders
+from ciim.src.config import surrogate_names, cell_types, palette_genders
 
 palette_disease = {'Healthy': '#56B4E9', 'SLE': '#F0E442', 'Mild': '#2ca02c', 'Severe': '#e377c2'}
 
@@ -424,7 +424,7 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None
             }).reset_index()
             # Bin ages manually (for SLE, COVID, etc.)
             # Import age cutoff from common configuration
-            from ciim.src.common import AGE_CUTOFF_SLE
+            from ciim.src.config import AGE_CUTOFF_SLE
             age_bins = [20, AGE_CUTOFF_SLE, 80]
             obs_ct['age_bin'] = pd.cut(obs_ct['age'], bins=age_bins, right=False)
             obs_ct['age_bin'] = obs_ct['age_bin'].astype(str)

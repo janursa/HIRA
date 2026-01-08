@@ -1,6 +1,6 @@
 
 from ciim.src.clock.train import wrapper_build_model_cell_type
-from ciim.src.common import cell_types
+from ciim.src.config import cell_types
 import os
 
 import argparse

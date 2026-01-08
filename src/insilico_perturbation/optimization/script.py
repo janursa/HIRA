@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 from ciim.src.insilico_perturbation.optimization.helper import obtimize_function
 from ciim.src.insilico_perturbation.optimization.helper import run_greedy_tf_optimization_parallel
-from ciim.src.common import SAVE_DIR
+from ciim.src.config import SAVE_DIR
 
 if __name__ == "__main__":
     tfs = np.loadtxt(f"{SAVE_DIR}/candidate_tfs.txt", dtype=str)

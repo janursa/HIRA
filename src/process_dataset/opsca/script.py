@@ -9,7 +9,7 @@ from scipy.sparse import csr_matrix
 import scanpy as sc
 
 
-from ciim.src.common import base_dir, task_grn_benchmark_dir
+from ciim.src.config import base_dir, task_grn_benchmark_dir
  
 
 

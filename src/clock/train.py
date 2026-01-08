@@ -188,7 +188,7 @@ def wrapper_build_model_cell_type(cell_type, par):
     import anndata as ad
     from scipy.sparse import issparse
     from ciim.src.clock.helper import save_function, merge_adata
-    from ciim.src.common import SAVE_DIR
+    from ciim.src.config import SAVE_DIR
     import pandas as pd
     import numpy as np
     # - prepare the data

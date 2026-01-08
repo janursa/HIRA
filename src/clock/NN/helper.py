@@ -1,4 +1,4 @@
-from ciim.src.common import SAVE_DIR
+from ciim.src.config import SAVE_DIR
 import scanpy as sc
 
 

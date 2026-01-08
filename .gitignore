@@ -19,6 +19,7 @@ tw*
 base_folder/*
 datasets/*
 prior/*
+tmp/*   
 
 # related to python
 .ipynb_checkpoints

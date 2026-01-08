@@ -21,7 +21,7 @@ import anndata as ad
 from statsmodels.stats.multitest import multipletests
 
 # Import common utilities and configuration
-from ciim.src.common import (
+from ciim.src.config import (
     PLOTS_DIR, 
     SAVE_DIR,
     cell_types as default_cell_types,
@@ -29,7 +29,7 @@ from ciim.src.common import (
     colors_blind
 )
 
-from ongoing.ciim.src.config import get_config
+from ciim.src.config import get_config
 from ciim.src.utils.util import test_mixed_effects, test_paired, test_unpaired
 from ciim.src.clock.plots import (
     wrapper_age_acceleration_disease,
@@ -346,8 +346,6 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
     
     print("\n" + "="*60)
     print(f"Aging Analysis: {dataset}")
-    if config.config_label:
-        print(f"Configuration: {config.config_label}")
     print("="*60)
     
     # Get age group column from config
@@ -466,8 +464,7 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
         ax.set_title(cell_type, fontsize=10, pad=10)
         
         # Save plot
-        config_suffix = f"_{config.config_label}" if config.config_label else ""
-        output_path = os.path.join(output_dir, f'clock_{dataset}{config_suffix}_aging_{cell_type}.png')
+        output_path = os.path.join(output_dir, f'clock_{dataset}_aging_{cell_type}.png')
         plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
         print(f"  Saved: {output_path}")
@@ -557,8 +554,7 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
                 if ax.get_legend():
                     ax.get_legend().remove()
         
-        config_suffix = f"_{config.config_label}" if config.config_label else ""
-        output_path = os.path.join(output_dir, f'clock_{dataset}{config_suffix}_aging_combined.png')
+        output_path = os.path.join(output_dir, f'clock_{dataset}_aging_combined.png')
         plt.tight_layout()
         plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
@@ -890,8 +886,7 @@ Examples:
     
     # Load configuration
     try:
-        configs = get_config(args.dataset, config_label=args.config_label)
-        config = configs[0]  # Use first config (most datasets have only one)
+        config = get_config(args.dataset)
     except ValueError as e:
         print(f"Error: {e}")
         return
@@ -903,9 +898,6 @@ Examples:
     print(f"Aging Clock Analysis - {args.analysis_type.capitalize()}")
     print("="*60)
     print(f"Dataset: {args.dataset}")
-    if args.config_label:
-        print(f"Config label: {args.config_label}")
-    print(f"Analysis type: {args.analysis_type}")
     print(f"Model version: {args.version}")
     print(f"Cell types: {', '.join(args.cell_types)}")
     print(f"P-value threshold: {p_value_threshold}")

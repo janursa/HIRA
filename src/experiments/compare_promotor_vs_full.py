@@ -15,7 +15,7 @@ import seaborn as sns
 from scipy.stats import spearmanr, pearsonr
 from matplotlib_venn import venn2
 
-from ciim.src.common import PLOTS_DIR, SAVE_DIR, cell_types, palette_cell_types
+from ciim.src.config import PLOTS_DIR, SAVE_DIR, cell_types, palette_cell_types
 
 
 def load_stats(data_type='bulk', suffix=''):

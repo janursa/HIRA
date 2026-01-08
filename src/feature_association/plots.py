@@ -15,7 +15,7 @@ import scipy
 from scipy.stats import spearmanr, linregress
 from pandas.api.types import CategoricalDtype
 
-from ciim.src.common import base_dir, SAVE_DIR, colors_blind, datasets_all ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
+from ciim.src.config import base_dir, SAVE_DIR, colors_blind, DISCOVERY_COHORTS ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
 from ciim.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data
 from ciim.src.utils.util import retrieve_net, retrieve_adata
 
@@ -29,7 +29,7 @@ def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_v
         'Dimethyl Sulfoxide': 'DMSO',
     }
     def get_perturbation_raw_data(case_tf, cell_type, ctr, treatment):
-        adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, type='bulk', feature_type='tf_activity', condition=None)
+        adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, data_type='bulk', feature_type='tf_activity', condition=None)
         if 'treatment' in adata.obs.columns:
             key = 'treatment'
         elif 'condition' in adata.obs.columns:
@@ -215,11 +215,11 @@ def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_v
     ax.set_title(f"{case_tf} ", fontsize=10,  pad=15)
 
 def plot_ctr_condition_distribution(cell_types, genes, treatment, ctr, dataset, stats=None, 
-                                    type='bulk', feature_type='tf_activity', map_names={}):
+                                    data_type='bulk', feature_type='tf_activity', map_names={}):
     
     for cell_type in cell_types:        
         # ------------- data
-        feature_data = retrieve_feature_data(dataset, cell_type, type, feature_type=feature_type)
+        feature_data = retrieve_feature_data(dataset, cell_type, data_type, feature_type=feature_type)
         if hasattr(feature_data.X, 'todense'):
             feature_data.X = feature_data.X.todense()
         feature_data_df = pd.DataFrame(feature_data.X, columns=feature_data.var_names)
@@ -305,11 +305,11 @@ def plot_sig_tfs_stats(df, figsize=(3.5, 2), palette=None, ax=None):
     # plt.tight_layout()
 class ModularizedNetPlot:
     @staticmethod
-    def prepare_net_only_tfs(cell_type, race, type, min_degree=3):
+    def prepare_net_only_tfs(cell_type, race, data_type, min_degree=3):
         from ciim.src.feature_association.helper import retrieve_nets, retrieve_sig_stats
-        from ciim.src.common import datasets_e, datasets_a, datasets_all
+        from ciim.src.config import   DISCOVERY_COHORTS
 
-        stats_sig = retrieve_sig_stats(race=race, type=type).drop_duplicates(subset=['cell_type', 'gene'])
+        stats_sig = retrieve_sig_stats(race=race, data_type=data_type).drop_duplicates(subset=['cell_type', 'gene'])
         stats_sig_t = stats_sig[stats_sig['cell_type'] == cell_type].set_index(['gene'])
         sig_tfs = stats_sig_t.index.unique()
         if race=='european':
@@ -317,7 +317,7 @@ class ModularizedNetPlot:
         elif race=='asian':
             datasets = datasets_a
         else:
-            datasets = datasets_all
+            datasets = DISCOVERY_COHORTS
         cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
         net = retrieve_nets(datasets, cell_type_major, only_promotor_based=True)
 
@@ -393,10 +393,10 @@ class ModularizedNetPlot:
         collapsed_net.rename(columns={'source_module_name': 'source', 'target_module_name': 'target', 'sign': 'weight'}, inplace=True)
         return collapsed_net
     @staticmethod
-    def add_trend_to_collapsed_net_only_tfs(collapsed_net, type, race, cell_type):
+    def add_trend_to_collapsed_net_only_tfs(collapsed_net, data_type, race, cell_type):
         from ciim.src.feature_association.helper import retrieve_sig_stats
         # - sumarize the trends for the collapsed net
-        stats_sig = retrieve_sig_stats(race=race, type=type).drop_duplicates(subset=['cell_type', 'gene'])
+        stats_sig = retrieve_sig_stats(race=race, data_type=data_type).drop_duplicates(subset=['cell_type', 'gene'])
         stats_sig_t = stats_sig[stats_sig['cell_type'] == cell_type].set_index(['gene'])
         def summarize_trend(x):
             'Assigns one trend for multiple tfs'
@@ -540,9 +540,9 @@ def dotplot_category_color(df, ax,
         
         ax.add_artist(size_legend_handle)
 
-def plot_feature_values_per_datasets(cell_type, features, type, datasets, feature_type='gene_expression', age_limit=[20, 75], cluster=False, figsize=None):
+def plot_feature_values_per_datasets(cell_type, features, data_type, datasets, feature_type='gene_expression', age_limit=[20, 75], cluster=False, figsize=None):
     import matplotlib.pyplot as plt
-    from ciim.src.common import surrogate_names
+    from ciim.src.config import surrogate_names
 
     n_datasets = len(datasets)
     n_features = len(features)
@@ -550,7 +550,12 @@ def plot_feature_values_per_datasets(cell_type, features, type, datasets, featur
         figsize = (n_datasets*3, .2*n_features+1)
     fig, axes = plt.subplots(1, n_datasets, figsize=figsize, sharey=False)
     for i, (dataset) in enumerate(datasets):
-        adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, type=type, feature_type=feature_type)
+        if feature_type == 'tf_activity':
+            adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, data_type=data_type, feature_type=feature_type) 
+        elif feature_type == 'gene_expression':
+            adata = retrieve_adata(dataset=dataset, cell_type=cell_type, data_type=data_type)
+        else:
+            raise ValueError(f"Unsupported feature type: {feature_type}")
         adata = adata[:, adata.var_names.isin(features)]
         
         if age_limit is not None:
@@ -588,13 +593,18 @@ def plot_feature_values_per_datasets(cell_type, features, type, datasets, featur
     # plt.tight_layout()
     # plt.suptitle(cell_type, fontsize=12, fontweight='bold', y=1.05)
     return fig
-def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets, ax=None, show_cbar=True, type='bulk', 
+def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets, ax=None, show_cbar=True, data_type='bulk', 
                                     age_limit=[20, 80], show_ylabels=True):
     from ciim.src.feature_association.helper import retrieve_feature_data, bin_feature_values
     
     mean_expr_store = []
     for dataset in datasets:
-        adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, type=type, feature_type=feature_type) 
+        if feature_type == 'tf_activity':
+            adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, data_type=data_type, feature_type=feature_type) 
+        elif feature_type == 'gene_expression':
+            adata = retrieve_adata(dataset=dataset, cell_type=cell_type, data_type=data_type)
+        else:
+            raise ValueError(f"Unsupported feature data_type: {feature_type}")
         adata = adata[(adata.obs['age'] > age_limit[0]) & (adata.obs['age'] < age_limit[1])]
         adata = adata[:, adata.var_names==feature]
         assert adata.shape[1] == 1, f"Feature {feature} not found in dataset {dataset} for cell type {cell_type}"
@@ -762,7 +772,7 @@ def plot_overlap(
         figsize=(2.5, 2),
         legend_loc=(1.05, 0.5)
     ):
-    from ciim.src.common import palette_trend_2, cell_types
+    from ciim.src.config import palette_trend_2, cell_types
     import matplotlib.pyplot as plt
     import seaborn as sns
     import matplotlib.patches as mpatches
@@ -871,14 +881,14 @@ def plot_overlap(
         ax.legend(handles=handles, title='', loc=legend_loc, frameon=False)
 
 
-def plot_gene_score_association_with_age(cell_type, datasets, type, features=None, feature_type='tf_activity', sizes=(50, 100), 
+def plot_gene_score_association_with_age(cell_type, datasets, data_type, features=None, feature_type='tf_activity', sizes=(50, 100), 
                               top_features=20, min_degree=4, filter_meta_significant=False, race='european', width=3,
                              margins_ax1={'x': 0.1, 'y': 0.1}, margins_ax2={'x': 0.1, 'y': 0.1}, show_size_legend = False, figsize=None,
                              n_top_terms=20):
     from ciim.src.utils.plots import dotplot
     from matplotlib.colors import TwoSlopeNorm
-    from ciim.src.common import cmap_trend, palette_trend_2, surrogate_names
-    from ciim.src.feature_association.helper import retrieve_stats_features, retrieve_sig_stats
+    from ciim.src.config import cmap_trend, palette_trend_2, surrogate_names
+    from ciim.src.feature_association.helper import retrieve_features_stats, retrieve_sig_stats
     import matplotlib.gridspec as gridspec
     import pandas as pd
     import numpy as np
@@ -895,12 +905,12 @@ def plot_gene_score_association_with_age(cell_type, datasets, type, features=Non
         raise ValueError(f"Unknown feature type: {feature_type}")
 
     # - format the data
-    stats_t = retrieve_stats_features(type=type, feature_type=feature_type, cell_type=cell_type, datasets=datasets, condition='healthy')
+    stats_t = retrieve_features_stats(data_type=data_type, feature_type=feature_type, cell_type=cell_type, datasets=datasets, condition='healthy')
     
     if 'gene' in stats_t.columns:
         stats_t = stats_t.rename(columns={'gene': 'source'})
     if filter_meta_significant:
-        stats_sig = retrieve_sig_stats(type=type, race=race, feature_type=feature_type)
+        stats_sig = retrieve_sig_stats(data_type=data_type, feature_type=feature_type)
         stats_sig = stats_sig[stats_sig['cell_type'] == cell_type]
         sig_tfs = stats_sig[feature_col].unique()
         stats_t = stats_t[stats_t[feature_col].isin(sig_tfs)]
@@ -912,7 +922,7 @@ def plot_gene_score_association_with_age(cell_type, datasets, type, features=Non
     # - add the number of genes in each pathway
     c_store = []
     for dataset in datasets:
-        df = retrieve_feature_data(dataset=dataset, cell_type=cell_type, type=type, feature_type='gene_score', smoothened=False).var
+        df = retrieve_feature_data(dataset=dataset, cell_type=cell_type, data_type=data_type, feature_type='gene_score', smoothened=False).var
         df.index.name = 'pathway'
         df = df.reset_index()
         df['dataset'] = dataset
@@ -1030,13 +1040,13 @@ def plot_gene_score_association_with_age(cell_type, datasets, type, features=Non
     plt.subplots_adjust(wspace=0.1)
 
     return fig
-def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_type='tf_activity', sizes=(50, 100), 
+def plot_features_vs_datasets(cell_type, datasets, data_type, features=None, feature_type='tf_activity', sizes=(50, 100), 
                               top_features=20, min_degree=4, filter_meta_significant=False, race='european', 
                               show_size_legend=False):
 
     from ciim.src.utils.plots import dotplot
-    from ciim.src.common import cmap_trend, surrogate_names
-    from ciim.src.feature_association.helper import retrieve_stats_features, retrieve_sig_stats
+    from ciim.src.config import cmap_trend, surrogate_names
+    from ciim.src.feature_association.helper import retrieve_features_stats, retrieve_sig_stats
     from ciim.src.utils.util import retrieve_net
     import matplotlib.gridspec as gridspec
     import pandas as pd
@@ -1061,13 +1071,14 @@ def plot_features_vs_datasets(cell_type, datasets, type, features=None, feature_
         raise ValueError(f"Unknown feature type: {feature_type}")
 
     # - format the data
-    stats_t = retrieve_stats_features(type, feature_type, cell_type=cell_type, datasets=datasets, condition='healthy')
+    stats_t = retrieve_features_stats(data_type, feature_type, cell_type=cell_type)
+    stats_t = stats_t[stats_t['dataset'].isin(datasets)]
     # print(stats_t)
     
     if 'gene' in stats_t.columns:
         stats_t = stats_t.rename(columns={'gene': 'source'})
     if filter_meta_significant:
-        stats_sig = retrieve_sig_stats(type=type, race=race, feature_type=feature_type)
+        stats_sig = retrieve_sig_stats(data_type=data_type, feature_type=feature_type)
         if 'gene' in stats_sig.columns:
             stats_sig = stats_sig.rename(columns={'gene': 'source'})
         stats_sig = stats_sig[stats_sig['cell_type'] == cell_type]
@@ -1394,7 +1405,7 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
     norm = TwoSlopeNorm(vmin=-.1, vcenter=0, vmax=.1)
     
     net['dataset'] = net['dataset'].apply(lambda name: surrogate_names.get(name, name))
-    # net['dataset'] = net['dataset'].astype(CategoricalDtype(categories=datasets_all, ordered=True))
+    # net['dataset'] = net['dataset'].astype(CategoricalDtype(categories=DISCOVERY_COHORTS, ordered=True))
     net['slope_direction'] = net['slope'].apply(lambda x: 'Increase in aging' if x > 0 else 'Decrease in aging')
 
     if ax is None:
@@ -1482,8 +1493,8 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
                         fontsize=8, weight='bold', color='black', zorder=10)
 
 
-def wrapper_flesh_out_tf_interactions(datasets, cell_type, tf, type='bulk', n_top=10, keep_sig_only=False, sizes=(20, 100), ax=None, show_legend=True):
-    from ciim.src.feature_association.helper import retrieve_stats_features
+def wrapper_flesh_out_tf_interactions(datasets, cell_type, tf, data_type='bulk', n_top=10, keep_sig_only=False, sizes=(20, 100), ax=None, show_legend=True):
+    from ciim.src.feature_association.helper import retrieve_features_stats
     from ciim.src.feature_association.plots import plot_tf_interactions_plus_target_stats
     # - get the net for different datasets
     top_targets = []
@@ -1498,7 +1509,8 @@ def wrapper_flesh_out_tf_interactions(datasets, cell_type, tf, type='bulk', n_to
     top_targets = np.unique(np.concatenate(top_targets))
         
     # - get the stats of targets per dataset 
-    stats_targets = retrieve_stats_features(type, feature_type='gene_expression', cell_type=cell_type, datasets=datasets_all, condition='healthy')
+    stats_targets = retrieve_features_stats(data_type, feature_type='gene_expression', cell_type=cell_type, condition='healthy')
+    stats_targets = stats_targets[stats_targets['dataset'].isin(datasets)]
     net_stats = net.merge(stats_targets[['dataset', 'target', 'p_value_adj', 'slope']], on=['dataset', 'target'], how='left')
     net_stats = net_stats[~net_stats['p_value_adj'].isna()]
     net_stats['neg_log10_adj_pval'] = -np.log10(net_stats['p_value_adj'])
@@ -1580,8 +1592,8 @@ def binarize_age(obs):
     age_groups = ['45-', '45+']  
     obs['age_group'] = pd.cut(obs['age'], bins=bins, labels=age_groups, right=False)
     return obs
-def plot_trend_tfs(cell_type, tfs, type='bulk', dataset='data1', ax=None):
-    adata = retrieve_adata(dataset, type=type)
+def plot_trend_tfs(cell_type, tfs, data_type='bulk', dataset='data1', ax=None):
+    adata = retrieve_adata(dataset, data_type=data_type)
     adata = adata[adata.obs['cell_type'] == cell_type]
     nets = retrieve_net(dataset, cell_type)
     tf_acts = calculate_tf_activity(adata, nets)
@@ -1628,7 +1640,7 @@ def plot_overall_heatmap(stats_all,
                         draw_legend=True
 
                         ):
-    from ciim.src.common import palette_trend_2
+    from ciim.src.config import palette_trend_2
     from matplotlib.colors import ListedColormap, BoundaryNorm
     from scipy.cluster.hierarchy import linkage
     from matplotlib.patches import Patch
@@ -2246,7 +2258,7 @@ def heamap_plot_minor_cell_types(stats_all, palette,
                                             annotate_x_ticks=True, dendrogram_visible=True,
                                             show_legend=True):
 
-    from ciim.src.common import palette_cell_types, surrogate_names
+    from ciim.src.config import palette_cell_types, surrogate_names
     from matplotlib.colors import ListedColormap, BoundaryNorm
     from scipy.cluster.hierarchy import linkage
     from matplotlib.patches import Patch

@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from scipy import stats
 
-from ciim.src.common import SAVE_DIR, surrogate_names, palette_datasets_pretty
+from ciim.src.config import SAVE_DIR, surrogate_names, palette_datasets_pretty
 from ciim.src.feature_association.helper import retrieve_sig_stats
 from ciim.src.feature_association.helper import retrieve_net_consensus
-from ciim.src.common import datasets_all, colors_blind
+from ciim.src.config import DISCOVERY_COHORTS, colors_blind
 from ciim.src.utils.util import get_genesets
 import warnings
 from matplotlib.patches import Patch
@@ -36,7 +36,7 @@ def barplot_yvalue_tfs(pivot_df, ax=None, color=colors_blind[1], x='tf', y='valu
 
 def heatplot_perturbation_effect(pivot_df, ax, gene_score_shift_col):
     from matplotlib.colors import LinearSegmentedColormap
-    from ciim.src.common import palette_trend_2, surrogate_names
+    from ciim.src.config import palette_trend_2, surrogate_names
 
     custom_cmap = LinearSegmentedColormap.from_list(
         'aging_effect_cmap',

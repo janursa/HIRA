@@ -14,5 +14,5 @@
 set -e
 
 
-# python src/process_dataset/parse_bioscience/script.py
-python src/process_dataset/xaira/script.py
+python src/process_dataset/parse_bioscience/script.py
+# python src/process_dataset/xaira/script.py

@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from scipy import stats
 
-from ciim.src.common import SAVE_DIR, surrogate_names, palette_datasets_pretty
+from ciim.src.config import SAVE_DIR, surrogate_names, palette_datasets_pretty
 from ciim.src.feature_association.helper import retrieve_sig_stats
-from ciim.src.common import datasets_all
+from ciim.src.config import DISCOVERY_COHORTS
 from ciim.src.utils.util import get_genesets, retrieve_net_consensus
 import warnings
 from ciim.src.feature_association.helper import retrieve_feature_data 
@@ -179,7 +179,7 @@ import numpy as np
 
 from ciim.src.feature_association.helper import retrieve_sig_stats
 from ciim.src.clock.helper import predict_age
-from ciim.src.common import SAVE_DIR
+from ciim.src.config import SAVE_DIR
 
 import warnings
 
@@ -400,7 +400,7 @@ def run_in_silico(
     return result
 
 def wrapper_in_silico_perturbation(par, cell_types, datasets, n_jobs=10):
-    from ciim.src.common import SAVE_DIR
+    from ciim.src.config import SAVE_DIR
     # ---- Parallel Execution ----
     from joblib import Parallel, delayed
 
@@ -412,7 +412,7 @@ def wrapper_in_silico_perturbation(par, cell_types, datasets, n_jobs=10):
         for ds in datasets
     }
     net_dict = {
-        ct: retrieve_net_consensus(datasets=datasets_all, cell_type=ct)
+        ct: retrieve_net_consensus(datasets=DISCOVERY_COHORTS, cell_type=ct)
         for ct in cell_types
     }
     pathways = get_genesets()
@@ -432,7 +432,7 @@ def wrapper_in_silico_perturbation(par, cell_types, datasets, n_jobs=10):
     
     return df_all
 def wrapper_in_silico_single_perturbation(tfs, par, cell_types, datasets, n_jobs=10):
-    from ciim.src.common import SAVE_DIR
+    from ciim.src.config import SAVE_DIR
     # ---- Parallel Execution ----
     from joblib import Parallel, delayed
 
@@ -443,7 +443,7 @@ def wrapper_in_silico_single_perturbation(tfs, par, cell_types, datasets, n_jobs
         for ds in datasets
     }
     net_dict = {
-        ct: retrieve_net_consensus(datasets=datasets_all, cell_type=ct)
+        ct: retrieve_net_consensus(datasets=DISCOVERY_COHORTS, cell_type=ct)
         for ct in cell_types
     }
     pathways = get_genesets()

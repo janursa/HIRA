@@ -9,13 +9,13 @@ import os
 import sys
 import pandas as pd
 from tqdm import tqdm
-from ciim.src.common import SAVE_DIR, cell_types
+from ciim.src.config import SAVE_DIR, cell_types
 from ciim.src.feature_association.helper import (
     wrapper_tf_activity,
     wrapper_gene_expression,
     wrapper_association_with_age_condition
 )
-from ongoing.ciim.src.config import get_config
+from ciim.src.config import get_config
 
 
 def compute_all_drug_stats(

@@ -10,7 +10,7 @@ import sys
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from ciim.src.common import SAVE_DIR, PLOTS_DIR
+from ciim.src.config import SAVE_DIR, PLOTS_DIR
 from ciim.src.feature_association.helper import retrieve_sig_stats
 from ciim.src.overlap_analysis.drug_reversal import (
     analyze_drug_reversal,

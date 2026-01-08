@@ -13,7 +13,8 @@ def check_signs(group):
     signs = group['slope'].apply(lambda x: 1 if x > 0 else -1 if x < 0 else 0)
     return signs.nunique() == 1
 
-def run_meta_analysis(stats_all, meta_analysis_type='max', min_degree=2, temp_dir='../output/tf_activity/'):
+def run_meta_analysis(stats_all, meta_association_type='max', min_degree=2, temp_dir='../output/tf_activity/'):
+    os.makedirs(temp_dir, exist_ok=True)
     # ---------- prepare
     assert stats_all.shape[0]> 0, 'No stats for meta analysis'
     print('Meta analysis...')
@@ -38,7 +39,7 @@ def run_meta_analysis(stats_all, meta_analysis_type='max', min_degree=2, temp_di
         # Run the R script with the provided file paths
         try:
             subprocess.run(
-                ["Rscript", Rscript_file, file_path, out_path, meta_analysis_type],
+                ["Rscript", Rscript_file, file_path, out_path, meta_association_type],
                 check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE

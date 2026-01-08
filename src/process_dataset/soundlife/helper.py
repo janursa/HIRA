@@ -9,6 +9,8 @@ import scanpy as sc
 import pandas as pd
 import anndata as ad
 import gc
+from ciim.src.config import get_config
+from ciim.src.process_dataset.preprocess.helper import qc_check
 
 def format_columns(adata):
     """
@@ -164,44 +166,6 @@ def map_cell_types(adata):
     return adata
 
 
-def qc_check(adata):
-    """
-    Apply basic quality control filtering.
-    Adapted from existing QC pipeline.
-    """
-    print('Applying QC filters...')
-    print(f'Shape before filtering: {adata.shape}')
-    
-    # Calculate QC metrics
-    adata.var["mt"] = adata.var_names.str.startswith("MT-")
-    sc.pp.calculate_qc_metrics(
-        adata, 
-        qc_vars=['mt'], 
-        percent_top=None, 
-        log1p=False, 
-        inplace=True
-    )
-    
-    # Filter cells
-    sc.pp.filter_cells(adata, min_genes=100)
-    sc.pp.filter_cells(adata, max_genes=5000)
-    
-    # Filter genes
-    # Consider number of donors for min_cells threshold
-    n_donors = adata.obs['donor_id'].nunique()
-    min_cells_per_donor = 10
-    min_cells = int(n_donors * min_cells_per_donor)
-    min_cells = max(min_cells, 10)
-    
-    print(f'Using min_cells={min_cells} for gene filtering (based on {n_donors} donors)')
-    sc.pp.filter_genes(adata, min_cells=min_cells)
-    sc.pp.filter_genes(adata, min_counts=1)
-    
-    print(f'Shape after filtering: {adata.shape}')
-    
-    return adata
-
-
 def create_metacells(adata, metacell_size=100):
     """
     Create metacells by splitting each group into chunks of metacell_size cells.
@@ -287,7 +251,8 @@ def process_single_file(file_path, output_path, test_mode=False, output_path_met
         output_path_metacell: Path to save metacell pseudobulked output (optional)
     """
     import time
-    
+    cfg = get_config('soundlife')
+    pseudobulk_group = cfg.pseudobulk_group
     print(f'\n{"="*80}')
     print(f'Processing: {os.path.basename(file_path)}')
     print(f'{"="*80}')
@@ -348,7 +313,7 @@ def process_single_file(file_path, output_path, test_mode=False, output_path_met
     from task_grn_inference.src.process_data.helper_data import sum_by
     
     # Create sum_by column
-    covariates = ['cell_type', 'donor_id', 'visitName']
+    covariates = pseudobulk_group
     adata.obs['sum_by'] = ''
     for covariate in covariates:
         adata.obs['sum_by'] += '_' + adata.obs[covariate].astype(str)

@@ -15,7 +15,7 @@ from scipy.cluster import hierarchy
 import os
 
 # Paths
-from ciim.src.common import base_dir, PLOTS_DIR
+from ciim.src.config import base_dir, PLOTS_DIR
 
 # Load results
 print("="*80)

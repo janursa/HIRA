@@ -1,22 +1,147 @@
+
 """
 Configuration for condition-based analyses (disease and perturbation).
-
 This module centralizes all dataset-specific configurations to eliminate
 code duplication between disease and perturbation analyses.
 """
-
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Literal
 from collections import OrderedDict
-
+import seaborn as sns
+from matplotlib.colors import LinearSegmentedColormap
+from collections import OrderedDict
+import warnings
+import os
+warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
+# Variables
+meta_analysis_min_cohorts = 3
+grn_consensus_min_degree = 3
 # Dataset name mapping: raw -> processed
 DATASET_NAME_MAPPING = {
     "data1": "onek1k",
     "data7_allTPs_jalil": "abf300",
     "data12": "zhang",
-    "data13": "aida"
+    "data13": "aida",
+    "SLE": "perez_sle"
 }
+try:
+    base_dir = os.environ["CIIM_DATA_DIR"]
+    task_grn_benchmark_dir = os.environ["TASK_GRN_BENCHMARK_DIR"]
+except KeyError:
+    import platform
+    if platform.system() == 'Linux':
+        base_dir = '/vol/projects/jnourisa/'
+        # base_dir = '/home/jnourisa/projs/ongoing/ciim/'
+        task_grn_benchmark_dir = '/home/jnourisa/projs/ongoing/task_grn_inference/'
+    else:
+        base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
+        task_grn_benchmark_dir = '/Users/jno24/Documents/projs/ongoing/task_grn_inference/'
+SAVE_DIR = f'{base_dir}/output/'
+FEATURES_DIR = f'{SAVE_DIR}/features/'
+CLOCKS_DIR = f"{SAVE_DIR}/clock/"
+PLOTS_DIR = f"{SAVE_DIR}/plots/"
+PRIOR_DIR = f"{base_dir}/prior/"
+os.makedirs(SAVE_DIR, exist_ok=True)
+os.makedirs(CLOCKS_DIR, exist_ok=True)
+os.makedirs(PLOTS_DIR, exist_ok=True)
+os.makedirs(PRIOR_DIR, exist_ok=True)
+os.makedirs(FEATURES_DIR, exist_ok=True)
 
+surrogate_names = {
+                    'onek1k':'OneK1K',
+                    'abf300': 'ABF300',
+                    'zhang': 'Zhang',
+                    'aida': 'AIDA',
+                    'perez_sle': 'Perez',
+                    'op': 'OPSCA',
+                    'parsebioscience': 'Parse Bioscience', 
+                    'soundlife': 'SoundLife',
+                    'CXCL9': 'CXCL9',
+                    }
+# - datasets
+ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife']
+AGING_COHORTS = ['onek1k', 'abf300', 'soundlife', 'aida', 'perez_sle']
+DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
+# DISCOVERY_COHORTS = ['onek1k', 'abf300', 'zhang']
+CLOCK_TRAINING_COHORTS = [
+                'onek1k',
+                'abf300'
+                ]
+CLOCK_TEST_COHORTS = [
+                'zhang',
+                'aida',
+                'perez_sle'
+                ]
+# - palettes  
+colors_blind = [
+          '#E69F00',  # Orange
+          '#56B4E9',  # Sky Blue
+          '#009E73',  # Bluish Green
+          '#F0E442',  # Yellow
+          '#0072B2',  # Blue
+          '#D55E00',  # Vermillion
+          '#CC79A7']  # Reddish Purple
+set2_colors = sns.color_palette("Set2", n_colors=len(ALL_DATASETS))
+palette_datasets = {d: color for d, color in zip(ALL_DATASETS, set2_colors)}
+palette_datasets_pretty = {surrogate_names[d]:color for d, color in palette_datasets.items()}
+palette_regulation = {'Positive': '#56B4E9', 'Negative': 'lightcoral'}
+
+palette_genders = {"Male": "#1f78b4", "Female": "#ff7f00", 'Both': '#999999'}
+palette_trend = {'Inconsistent': 'gray', 'Increase in aging': '#E52B50', 'Decrease in aging': '#B0BF1A'}
+cmap_trend = LinearSegmentedColormap.from_list(
+            "aging_map", [palette_trend['Decrease in aging'], '#F0F0F0', palette_trend['Increase in aging']], N=10
+        )
+palette_trend_2 = OrderedDict([
+    ('Increase in aging', '#E52B50'),
+    ('Decrease in aging', '#B0BF1A'),
+])
+palette_disease_effect = OrderedDict([
+    ('Increase in disease', '#A83279'),   # magenta-rose (reddish, but cooler tone)
+    ('Decrease in disease', '#4CAF50'),   # leafy green (darker and more saturated)
+])
+palette_treatment = OrderedDict([
+    ('Increase after treatment', '#FF7F0E'),   # bright orange (stays on warm side, but clearly distinct)
+    ('Decrease after treatment', '#1E8449'),   # forest green (darker and more neutral)
+])
+CELL_TYPES = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
+palette_cell_types = {name: color for name, color in zip(CELL_TYPES, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}
+# - mapping
+mapping_major_2_minor = {
+    'B': ['Naive_B', 'Memory_B'],
+    'CD4T': ['Tcm_Naive_CD4', 'Tem_Effector_CD4', 'Treg'],
+    'CD8T': ['Tem_Trm_CD8', 'Tem_Temra_CD8', 'Tcm_Naive_CD8', 'MAIT'],
+    'MONO': ['NonClassic_MONO', 'Classic_MONO'],
+    'NK': ['CD16_NK', 'NK']
+ }
+mapping_minor_2_major = {
+    'Tcm_Naive_CD4': 'CD4T',
+    'Tem_Effector_CD4': 'CD4T',
+    
+    'Tem_Trm_CD8': 'CD8T',
+    'Tem_Temra_CD8': 'CD8T',
+    'Tcm_Naive_CD8': 'CD8T',
+    'MAIT': 'CD8T',
+    
+    'NK': 'NK',
+    'CD16_NK': 'NK',
+    'Classic_MONO': 'MONO',
+    'NonClassic_MONO': 'MONO',
+    
+    'Naive_B': 'B',
+    'Memory_B': 'B',
+}
+minor_cell_types = list(mapping_minor_2_major.keys())
+# par_simulation = {
+#         'simulation_iteration': 3,
+#         'n_donors': 20,
+#         'data_type': 'bulk',
+#         'version': 'all_data',
+#         'reg_type': 'ridge',
+#         'feature_type': 'gene_expression',
+#         'perturbation_mode': 'overexpression',
+#         'tfs': None,
+#     }
 
 @dataclass
 class ConditionConfig:
@@ -24,11 +149,11 @@ class ConditionConfig:
     
     # Core identifiers
     name: str
-    analysis_type: Literal['disease', 'perturbation', 'aging']
     
+    pseudobulk_group: Optional[List[str]] = None
     # Data columns
-    condition_column: str  # Column name in obs: 'condition', 'perturbation', 'Max_WHO_Group'
-    control_group: str     # Control group name: 'healthy', 'PBS', 'Dimethyl Sulfoxide'
+    condition_column: Optional[str] = None # Column name in obs: 'condition', 'perturbation', 'Max_WHO_Group'
+    control_group: Optional[str] = None     # Control group name: 'healthy', 'PBS', 'Dimethyl Sulfoxide'
     
     # Treatments to compare (can be 'all' for auto-detection)
     treatment_groups: List[str] | Literal['all'] = 'all'
@@ -53,7 +178,6 @@ class ConditionConfig:
     
     # Display
     display_name: Optional[str] = None
-    config_label: Optional[str] = None  # Label for this specific config (when multiple configs per dataset)
     
     # Plotting control
     target_treatments: Optional[List[str]] = None  # Which conditions to plot in overlap analysis
@@ -75,24 +199,30 @@ class ConditionConfig:
     # Plot configuration for perturbations
     clock_plot_config: Optional[Dict[str, any]] = None  # Dataset-specific plot parameters
     
-    def __post_init__(self):
-        if self.display_name is None:
-            self.display_name = self.name
-        
-        # Auto-detect condition column variants
-        if self.name in ['op', 'parsebioscience']:
-            # These datasets might have 'condition' or 'perturbation'
-            self.condition_column_variants = ['condition', 'perturbation']
-        else:
-            self.condition_column_variants = [self.condition_column]
-
-
 # Dataset configurations
 DATASET_CONFIGS = {
+    # ========== Population aging ==========
+    "aida": ConditionConfig(
+        name="aida",
+        pseudobulk_group=['donor_id', 'cell_type', 'age']
+    ), 
+    'zhang': ConditionConfig(
+        name="zhang",
+        pseudobulk_group=['donor_id', 'cell_type', 'age']
+    ),
+    'onek1k': ConditionConfig(
+        name="onek1k",
+        pseudobulk_group=['donor_id', 'cell_type', 'age']
+    ),
+    'abf300': ConditionConfig(
+        name="abf300",
+        pseudobulk_group=['donor_id', 'cell_type', 'age']
+    ),
+
+
     # ========== DISEASE DATASETS ==========
-    "SLE_European": ConditionConfig(
-        name="SLE_European",
-        analysis_type='disease',
+    "perez_sle": ConditionConfig(
+        name="perez_sle",
         condition_column='condition',
         control_group='healthy',
         treatment_groups=['SLE'],
@@ -103,30 +233,16 @@ DATASET_CONFIGS = {
             'normal': 'healthy',
             'systemic lupus erythematosus': 'SLE'
         },
-        condition_mapping={
-            'normal': 'healthy',
-            'systemic lupus erythematosus': 'SLE'
-        },
+
         # Clock analysis settings
         clock_test_type='unpaired',
-        clock_pvalue_threshold=0.05,
-    ),
-    
-    "Covid_50MHH": ConditionConfig(
-        name="Covid_50MHH",
-        analysis_type='disease',
-        condition_column='Max_WHO_Group',
-        control_group='mild',
-        treatment_groups='all',  # Will include moderate, severe
-        test_type='unpaired',
-        comparison_mode='same',
-        display_name='COVID-19',
+        pseudobulk_group=['donor_id', 'cell_type', 'age']
+       
     ),
     
     # ========== PERTURBATION DATASETS ==========
     "op": ConditionConfig(
         name="op",
-        analysis_type='perturbation',
         condition_column='condition',  # Will auto-detect 'perturbation' if needed
         control_group='Dimethyl Sulfoxide',
         treatment_groups=['Ruxolitinib'],  # Auto-detect all drugs
@@ -140,19 +256,18 @@ DATASET_CONFIGS = {
         clock_test_type='mixed_effect',
         clock_group_key='plate_name',
         clock_pvalue_correction='corrected',
-        clock_pvalue_threshold=0.05,
         clock_experiments='auto',  # Auto-generate from data: (control, treatment) for all treatments
         clock_mock_names=True,  # Mock compound names (keep top 1, rename others)
         clock_plot_config={
             'rejuvenating': {'figsize': (7.5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
             'aging': {'figsize': (5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
         },
-        name_mapping = {}
+        name_mapping = {},
+        pseudobulk_group=['cell_type', 'plate_name', 'condition', 'well', 'donor_id']
     ),
     
     "CXCL9": ConditionConfig(
         name="CXCL9",
-        analysis_type='perturbation',
         condition_column='condition',
         control_group=None,  # Multiple controls handled specially
         treatment_groups=[
@@ -180,7 +295,6 @@ DATASET_CONFIGS = {
         clock_test_type='mixed_effect',
         clock_group_key='donor_id',
         clock_pvalue_correction='raw',
-        clock_pvalue_threshold=0.05,
         clock_experiments=[
             ('24 h RPMI', '24 h LPS'),
             ('24 h RPMI', '24 h RPMI + ruxolitinib'),
@@ -196,11 +310,11 @@ DATASET_CONFIGS = {
             'rejuvenating': {'figsize': (4, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
             'aging': {'figsize': (7, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
         },
+        pseudobulk_group=['cell_type', 'pool_id', 'condition', 'donor_id']
     ),
     
     "parsebioscience": ConditionConfig(
         name="parsebioscience",
-        analysis_type='perturbation',
         condition_column='condition',  # Will auto-detect 'perturbation' if needed
         control_group='PBS',
         treatment_groups='all',  # Auto-detect all cytokines
@@ -214,7 +328,6 @@ DATASET_CONFIGS = {
         clock_test_type='mixed_effect',
         clock_group_key='donor_id',
         clock_pvalue_correction='corrected',
-        clock_pvalue_threshold=0.05,
         clock_experiments='auto',  # Auto-generate from data
         clock_plot_config={
             'CD4T': {
@@ -229,69 +342,36 @@ DATASET_CONFIGS = {
     ),
     
     # ========== AGING DATASETS (Longitudinal) ==========
-    "soundlife": [
-        # Pure aging - ALL samples (no filtering)
-        ConditionConfig(
+    "soundlife": ConditionConfig(
             name="soundlife",
-            analysis_type='aging',
-            condition_column='age_group',
-            control_group='young',
-            treatment_groups=['old'],
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ age_group',  # Simple age effect
-            mixed_effects_group='donor_id',
             comparison_mode='same',
-            display_name='Sound Life (Aging - All Samples)',
-            config_label='aging_all',
-            data_filter=None,  # No filtering - use all samples
-            name_mapping={'young': 'Young (25-35y)', 'old': 'Older (55-65y)'}
+            pseudobulk_group=['cell_type', 'donor_id', 'visitName'],
+            name_mapping={'healthy': 'healthy', 'CMV':'healthy'},
         )
-    ]
 }
 
-
-def get_config(dataset_name: str, config_label: Optional[str] = None) -> List[ConditionConfig]:
+def get_config(dataset_name: str) -> ConditionConfig:
     """
-    Get configuration(s) for a dataset.
-    
-    Datasets can have either a single config or a list of configs.
-    Always returns a list for consistent handling.
+    Get configuration for a dataset.
     
     Parameters
     ----------
     dataset_name : str
         Name of the dataset
-    config_label : str, optional
-        Specific config label to retrieve (for datasets with multiple configs)
     
     Returns
     -------
-    List[ConditionConfig]
-        List of configuration objects (even if only one config)
+    ConditionConfig
+        Configuration object for the dataset
     
     Raises
     ------
     ValueError
-        If dataset not found or config_label not found
+        If dataset not found
     """
     if dataset_name not in DATASET_CONFIGS:
         raise ValueError(f"Dataset '{dataset_name}' not found in configurations.")
     
     config = DATASET_CONFIGS[dataset_name]
     
-    # Ensure we always return a list
-    if isinstance(config, list):
-        # If config_label is specified, filter to that specific config
-        if config_label is not None:
-            matching_configs = [c for c in config if c.config_label == config_label]
-            if not matching_configs:
-                available_labels = [c.config_label for c in config if c.config_label]
-                raise ValueError(
-                    f"Config label '{config_label}' not found for dataset '{dataset_name}'. "
-                    f"Available labels: {', '.join(available_labels)}"
-                )
-            return matching_configs
-        return config
-    else:
-        return [config]
-
+    return config

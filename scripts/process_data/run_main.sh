@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
 #SBATCH --time=10:00:00
-#SBATCH --mem=250GB
+#SBATCH --mem=500GB
 #SBATCH --partition=cpu
 #SBATCH --mail-type=END,FAIL      
 #SBATCH --mail-user=jalil.nourisa@gmail.com   
@@ -31,12 +31,13 @@ for k, v in DATASET_NAME_MAPPING.items():
 
 set -e
 # Define run flags
+RUN_TEST=false
 RUN_PROCESS_DATASET=true
 RUN_PSEUDOBULK=true
 MAIN_DIR='/vol/projects/jnourisa/'
 
 # datasets to include -> preprocessing 
-datasets=" CXCL9" #data12 data7_allTPs_jalil data1 data13_Korean data13_Japanese SLE CXCL9
+datasets="  CXCL9" # data12 data7_allTPs_jalil data1 SLE 
 
 for dataset in $datasets; do
         
@@ -45,7 +46,7 @@ for dataset in $datasets; do
         elif [ "$dataset" = "CXCL9" ]; then
                 input_file="/vol/projects/CIIM/Healthy_Single_Cell_Data/count_matrix/CXCL9_TI.h5ad"
         else
-                input_file="${MAIN_DIR}/datasets/raw/${dataset}_CMtx.h5ad"
+                input_file="/vol/projects/CIIM/Healthy_Single_Cell_Data/count_matrix/${dataset}_CMtx.h5ad"
         fi
         
         PROCESSED_FILES_DIR="${MAIN_DIR}/datasets/sc/"
@@ -53,6 +54,9 @@ for dataset in $datasets; do
         # Define the command
         if [ "$RUN_PROCESS_DATASET" = true ]; then
                 args="--dataset $dataset --processed_files_dir $PROCESSED_FILES_DIR --input_file $input_file"
+                if [ "$RUN_TEST" = true ]; then
+                        args="${args} --run-test"
+                fi
                 cmd="python ${dependencies["process_dataset"]} $args"
                 echo "Running (bash): $cmd"
                 $cmd
@@ -71,8 +75,8 @@ for dataset in $datasets; do
         PROCESSED_DATASET_FILE="${MAIN_DIR}/datasets/sc/${mapped_name}.h5ad"
         BULK_ALL="${MAIN_DIR}/datasets/bulk/${mapped_name}.h5ad"
         BULK_MINOR_CELLTYPE="${MAIN_DIR}/datasets/bulk/${mapped_name}_minor.h5ad"
-        BULK_M="${MAIN_DIR}/datasets/bulk/${mapped_name}_M.h5ad"
-        BULK_F="${MAIN_DIR}/datasets/bulk/${mapped_name}_F.h5ad"
+        # BULK_M="${MAIN_DIR}/datasets/bulk/${mapped_name}_M.h5ad"
+        # BULK_F="${MAIN_DIR}/datasets/bulk/${mapped_name}_F.h5ad"
         
         if [ "$RUN_PSEUDOBULK" = true ]; then
                 # set the flags
@@ -80,9 +84,7 @@ for dataset in $datasets; do
 
                 args="--sc_dataset_file $PROCESSED_DATASET_FILE \
                       --bulk_all $BULK_ALL \
-                      --bulk_minor_celltype $BULK_MINOR_CELLTYPE \
-                      --bulk_M $BULK_M \
-                      --bulk_F $BULK_F "
+                      --bulk_minor_celltype $BULK_MINOR_CELLTYPE"
                 [ "$DOWNSAMPLE" = true ] && args="${args} --downsample"
                 cmd="python ${dependencies["bulkify_code"]} $args"
                 echo "Running (bash): $cmd"

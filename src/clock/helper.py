@@ -1,5 +1,5 @@
 
-from ciim.src.common import CLOCKS_DIR
+from ciim.src.config import CLOCKS_DIR
 import pandas as pd
 import numpy as np
 import anndata as ad
@@ -13,7 +13,7 @@ from sklearn.preprocessing import StandardScaler
 from scipy.sparse import issparse
 from anndata import AnnData
 
-from ciim.src.common import (
+from ciim.src.config import (
     PLOTS_DIR, 
     SAVE_DIR,
     surrogate_names,
@@ -86,11 +86,11 @@ def _df_to_adata(df):
 #     For tf_activity, it gets the consensus net and calculates the tf activity'''
 #     from ciim.src.feature_association.helper import calculate_tf_activity
 #     from ciim.src.utils.util import retrieve_adata, retrieve_net_consensus
-#     from ciim.src.common import mapping_minor_2_major, datasets_all, minor_cell_types
+#     from ciim.src.config import mapping_minor_2_major, DISCOVERY_COHORTS, minor_cell_types
 #     from scipy.sparse import issparse
 
 #     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-#     net = retrieve_net_consensus(datasets_all, cell_type_major)
+#     net = retrieve_net_consensus(DISCOVERY_COHORTS, cell_type_major)
     
 #     adata = retrieve_adata(dataset=dataset, cell_type=cell_type_major, type=data_type)
     
@@ -152,10 +152,10 @@ def format_data(datasets, cell_type=None, data_type='bulk', only_ctr=False, only
             adata_train.obs[col] = adata_train.obs[col].astype(str)
 
     if only_targets:
-        from ciim.src.common import datasets_all
+        from ciim.src.config import DISCOVERY_COHORTS
         assert cell_type is not None, "cell_type must be specified to filter for target genes"
         # min_degree = min(len(aging_clock_train_datasets), 4)
-        net = retrieve_net_consensus(datasets_all, cell_type, min_degree=3)
+        net = retrieve_net_consensus(DISCOVERY_COHORTS, cell_type, min_degree=3)
         target_genes = net['target'].unique()
         adata_train = adata_train[:, adata_train.var_names.isin(target_genes)].copy()
 
@@ -192,7 +192,7 @@ def align_feature_space(adata, gene_names):
     return new_adata
 
 def merge_adata(datasets, feature_type, cell_type, data_type, age_limit=0):
-    from ciim.src.common import SAVE_DIR
+    from ciim.src.config import SAVE_DIR
     adata_store = []
     for dataset in datasets:
         # adata = prepare_input(dataset, cell_type, feature_type=feature_type, data_type=data_type)

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-from ciim.src.common import colors_blind
+from ciim.src.config import colors_blind
 
 def plot_greedy_tf_selection(df_results, figsize=(3, 2)):
     fig, ax1 = plt.subplots(figsize=figsize)
@@ -119,14 +119,14 @@ def run_greedy_tf_optimization_parallel(
 def obtimize_function(tfs, cell_type='CD8T', n_jobs=20, genefc_threshold=2.2,
                         age_shift_scale=10,
                         genescore_shift_scale=1):
-    from ciim.src.common import par_simulation, datasets_all
+    from ciim.src.config import par_simulation, DISCOVERY_COHORTS
     from ciim.src.insilico_perturbation.helper import wrapper_in_silico_perturbation
     from ciim.src.insilico_perturbation.biological_analysis.helper import summarize_pathway_scores, summarize_essential_genes_shift
     par = par_simulation
     par['tfs'] = tfs
 
     # - run the simulation
-    raw_rr = wrapper_in_silico_perturbation(par, n_jobs=n_jobs, cell_types=[cell_type], datasets=datasets_all)
+    raw_rr = wrapper_in_silico_perturbation(par, n_jobs=n_jobs, cell_types=[cell_type], datasets=DISCOVERY_COHORTS)
     # - get the age shift
     age_shift = raw_rr['age_shift']['age_shift'].mean()
 

@@ -33,7 +33,7 @@ def select_top_targets(cell_type, tf, datasets, all_targets, n_top=30, feature_t
         DataFrame with columns: source, target, weight, p_value_adj, slope, 
         neg_log10_adj_pval, dataset
     """
-    stats_targets = retrieve_sig_stats(type='bulk', feature_type=feature_type, race='both')
+    stats_targets = retrieve_sig_stats(data_type='bulk', feature_type=feature_type, race='both')
     
     net_store = []
     for dataset in datasets:

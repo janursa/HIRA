@@ -4,8 +4,8 @@
 #SBATCH --error=logs/%j.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
-#SBATCH --time=10:00:00
-#SBATCH --mem=250GB
+#SBATCH --time=4:00:00
+#SBATCH --mem=1000GB
 #SBATCH --partition=cpu
 #SBATCH --mail-type=END,FAIL      
 #SBATCH --mail-user=jalil.nourisa@gmail.com   
@@ -13,7 +13,7 @@
 declare -A dependencies
 
 dependencies=(
-    ["grn_inference"]="src/workflows/grn_inference/script.py"
+    ["grn_inference"]="src/grn_inference/script.py"
 )
 
 set -e
@@ -23,11 +23,15 @@ CELL_TYPE_GRANULARITY='major'
 MAIN_DIR='/vol/projects/jnourisa/'
 
 MAX_WORKERS=10
-data_type='sc'
 
-datasets=" CXCL9 " #CXCL9  data1 data12 data7_allTPs_jalil   data13_Korean  data13_Japanese SLE_European
+
+datasets=" soundlife" # perez_sle onek1k abf300 zhang aida perez_sle
 
 for dataset in $datasets; do
+        data_type='sc'
+        if [ "$dataset" = "soundlife" ] ; then
+                data_type='bulk'
+        fi
         if [ "$RUN_GRN" = true ]; then
                 FORCE=true # If true, overwrite the existing files in grns directory
                 SAVE_GRNS_DIR="${MAIN_DIR}/output/grns/${dataset}/"

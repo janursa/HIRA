@@ -9,23 +9,9 @@ from scipy.stats import spearmanr
 import scipy.sparse as sp
 import pandas as pd
 
-from ciim.src.common import base_dir
+from ciim.src.config import base_dir
 
-parser = argparse.ArgumentParser(description='Infer GRN')
-parser.add_argument('--rna', type=str, required=True, help='Input AnnData file')
-parser.add_argument('--prediction', type=str, required=True, help='Output file')
-parser.add_argument('--min_cells_per_gene',type=int, default=100, help='Minimum number of cells per gene')
-parser.add_argument('--min_genes_per_cell', type=int, default=10, help='Minimum number of genes per cell')
-parser.add_argument('--weight_t', type=float, default=.05, help='Minimum correlation coefficient to retain an edge.') 
-parser.add_argument('--data_type', type=str, default='sc', help='Type of data: bulk or single-cell')
-args = parser.parse_args()
-par = vars(args)
 
-# meta = {
-#     'resources_dir' : 'src/utils/'
-# }
-# sys.path.append(meta['resources_dir'])
-from ciim.src.utils.util import basic_qc
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
@@ -76,10 +62,11 @@ def infer_grn(X, gene_names, p_value_filter=False):
         
         if issparse(X_filtered):
             X_filtered = X_filtered.todense().A
+        # X_filtered shape: (n_cells, n_genes)
+        # spearmanr computes correlation between columns (genes) by default
+        print(f"Computing Spearman correlation for matrix shape: {X_filtered.shape}")
         corr, p_values = spearmanr(X_filtered, nan_policy='raise')
-
-        # print(corr.shape)
-        # print(p_values.shape)
+        print(corr.shape)
         
         # Melt correlation and p-value matrices into edge list format
         corr_df = efficient_melting_full(corr, gene_names)
@@ -125,34 +112,15 @@ def sparse_corrcoef(A, B=None):
     return coeffs
 
 
-def main(par):
-    print(par['rna'])
-    adata = ad.read_h5ad(par['rna'])
-    # Subset and QC
-    data_type = par['data_type']
-    if data_type == 'sc':
-        adata = basic_qc(adata, min_cells_per_gene=par['min_cells_per_gene'], min_genes_per_cell=par['min_genes_per_cell'])
-        if adata.shape[0] == 0 or adata.shape[1] == 0:
-            print('No cells or genes left after filtering.')
-            return 
+def main(expression_sample, gene_names, weight_t):
 
-        assert sp.isspmatrix(adata.X)
-        
-        # Normalize
-        X_norm = sc.pp.normalize_total(adata, inplace=False)['X']
-        expression_sample = sc.pp.log1p(X_norm, copy=True)
-
-    else:
-        expression_sample = adata.X
-    
-    gene_names = adata.var_names
     if False:
         net = infer_grn(expression_sample, gene_names)
         net['weight'] = pd.to_numeric(net['weight'], errors='coerce')
         
     else:
         net = infer_grn(expression_sample, gene_names, p_value_filter=True)
-    net = net[net['weight'].abs() > par['weight_t']]
+    net = net[net['weight'].abs() > weight_t]
 
     tf_all = np.loadtxt(f"{base_dir}/prior/tf_all.csv", dtype=str)
     net = net[net['source'].isin(tf_all)]
@@ -163,9 +131,9 @@ def main(par):
         net['promotor_based'] = net['edge'].isin(skeleton['edge'])
         net = net.drop('edge', axis=1)
 
-    net.to_csv(par['prediction'], index=False)
+    return net
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
     
-    print(par)
-    main(par)
+#     print(par)
+#     main(par)

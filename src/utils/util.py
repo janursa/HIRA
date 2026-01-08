@@ -11,7 +11,7 @@ import json
 import scanpy as sc
 import matplotlib.pyplot as plt
 from collections import defaultdict
-from ciim.src.common import base_dir, SAVE_DIR, PRIOR_DIR, datasets_all, mapping_minor_2_major
+from ciim.src.config import base_dir, SAVE_DIR, PRIOR_DIR, DISCOVERY_COHORTS, mapping_minor_2_major, grn_consensus_min_degree, get_config
 
 def read_gmt(file_path: str) -> dict[str, list[str]]:
     """Reas gmt file and returns a dict of gene"""
@@ -27,45 +27,19 @@ def read_gmt(file_path: str) -> dict[str, list[str]]:
                 "genes": genes,
             }
     return gene_sets
-def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20): 
+def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, condition=None): 
     base_path = f"{base_dir}/datasets/"
-    if 'bulk' in type:
-        base_path = f"{base_path}/bulk/"
-    elif 'sc' in type:
-        base_path = f"{base_path}/sc/"
-    elif type == 'metacell':
-        base_path = f"{base_path}/metacell/"
-    else:
-        raise ValueError(f'Unknown type {type}')
-       
     gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
-
-    assert type in ['sc', 'bulk', 'bulk_minor', 'bulk_M', 'bulk_F', 'bulk_minor_M', 'bulk_minor_F', 'metacell'], f'Unknown type {type}'
-    
-    if (type == 'bulk_M') | (type == 'bulk_F'):
-        gender = type.split('_')[1]
-        type = 'bulk'
-        adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
-        adata = adata[adata.obs['sex']==gender]
-    elif (type == 'bulk_minor_M') | (type == 'bulk_minor_F'):
-        gender = type.split('_')[-1]
-        type = 'bulk_minor'
-        adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
-        adata = adata[adata.obs['sex']==gender]
-    else:
-        adata = ad.read_h5ad(f"{base_path}/{dataset}_{type}.h5ad")
-
-    if 'age' not in adata.obs.columns:
-        print('Warning: "age" column not found in adata.obs. Setting to default age of 20.')
-        adata.obs['age'] = 20
-    
+    assert data_type in ['sc', 'bulk', 'metacell'], f'Unknown type {data_type}'
+    adata = ad.read_h5ad(f"{base_path}/{data_type}/{dataset}.h5ad")
+    # if 'age' not in adata.obs.columns:
+    #     print('Warning: "age" column not found in adata.obs. Setting to default age of 20.')
+    #     adata.obs['age'] = 20
     if ('lognorm' in adata.layers) | ('X_norm' in adata.layers):
         print(f'Using layer {("lognorm" if "lognorm" in adata.layers else "X_norm")}')
         adata.X = adata.layers['lognorm'] if 'lognorm' in adata.layers else adata.layers['X_norm']
-
     adata.obs['dataset'] = dataset
     adata = adata[:, adata.var_names.isin(gene_names)]
-    # print('\n', adata.obs['cell_type'].unique())
 
     if cell_type is not None:
         if cell_type not in adata.obs['cell_type'].unique():
@@ -79,48 +53,36 @@ def retrieve_adata(dataset, type='bulk', cell_type=None, age_limit=20):
         adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
 
     # Map subject.ageGroup to age_group for soundlife dataset
-    if dataset == 'soundlife' and 'subject.ageGroup' in adata.obs.columns:
-        adata.obs['age_group'] = adata.obs['subject.ageGroup'].apply(
-            lambda x: 'young' if 'Young' in str(x) else ('old' if 'Older' in str(x) else None)
-        )
+    # if dataset == 'soundlife' and 'subject.ageGroup' in adata.obs.columns:
+    #     adata.obs['age_group'] = adata.obs['subject.ageGroup'].apply(
+    #         lambda x: 'young' if 'Young' in str(x) else ('old' if 'Older' in str(x) else None)
+    #     )
     if dataset not in ['ibd']:
         adata.obs.rename({'perturbation': 'condition', 'disease': 'condition', 'treatment': 'condition', 'Max_WHO_Group': 'condition'}, axis=1, inplace=True)
     
+    if 'condition' in adata.obs.columns:
+        config = get_config(dataset)
+        name_mapping = config.name_mapping
+        if name_mapping is not None:
+                adata.obs['condition'] = adata.obs['condition'].map(lambda x: name_mapping.get(x, x))
     if 'condition' not in adata.obs.columns:
-        adata.obs['condition'] = 'normal'
-
-    unique_conditions = adata.obs['condition'].unique()
-
-    ctr_key = None
-    if 'normal' in unique_conditions:
-        ctr_key = 'normal'
-    elif 'healthy' in unique_conditions:
-        ctr_key = 'healthy'
-    elif 'PBS' in unique_conditions:
-        ctr_key = 'PBS'
-    elif 'Dimethyl Sulfoxide' in unique_conditions:
-        ctr_key = 'Dimethyl Sulfoxide'
-    elif '24 h RPMI' in unique_conditions:
-        ctr_key = '24 h RPMI'
-    elif dataset == 'ibd':
-        ctr_key = None
-    elif dataset == 'Covid_50MHH':
-        ctr_key = None
-    else:
-        raise ValueError(f'No control condition found for {dataset}.')
-
-    adata.obs.loc[:, 'is_control'] = adata.obs['condition'] == ctr_key
+        adata.obs['condition'] = 'healthy'
+    if condition is not None:
+        if condition not in adata.obs['condition'].unique():
+                raise ValueError(f'Given condition "{condition}" not in {adata.obs["condition"].unique()}')
+        adata = adata[adata.obs['condition'] == condition]
     
-
+    
+    
     adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + adata.obs['age'].astype(str)
         
     return adata
 
 def retrieve_net(dataset, cell_type, only_promotor_based=False, c_t=5):  
-    from ciim.src.common import SAVE_DIR
+    from ciim.src.config import SAVE_DIR
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
-    net = pd.read_csv(f"{SAVE_DIR}/grns/{dataset}/net_{cell_type_major}_all_agegroups_all_batches.csv")
+    net = pd.read_csv(f"{SAVE_DIR}/grns/{dataset}/net_{cell_type_major}.csv")
     gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
     net = net[net['target'].isin(gene_names)]
     if False:
@@ -145,7 +107,7 @@ def retrieve_nets(datasets, cell_type, only_promotor_based=False):
     nets = pd.concat(net_store, ignore_index=True)
     return nets
 
-def retrieve_net_consensus(datasets=datasets_all, cell_type='CD8T', min_degree=3, only_promotor_based=False):
+def retrieve_net_consensus(datasets=DISCOVERY_COHORTS, cell_type='CD8T', min_degree=grn_consensus_min_degree, only_promotor_based=False):
     from scipy.stats import zscore
     net_store = []
     for dataset in datasets:
@@ -391,29 +353,29 @@ def find_robust_predictors(adata, target, top_q=90):
     
     return list(top_predictors), r2
 
-def basic_qc(adata, min_genes_per_cell = 200, max_genes_per_cell = 5000, min_cells_per_gene = 10):
-    mt = adata.var_names.str.startswith('MT-')
-    print('shape before ', adata.shape)
-    # 1. stats
-    total_counts = adata.X.sum(axis=1)
-    n_genes_by_counts = (adata.X > 0).sum(axis=1)
-    # mt_frac = adata[:, mt].X.sum(axis=1) / total_counts
+# def basic_qc(adata, min_genes_per_cell = 200, max_genes_per_cell = 5000, min_cells_per_gene = 10):
+#     mt = adata.var_names.str.startswith('MT-')
+#     print('shape before ', adata.shape)
+#     # 1. stats
+#     total_counts = adata.X.sum(axis=1)
+#     n_genes_by_counts = (adata.X > 0).sum(axis=1)
+#     # mt_frac = adata[:, mt].X.sum(axis=1) / total_counts
     
-    low_gene_filter = (n_genes_by_counts < min_genes_per_cell)
-    high_gene_filter = (n_genes_by_counts > max_genes_per_cell)
-    # mt_filter = mt_frac > max_mt_frac
+#     low_gene_filter = (n_genes_by_counts < min_genes_per_cell)
+#     high_gene_filter = (n_genes_by_counts > max_genes_per_cell)
+#     # mt_filter = mt_frac > max_mt_frac
 
-    # 2. Filter cells
-    # print(f'Number of cells removed: below min gene {low_gene_filter.sum()}, exceed max gene {high_gene_filter.sum()}')
-    mask_cells=  (~low_gene_filter)& \
-                 (~high_gene_filter)
-                #  (~mt_filter)
-    # 3. Filter genes
-    n_cells = (adata.X!=0).sum(axis=0)
-    mask_genes = n_cells>min_cells_per_gene
-    adata_f = adata[mask_cells, mask_genes]
-    print('shape after ', adata_f.shape)
-    return adata_f
+#     # 2. Filter cells
+#     # print(f'Number of cells removed: below min gene {low_gene_filter.sum()}, exceed max gene {high_gene_filter.sum()}')
+#     mask_cells=  (~low_gene_filter)& \
+#                  (~high_gene_filter)
+#                 #  (~mt_filter)
+#     # 3. Filter genes
+#     n_cells = (adata.X!=0).sum(axis=0)
+#     mask_genes = n_cells>min_cells_per_gene
+#     adata_f = adata[mask_cells, mask_genes]
+#     print('shape after ', adata_f.shape)
+#     return adata_f
 
 import pandas as pd
 from scipy.stats import hypergeom

@@ -12,21 +12,14 @@
 
 set -e
 
-# Print start time
-echo "Job started at: $(date)"
-echo "Running on node: $(hostname)"
-echo "Job ID: $SLURM_JOB_ID"
-echo ""
-
-
 # Set test mode (set to true for testing with subset, false for full processing)
 TEST_MODE=false
 
 # Build command
 CMD="python src/process_dataset/soundlife/script.py \
-    --input_dir /vol/projects/jnourisa/datasets/soundlife/ \
-    --output_bulk /vol/projects/jnourisa/datasets/bulk/soundlife_bulk.h5ad \
-    --output_metacell /vol/projects/jnourisa/datasets/metacell/soundlife_metacell.h5ad \
+    --input_dir /vol/projects/CIIM/soundlife/ \
+    --output_bulk /vol/projects/jnourisa/datasets/bulk/soundlife.h5ad \
+    --output_metacell /vol/projects/jnourisa/datasets/metacell/soundlife.h5ad \
     --temp_dir /home/jnourisa/projs/ongoing/ciim/tmp/soundlife_processing"
 
 # Add test flag if in test mode

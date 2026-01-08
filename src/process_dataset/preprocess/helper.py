@@ -1,3 +1,4 @@
+
 import os
 default_n_threads = 3 # Change this based on the number of threads you want to use (equal to the number of cores in your machine (--cpus-per-task in the SLURM script))
 os.environ['OPENBLAS_NUM_THREADS'] = f"{default_n_threads}"
@@ -10,42 +11,8 @@ import seaborn as sns
 import pandas as pd
 import anndata as ad
 import gc
+from ciim.src.config import get_config
 
-
-### QC Check
-def qc_check(adata):
-    print('Shape before filtering:', adata.shape)
-    adata.var["mt"] = adata.var_names.str.startswith("MT-")
-    sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
-    sc.pp.filter_cells(adata, min_genes=100)
-    sc.pp.filter_cells(adata, max_genes=5000)
-    # - in filtering, consider the number of donors
-    n_donors = adata.obs['donor_id'].nunique()
-    min_cells_per_donor = 10
-    min_cells = int(n_donors * min_cells_per_donor)
-    min_cells = max(min_cells, 10)
-
-    # Apply filters
-    sc.pp.filter_genes(adata, min_cells=min_cells)
-    sc.pp.filter_genes(adata, min_counts=1)
-    print('Shape after filtering:', adata.shape)
-
-    return adata
-def qc_post_annotation(adata, par):
-    if 'condition' in adata.obs.columns and 'cell_type' in adata.obs.columns:
-        print(f'Filtering based on condition + cell_type combinations')
-        min_cells_per_group = 10
-        group_counts = adata.obs.groupby(['condition', 'cell_type']).size()
-        keep_groups = group_counts[group_counts >= min_cells_per_group].index
-        mask = adata.obs.set_index(['condition', 'cell_type']).index.isin(keep_groups)
-        adata = adata[mask].copy()
-        print(f"Kept {len(keep_groups)} condition+cell_type groups (>= {min_cells_per_group} cells each) out of {len(group_counts)} total")
-    sample_size = adata.obs.groupby('donor_age', as_index=False).size()
-    sample_size = sample_size[sample_size['size']>par['n_cell_t']]
-    adata = adata[adata.obs['donor_age'].isin(sample_size.donor_age)]
-    print('size after filtering for donor sinlge cell count: ', adata.shape)
-
-    return adata
 def format_data(adata, dataset_name):
     if dataset_name == 'op':
         adata.obs = adata.obs.rename(columns={'sm_name':'perturbation'})
@@ -57,16 +24,66 @@ def format_data(adata, dataset_name):
             "age": [45, 52, 45],
             "sex": ["Female", "Male", "Male"]
         })
-
         # join metadata into obs
         adata.obs = adata.obs.merge(meta, left_on='donor_id', right_on='donor_id', how='left')
         print(adata.obs)
 
+    if 'gene_name' in adata.var.columns:
+        gene_name = 'gene_name'
+    elif 'Gene' in adata.var.columns:
+        gene_name = 'Gene'
+    elif 'gene_symbols' in adata.var.columns:
+        gene_name = 'gene_symbols'
+    elif 'feature_name' in adata.var.columns:
+        gene_name = 'feature_name'
+    elif 'features' in adata.var.columns:
+        gene_name = 'features'
+    elif dataset_name == 'abf300':
+        gene_name = 'gene_name'
+        adata.var.index.name = gene_name
+        adata.var = adata.var.reset_index()
+    else:
+        
+        print('\n',adata.var)
+        raise ValueError("No gene name column found in adata.var")
+    adata.var.rename(columns={gene_name: 'gene_name'}, inplace=True)
+    # only keep gene_name column
+    adata.var =  adata.var[['gene_name']].set_index('gene_name')
     adata.obs.rename(columns={'perturbation':'condition', 'disease':'condition', 'treatment':'condition'}, inplace=True)
     adata.obs.rename(columns={'orig.ident': 'dataset'}, inplace=True)
     adata.obs = adata.obs.astype('str')
     adata.obs['donor_age'] = adata.obs['age'].astype(str) + '_' + adata.obs['donor_id'].astype(str)
     return adata
+
+### QC Check
+def qc_check(adata):
+    print('Shape before filtering:', adata.shape)
+    adata.var["mt"] = adata.var_names.str.startswith("MT-")
+    sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
+    n_donors = adata.obs['donor_id'].nunique()
+    min_cells_per_donor = 10 # - consider the number of donors
+    min_cells = int(n_donors * min_cells_per_donor)
+    min_cells = max(min_cells, 10)
+   
+    sc.pp.filter_cells(adata, min_genes=100)
+    sc.pp.filter_cells(adata, max_genes=5000)
+    # Apply filters
+    sc.pp.filter_genes(adata, min_cells=min_cells)
+    sc.pp.filter_genes(adata, min_counts=1)
+    print('Shape after filtering:', adata.shape)
+    assert adata.shape[0] > 0, "No cells left after QC filtering."
+    return adata
+def qc_post_annotation(adata, par):
+    config = get_config(par['dataset'])
+    pseudobulk_group = config.pseudobulk_group
+    sample_size = adata.obs.groupby(pseudobulk_group, as_index=False).size()
+    sample_size = sample_size[sample_size['size']>par['n_cell_t']]
+    mask = adata.obs.set_index(pseudobulk_group).index.isin(sample_size.set_index(pseudobulk_group).index)
+    adata = adata[mask]
+    print('size after filtering for donor sinlge cell count: ', adata.shape)
+    assert adata.shape[0] > 0, "No cells left after QC filtering based on pseudobulk group and cell count threshold."
+    return adata
+
 def annotate_celltypes(adata):
     print('Annotating cell types...')
     adata.layers['counts'] = adata.X.copy()
@@ -78,9 +95,7 @@ def annotate_celltypes(adata):
     gc.collect()
     sc.pp.normalize_total(adata, target_sum=1e4)
     sc.pp.log1p(adata)
-
     models.download_models(force_update = True)
-
     model = models.Model.load(model = 'Immune_All_Low.pkl') #Immune_All_Low good for Major cell types and Immune_All_High for subtypes
     # Please note that the adata.X should be log-normalized data!
     adata_for_celltypist = adata.copy()
@@ -96,7 +111,6 @@ def annotate_celltypes(adata):
     print('Cell types annotated successfully!')
     # Update the AnnData object with predictions
     adata_for_celltypist = predictions.to_adata()
-
 
     ###Major CT
     mapping = {
@@ -129,7 +143,6 @@ def annotate_celltypes(adata):
         'Double-positive thymocytes': 'T',
         'Late erythroid': 'Erythroid'
     }
-
     ###SubPopulation
     mapping_sub = {
         'Tcm/Naive helper T cells': 'Tcm_Naive_CD4',
@@ -160,22 +173,18 @@ def annotate_celltypes(adata):
         'Double-positive thymocytes': 'T',
         'Late erythroid': 'Late_Erythroid'
     }
-
     # Map Major and Sub cell types
     adata_for_celltypist.obs['Major_CT'] = adata_for_celltypist.obs['majority_voting'].apply(lambda x: mapping.get(x, 'Others'))
     adata_for_celltypist.obs['Sub_CT'] = adata_for_celltypist.obs['majority_voting'].apply(lambda x: mapping_sub.get(x, 'Others'))
-
     # - post process
     adata.obs = adata.obs.join(adata_for_celltypist.obs[['Major_CT', 'Sub_CT']])
     adata.X = adata.layers["counts"]
     del adata.layers
-
     adata.obs['cell_type'] = adata.obs['Major_CT']
     major_cell_types = ["MONO", "NK", "B", "CD8T", "CD4T"]
     adata = adata[adata.obs['cell_type'].isin(major_cell_types)]
     
     return adata
-
 
 
 # def binarize_age(obs):

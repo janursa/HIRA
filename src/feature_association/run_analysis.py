@@ -15,8 +15,7 @@ from typing import List
 import pandas as pd
 import warnings
 
-from ciim.src.common import FEATURES_DIR, CELL_TYPES
-from ongoing.ciim.src.config import get_config
+from ciim.src.config import FEATURES_DIR, CELL_TYPES, DISCOVERY_COHORTS, get_config, meta_analysis_min_cohorts
 from ciim.src.feature_association.helper import (
     wrapper_tf_activity,
     wrapper_gene_expression,
@@ -24,7 +23,8 @@ from ciim.src.feature_association.helper import (
     wrapper_gene_score,
     wrapper_association_with_age_condition,
     wrapper_meta_analysis,
-    retrieve_sig_stats
+    retrieve_sig_stats, 
+    write_features_stats
 )
 
 warnings.filterwarnings("ignore")
@@ -32,16 +32,20 @@ warnings.filterwarnings("ignore")
 
 
 def run_single_cohort_analysis(
-    args
-):
+    args):
 
     # Get configuration(s) - may be single or multiple
-    configs = get_config(args.dataset)
+    dataset = args.datasets[0]
+    cell_types = args.cell_types
+    feature_type = args.feature_type
+    data_type = args.data_type
+    skip_features = args.skip_features
+
+    config = get_config(dataset)
     
     print("\n" + "=" * 80)
-    print(f"CONDITION ANALYSIS: {configs[0].display_name}")
-    print(f"Type: {configs[0].analysis_type.upper()}")
-    print(f"Dataset: {args.dataset}")
+    print(f"Analysis type: {args.association_type}")
+    print(f"Dataset: {dataset}")
     print(f"Feature: {feature_type}")
     print(f"Cell types: {', '.join(cell_types)}")
 
@@ -49,11 +53,11 @@ def run_single_cohort_analysis(
     
     # Prepare parameters
     par = {
+        'data_type': data_type,
         'feature_type': feature_type,
         'datasets': [dataset],
         'cell_types': cell_types,
-        'type': data_type,
-        'cell_type_resolution': 'cell_type'
+        'association_type': args.association_type,
     }
     
     # Step 1: Calculate features (if needed) - only once for all configs
@@ -72,42 +76,26 @@ def run_single_cohort_analysis(
         print("\n[1/3] Skipping feature calculation (using cached data)")
     
     # Step 2: Compute condition statistics for each config
-    print(f"\n[2/3] Computing condition statistics ({len(configs)} config(s))...")
+    print(f"\n[2/3] Computing condition statistics...")
     
     all_condition_stats = []
     
-    for i, config in enumerate(configs, 1):
-        config_label = config.config_label or f"config_{i}"
-        
-        if len(configs) > 1:
-            print(f"\n  [{i}/{len(configs)}] Running: {config_label} ({config.display_name})")
-        
-        condition_stats = wrapper_association_with_age_condition(
-            par=par,
-            features=None,
-            test_type=config.test_type,
-            condition=None,
-            config=config
-        )
-        
-        # Add config label to results for tracking
-        if len(configs) > 1:
-            condition_stats['config_label'] = config_label
-        
-        all_condition_stats.append(condition_stats)
+    condition_stats = wrapper_association_with_age_condition(
+        par=par,
+        features=None,
+        test_type=config.test_type,
+        condition=None,
+        config=config,
+        association_type=args.association_type
+    )
     
-    # Concatenate results from all configs
-    if len(all_condition_stats) > 1:
-        print(f"\n  Concatenating results from {len(all_condition_stats)} configs...")
-        condition_stats_combined = pd.concat(all_condition_stats, ignore_index=True)
-    else:
-        condition_stats_combined = all_condition_stats[0]
-    
-    # Save condition stats
-    os.makedirs(f'{FEATURES_DIR}/stats', exist_ok=True)
-    stats_file = f'{FEATURES_DIR}/stats/stats_{dataset}_{data_type}_{feature_type}_{configs[0].test_type}.csv'
-    condition_stats_combined.to_csv(stats_file, index=False)
-    print(f"✓ Condition stats saved: {stats_file}")
+    write_features_stats(
+        stats=condition_stats,
+        data_type=data_type,
+        feature_type=feature_type,
+        multi_cohort=False,
+        dataset=dataset
+    )
 
 
 def run_multi_cohort_analysis(
@@ -126,17 +114,16 @@ def run_multi_cohort_analysis(
     
     # Prepare parameters
     par = {
-        'type': args.data_type,
+        'data_type': args.data_type,
         'feature_type': args.feature_type,
         'cell_types': args.cell_types,
         'datasets': args.datasets,
-        'association_type': 'spearman',
-        'stats_features': f'{FEATURES_DIR}/{args.feature_type}/stats_features_{args.data_type}{suffix}.csv',
-        'stats_all': f'{FEATURES_DIR}/{args.feature_type}/stats_all_{args.data_type}{suffix}.csv',
         'temp_dir': f'{FEATURES_DIR}/tmp/',
         'only_promotor_based': args.promotor_only,
+        'meta_analysis_min_cohorts': meta_analysis_min_cohorts,
+        'condition': 'healthy',
     }
-    
+   
     # Step 1: Calculate features
     if not args.skip_features:
         print("\n[1/3] Calculating features...")
@@ -154,15 +141,18 @@ def run_multi_cohort_analysis(
     
     # Step 2: Calculate association with age
     print("\n[2/3] Computing associations with age...")
-    stats_features = wrapper_association_with_age_condition(par)
-    stats_features.to_csv(par['stats_features'], index=False)
-    print(f"✓ Stats saved: {par['stats_features']}")
+    stats_features = wrapper_association_with_age_condition(par, association_type=args.association_type)
     
     # Step 3: Meta-analysis (discovery/validation)
     print("\n[3/3] Running meta-analysis...")
-    wrapper_meta_analysis(par)
-    print(f"✓ Meta-analysis complete: {par['stats_all']}")
-    
+    stats = wrapper_meta_analysis(stats_features, par)
+    write_features_stats(
+        stats=stats,
+        data_type=args.data_type,
+        feature_type=args.feature_type,
+        multi_cohort=True,
+        suffix=suffix
+    )
     print("\n" + "=" * 80)
     print("MULTI-COHORT ANALYSIS COMPLETE")
     print("=" * 80)
@@ -182,7 +172,7 @@ def main():
         '--datasets',
         type=str,
         nargs='+',
-        default=
+        default=DISCOVERY_COHORTS,
         help='List of datasets for multi-cohort mode (e.g., data1 data2 data3)'
     )
     
@@ -222,6 +212,13 @@ def main():
         action='store_true',
         help='Use promotor-based GRN only (multi-cohort tf_activity only)'
     )
+    parser.add_argument(
+        '--association-type',
+        type=str,   
+        required=True,
+        choices=['continous', 'grouped'],
+        help='Type of analysis to perform: condition (disease/perturbation) or aging'
+    )
     
     args = parser.parse_args()
 
@@ -239,7 +236,5 @@ def main():
     
     return 0
     
-
-
 if __name__ == '__main__':
     sys.exit(main())

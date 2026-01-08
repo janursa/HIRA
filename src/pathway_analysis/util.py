@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 import json
-from ciim.src.common import  PRIOR_DIR
+from ciim.src.config import  PRIOR_DIR
 def get_opengenes_sets():
     df = pd.read_csv(f'{PRIOR_DIR}/gene-aging-mechanisms.tsv', sep='\t')
     reported_genes = df.index.unique().to_list()
@@ -297,7 +297,7 @@ def wrapper_gsea(stats, palette=None, **kwargs):
     from ciim.src.feature_association.plots import dotplot_category_color
     
     if palette is None:
-        from ciim.src.common import palette_trend_2
+        from ciim.src.config import palette_trend_2
         palette = palette_trend_2
     
     # Handle feature_type parameter (convert to feature_col for gsea_func)

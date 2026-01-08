@@ -36,7 +36,7 @@ from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import multipletests
 import os
 from typing import Tuple, Dict, List
-from ciim.src.common import SAVE_DIR
+from ciim.src.config import SAVE_DIR
 from ciim.src.utils.util import retrieve_net_consensus
 
 
@@ -285,9 +285,9 @@ def analyze_drug_reversal(
     pd.DataFrame
         Results with weighted or standard metrics depending on use_weighting
     """
-    from ciim.src.common import datasets_all
+    from ciim.src.config import DISCOVERY_COHORTS
     if datasets_for_network is None:
-        datasets_for_network = datasets_all
+        datasets_for_network = DISCOVERY_COHORTS
     
     results = []
     
@@ -507,9 +507,9 @@ def compute_network_centrality(
         centrality_metrics = ['out_degree', 'pagerank', 'betweenness']
     
     # Retrieve consensus network
-    from ciim.src.common import datasets_all
+    from ciim.src.config import DISCOVERY_COHORTS
     if datasets is None:
-        datasets = datasets_all
+        datasets = DISCOVERY_COHORTS
     
     net = retrieve_net_consensus(
         datasets=datasets,
@@ -867,9 +867,9 @@ def analyze_drug_reversal_with_centrality(
     pd.DataFrame
         Results with both standard and weighted metrics
     """
-    from ciim.src.common import datasets_all
+    from ciim.src.config import DISCOVERY_COHORTS
     if datasets_for_network is None:
-        datasets_for_network = datasets_all
+        datasets_for_network = DISCOVERY_COHORTS
     
     results = []
     

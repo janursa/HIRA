@@ -7,7 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.patches import Rectangle
-from ciim.src.common import palette_treatment, palette_trend_2
+from ciim.src.config import palette_treatment, palette_trend_2
 
 
 def plot_reversal_heatmap(
