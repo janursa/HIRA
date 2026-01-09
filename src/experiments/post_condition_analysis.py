@@ -18,6 +18,13 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from pandas.api.types import CategoricalDtype
+import pandas as pd
+import numpy as np
+from collections import defaultdict
+import matplotlib.pyplot as plt
+from ciim.src.config import surrogate_names
+from ciim.src.feature_association.helper import retrieve_feature_data
+from ciim.src.feature_association.plots import heatplot_age_trend
 # Import common utilities and configuration
 from ciim.src.config import (
     PLOTS_DIR, 
@@ -38,7 +45,6 @@ from ciim.src.feature_association.plots import (
     plot_analysis_and_centrality,
     plot_donor_level_perturbation_effect
 )
-from ciim.src.feature_association.disease import plot_healthy_disease_trend
 from ciim.src.utils.util import retrieve_net_consensus
 from ciim.src.pathway_analysis.util import pathway_kde_func
 from ciim.src.pathway_analysis.plots import plot_pathway_kde
@@ -46,35 +52,126 @@ warnings.filterwarnings("ignore")
 # Set matplotlib defaults
 plt.rcParams["figure.dpi"] = 150
 plt.rcParams["font.family"] = "Arial"
-def load_stats_soundlife(args):
-    cfg_list = get_config(args.dataset)
-    assert False, 'Fix me'
+
+
+def format_tf_activity_for_disease_trend_plot(dataset, data_type, cell_type, tf, age_limit=[20, 75], condition_col='disease'):
+    """
+    Format TF activity data for disease trend plotting.
     
-    # If a specific config_label is provided (and it's not 'cmv'), use standard loading
-    if args.config_label and args.config_label not in ['cmv', 'cmv_young', 'cmv_old']:
-        print(f"Loading config: {args.config_label}")
-        cfg = next((c for c in cfg_list if c.config_label == args.config_label), None)
-        if cfg is None:
-            raise ValueError(f"Config with label '{args.config_label}' not found for dataset '{args.dataset}'")
-        
-        stats = retrieve_features_stats(data_type=args.data_type, feature_type=args.feature_type, dataset=args.dataset, multi_cohort=False)
-        
-        # Filter to the specific config if config_label column exists
-        if 'config_label' in stats.columns:
-            print(f"Filtering stats to config_label: {args.config_label}")
-            stats = stats[stats['config_label'] == args.config_label].copy()
-            print(f"  Filtered to {len(stats)} rows")
-        
-        return stats
+    Parameters
+    ----------
+    dataset : str
+        Dataset name
+    type : str
+        Data type (e.g., 'bulk', 'sc')
+    cell_type : str
+        Cell type to analyze
+    tf : str
+        Transcription factor name
+    age_limit : list, optional
+        Age range [min, max], default [20, 75]
+    condition_col : str, optional
+        Column name for condition (e.g., 'disease', 'Max_WHO_Group'), default 'disease'
     
-    # Load stats file
-    stats_path = f'{SAVE_DIR}/stats/stats_{args.dataset}_{args.data_type}_{args.feature_type}_{cfg_young.test_type}.csv'
+    Returns
+    -------
+    pd.DataFrame or None
+        Binned dataframe with disease/condition as rows, age bins as columns
+    """
+    tf_acts = retrieve_feature_data(dataset=dataset, cell_type=cell_type, data_type=data_type, condition=None)
+    tf_acts = tf_acts[(tf_acts.obs['age'] >= age_limit[0]) & (tf_acts.obs['age'] <= age_limit[1])]
+    tf_acts = tf_acts[:, tf_acts.var_names == tf]
+    # print(tf_acts)
+    # aaa
     
-    if not os.path.exists(stats_path):
-        raise FileNotFoundError(f"Stats file not found: {stats_path}")
+    if tf_acts.shape[1] == 0:
+        return None
+
+    expr = tf_acts.to_df()
+    expr = expr.merge(tf_acts.obs[['age', condition_col]], left_index=True, right_index=True, how='left')
+    expr[condition_col] = expr[condition_col].astype('category')
+    expr['age'] = expr['age'].astype(int)
+
+    # Pivot table: rows = disease, columns = age, values = expression
+    expr_table = expr.pivot_table(index=condition_col, columns='age', values=tf)
+
+    # Bin ages into 5-year intervals
+    df = expr_table.copy()
+    age_columns = df.columns
+    age_bins = defaultdict(list)
+
+    for col in age_columns:
+        bin_start = (col // 5) * 5
+        age_bins[bin_start].append(col)
+
+    # Average across bins
+    binned_means = {bin_start: df[bin_ages].mean(axis=1) for bin_start, bin_ages in age_bins.items()}
+    binned_df = pd.DataFrame(binned_means)
+
+    # Sort bins by age
+    binned_df = binned_df[sorted(binned_df.columns)]
     
-    stats = pd.read_csv(stats_path)
-    return stats
+    return binned_df
+
+
+def plot_healthy_disease_trend(dataset, data_type, cell_type, case_tf, condition_col, ax=None, normalize=False):
+    """
+    Plot healthy vs disease trend for a TF across age.
+    
+    Parameters
+    ----------
+    dataset : str
+        Dataset name
+    type : str
+        Data type (e.g., 'bulk', 'sc')
+    cell_type : str
+        Cell type to analyze
+    case_tf : str
+        Transcription factor name
+    condition_col : str
+        Column name for condition (e.g., 'disease', 'Max_WHO_Group')
+    ax : matplotlib.axes.Axes, optional
+        Axes to plot on, creates new if None
+    normalize : bool, optional
+        Whether to normalize values, default False
+    
+    Returns
+    -------
+    matplotlib.axes.Axes
+        The axes object with the plot
+    """
+    binned_df = format_tf_activity_for_disease_trend_plot(
+        dataset=dataset, data_type=data_type, cell_type=cell_type, tf=case_tf, condition_col=condition_col
+    )
+    
+    if binned_df is None:
+        return None
+    
+    binned_df.index = [surrogate_names.get(name, name) for name in binned_df.index]
+    
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(2.5, .5), sharey=False, sharex=True)
+    
+    if normalize:
+        binned_df = binned_df.sub(binned_df.min(axis=1), axis=0)
+        binned_df = binned_df.div(binned_df.abs().max(axis=1), axis=0)
+    
+    heatplot_age_trend(
+        binned_df, 
+        cmap='magma', 
+        cbar_title="TF activity\n(normalized)" if normalize else "TF activity", 
+        y_label="Condition", 
+        ax=ax, 
+        show_cbar=True,
+        cbar_kws={
+            "shrink": 1.2,
+            "aspect": 3,
+            "fraction": 0.1
+        }
+    )
+    ax.set_xlabel('Age')
+    
+    return ax
 
 
 def get_condition_palette(analysis_type):
@@ -198,38 +295,28 @@ def plot_aging_overlap(stats_sig, args):
         
         for condition in conditions_to_plot:
             # Filter stats
-            if condition is not None and condition in ['cmv_young', 'cmv_old']:
-                # Filter by config_label for CMV configs
-                df_sub = stats_sig[(stats_sig['config_label'] == condition) & (stats_sig['cell_type'] == cell_type)].reset_index(drop=True)
-                condition_label = condition  # Use config_label as condition name
-            elif condition is not None:
-                df_sub = stats_sig[(stats_sig['condition'] == condition) & (stats_sig['cell_type'] == cell_type)].reset_index(drop=True)
+            
+            if condition is not None:
+                stats_sig_sub = stats_sig[(stats_sig['condition'] == condition) & (stats_sig['cell_type'] == cell_type)].reset_index(drop=True)
                 condition_label = condition
             else:
-                df_sub = stats_sig[stats_sig['cell_type'] == cell_type].reset_index(drop=True)
+                stats_sig_sub = stats_sig[stats_sig['cell_type'] == cell_type].reset_index(drop=True)
                 condition_label = None
             
             aging_stats_sig_sub = aging_stats_sig[aging_stats_sig['cell_type'] == cell_type].reset_index(drop=True)
             
-            if len(df_sub) == 0:
+            if len(stats_sig_sub) == 0:
                 print(f"    Warning: No data for {'condition ' + condition_label if condition_label else 'this cell type'}")
                 continue
             
-            # Calculate overlap statistics (aging genes as base)
-            if False:
-                genes_aging = set(aging_stats_sig_sub['gene'].unique())
-                genes_condition = set(df_sub['gene'].unique())
-                print(len(genes_aging), len(genes_condition), 'overlap calculation :', len(genes_aging & genes_condition))
-                aa
             merged = aging_stats_sig_sub[['gene', 'slope']].merge(
-                df_sub[['gene', 'slope_condition']], 
+                stats_sig_sub[['gene', 'slope_condition']], 
                 on='gene', 
                 how='left'
             )
             
             # Filter to only those that have condition data (inner join equivalent)
-            merged = merged[merged['slope_condition'].notna()]
-            
+            merged = merged[merged['slope_condition'].notna()]            
             if len(merged) > 0:
                 same_direction = (np.sign(merged['slope']) == np.sign(merged['slope_condition'])).sum()
                 opposite_direction = (np.sign(merged['slope']) == -np.sign(merged['slope_condition'])).sum()
@@ -241,7 +328,7 @@ def plot_aging_overlap(stats_sig, args):
                 print(f"      Opposite direction: {opposite_direction} ({opposite_direction/total_overlap*100:.1f}%)")
             
             plot_overlap(
-                df_sub[['gene', 'cell_type', 'slope_condition']].reset_index(drop=True),  # RIGHT side (Sound Life sig genes)
+                stats_sig_sub[['gene', 'cell_type', 'slope_condition']].reset_index(drop=True),  # RIGHT side (Sound Life sig genes)
                 aging_stats_sig_sub[['gene', 'cell_type', 'slope']].reset_index(drop=True),  # LEFT side (Reference aging genes - baseline)
                 col='cell_type', 
                 how='left', 

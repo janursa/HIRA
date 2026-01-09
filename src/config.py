@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 # Variables
 meta_analysis_min_cohorts = 3
-grn_consensus_min_degree = 3
+grn_consensus_min_degree = 2
 # Dataset name mapping: raw -> processed
 DATASET_NAME_MAPPING = {
     "data1": "onek1k",
@@ -61,7 +61,7 @@ surrogate_names = {
                     }
 # - datasets
 ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife']
-AGING_COHORTS = ['onek1k', 'abf300', 'soundlife', 'aida', 'perez_sle']
+AGING_COHORTS = ['onek1k', 'abf300', 'soundlife', 'aida']
 DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
 # DISCOVERY_COHORTS = ['onek1k', 'abf300', 'zhang']
 CLOCK_TRAINING_COHORTS = [
@@ -347,6 +347,12 @@ DATASET_CONFIGS = {
             comparison_mode='same',
             pseudobulk_group=['cell_type', 'donor_id', 'visitName'],
             name_mapping={'healthy': 'healthy', 'CMV':'healthy'},
+            condition_column='age_group',  
+            control_group='young',
+            treatment_groups=['old'],
+            test_type='mixed-effect',
+            mixed_effects_formula='feature_values ~ condition',
+            mixed_effects_group='donor_id',
         )
 }
 

@@ -25,16 +25,16 @@ MAIN_DIR='/vol/projects/jnourisa/'
 MAX_WORKERS=10
 
 
-datasets=" soundlife" # perez_sle onek1k abf300 zhang aida perez_sle
+datasets=" perez_sle onek1k abf300 aida soundlife" # perez_sle onek1k abf300 aida soundlife
 
 for dataset in $datasets; do
-        data_type='sc'
+        data_type='bulk'
         if [ "$dataset" = "soundlife" ] ; then
                 data_type='bulk'
         fi
         if [ "$RUN_GRN" = true ]; then
                 FORCE=true # If true, overwrite the existing files in grns directory
-                SAVE_GRNS_DIR="${MAIN_DIR}/output/grns/${dataset}/"
+                SAVE_GRNS_DIR="${MAIN_DIR}/output/grns/${dataset}/${data_type}"
                 
                 DATASET_FILE="/vol/projects/jnourisa/datasets/${data_type}/${dataset}.h5ad" # tailors raw based on the given flags such as make, downsample, etc.
 

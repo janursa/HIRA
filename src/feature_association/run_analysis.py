@@ -58,6 +58,7 @@ def run_single_cohort_analysis(
         'datasets': [dataset],
         'cell_types': cell_types,
         'association_type': args.association_type,
+        'use_consensus_net': False if dataset=='soundlife' else True,
     }
     
     # Step 1: Calculate features (if needed) - only once for all configs
@@ -122,6 +123,7 @@ def run_multi_cohort_analysis(
         'only_promotor_based': args.promotor_only,
         'meta_analysis_min_cohorts': meta_analysis_min_cohorts,
         'condition': 'healthy',
+        'use_consensus_net': False
     }
    
     # Step 1: Calculate features

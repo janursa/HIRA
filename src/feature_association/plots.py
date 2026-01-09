@@ -2,20 +2,14 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.patches import Patch
-from matplotlib.lines import Line2D
-from matplotlib import cm
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap
-from matplotlib import colors
-from matplotlib import cm
-from matplotlib import rcParams
-import matplotlib.patches as mpatches
-import scipy
 from scipy.stats import spearmanr, linregress
 from pandas.api.types import CategoricalDtype
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import numpy as np
 
-from ciim.src.config import base_dir, SAVE_DIR, colors_blind, DISCOVERY_COHORTS ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
+
+from ciim.src.config import CELL_TYPES, base_dir, SAVE_DIR, colors_blind, DISCOVERY_COHORTS ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
 from ciim.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data
 from ciim.src.utils.util import retrieve_net, retrieve_adata
 
@@ -772,12 +766,7 @@ def plot_overlap(
         figsize=(2.5, 2),
         legend_loc=(1.05, 0.5)
     ):
-    from ciim.src.config import palette_trend_2, cell_types
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    import matplotlib.patches as mpatches
-    import numpy as np
-    import pandas as pd
+    
 
     if not pd.api.types.is_categorical_dtype(stats_drug_sig['cell_type']):
         stats_drug_sig['cell_type'] = stats_drug_sig['cell_type'].astype('category')
@@ -809,7 +798,7 @@ def plot_overlap(
     )
 
     if col == 'cell_type':
-        cell_types = [t for t in cell_types if t in summary[col].unique()]
+        cell_types = [t for t in CELL_TYPES if t in summary[col].unique()]
         summary[col] = pd.Categorical(summary[col], categories=cell_types, ordered=True)
 
     summary['trend'] = ['Increase in aging' if x == 'positive' else 'Decrease in aging' for x in summary['trend']]

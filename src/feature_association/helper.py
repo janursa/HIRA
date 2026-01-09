@@ -12,7 +12,7 @@ from ciim.src.config import FEATURES_DIR,   surrogate_names, DISCOVERY_COHORTS
 from tqdm import tqdm
 from ciim.src.config import SAVE_DIR, FEATURES_DIR
 from scipy.sparse import issparse
-from ciim.src.utils.util import retrieve_adata, retrieve_net_consensus
+from ciim.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -522,7 +522,10 @@ def wrapper_tf_activity(par):
 
         for cell_type in tqdm(cell_types, desc='cell types'):
             adata_t = adata[adata.obs['cell_type']==cell_type]
-            net = retrieve_net(dataset=dataset, cell_type=cell_type, only_promotor_based=only_promotor_based)
+            if par['use_consensus_net']:
+                net = retrieve_net_consensus(datasets=DISCOVERY_COHORTS, cell_type=cell_type, only_promotor_based=only_promotor_based)
+            else:
+                net = retrieve_net(dataset=dataset, cell_type=cell_type, only_promotor_based=only_promotor_based)
             if adata_t.shape[0] < 10:
                 continue
             tf_acts = calculate_tf_activity(adata_t, net)

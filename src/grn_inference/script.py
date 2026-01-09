@@ -12,9 +12,10 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import subprocess
 
-from ciim.src.config import CELL_TYPES, minor_cell_types
+from ciim.src.config import CELL_TYPES, minor_cell_types, base_dir
 from ciim.src.grn_inference.inference import main as main_inference
 from task_grn_inference.src.utils.util import basic_qc
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset_file', 
     type=str,
@@ -71,6 +72,7 @@ par = {
         'data_type': args.data_type,
         'num_workers': args.num_workers,
         'force': args.force,
+        'top_n_edges': 100_000,
         'save_grns_dir': args.save_grns_dir,
         # 'temp_dir': 'output/grns/temp/',
 } 
@@ -106,7 +108,9 @@ def wrapper_grn(task, par):
     if mask_sample.sum() == 0:
         print(f"Error: No cells left after filtering for {cell_type}_{age_group}_{batch_group}", flush=True)
         return  
-    adata = adata[mask_sample, :].to_memory()
+    gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
+    mask_genes = np.isin(adata.var_names, gene_names)
+    adata = adata[mask_sample, mask_genes].to_memory()
     adata = basic_qc(adata, min_cells_per_gene=par['min_cells_per_gene'], min_genes_per_cell=par['min_genes_per_cell'], max_genes_per_cell=par['max_genes_per_cell'])
 
     # Infer GRN
@@ -122,6 +126,9 @@ def wrapper_grn(task, par):
     net['cell_type'] = cell_type
     net['sample_size'] = adata.shape[0]
     net['gene_size'] = adata.shape[1]
+
+    # select the top 1M edges based obs weight
+    net = net.sort_values(by='weight', ascending=False, key=abs).head(par['top_n_edges'])
     net.to_csv(save_file_name, index=False)
     
 

@@ -78,24 +78,21 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         
     return adata
 
-def retrieve_net(dataset, cell_type, only_promotor_based=False, c_t=5):  
+def retrieve_net(dataset, cell_type, only_promotor_based=False, top_n=100_000):  
     from ciim.src.config import SAVE_DIR
+    data_type='bulk'
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
-    net = pd.read_csv(f"{SAVE_DIR}/grns/{dataset}/net_{cell_type_major}.csv")
+    if dataset not in ['soundlife']:
+        folder = f"{SAVE_DIR}/grns/{dataset}/{data_type}/"
+    else:
+        folder = f"{SAVE_DIR}/grns/{dataset}/bulk/"
+    net = pd.read_csv(f"{folder}/net_{cell_type_major}.csv")
     gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
     net = net[net['target'].isin(gene_names)]
-    if False:
-        skeleton = pd.read_csv(f'{base_dir}/prior/skeleton_promotor.csv')
-        net['edge'] = net['source'] + '_' + net['target']
-        net = net[net['edge'].isin(skeleton['edge'])]
-        net = net.drop('edge', axis=1)
     if only_promotor_based:
         net = net[net['promotor_based']]
-    
-    centrality_df = net.groupby(['source']).size()
-    tfs = centrality_df[centrality_df>c_t].index
-    net = net[net['source'].isin(tfs)]
+    net = net.sort_values(by='weight', ascending=False, key=abs).head(top_n)
     return net[['source', 'target', 'weight', 'cell_type']]
 
 def retrieve_nets(datasets, cell_type, only_promotor_based=False):
@@ -475,6 +472,8 @@ def test_mixed_effects(df, ctr, treatment, target_variable='predicted_age', conf
     # Extract p-value and coefficient for main condition effect
     # The coefficient name depends on the formula and encoding
     coef_names = result.params.index.tolist()
+    print(result)
+    aaa
     
     # Try to find the condition effect coefficient
     # It could be named as the condition_col or C(condition_col)[T.treatment]
