@@ -19,30 +19,18 @@ pd.set_option("display.max_columns", None)
 # Import common utilities and configuration
 from ciim.src.config import (
     PLOTS_DIR, 
-    SAVE_DIR,
     CELL_TYPES, 
     DISCOVERY_COHORTS,
     palette_trend,
-    palette_disease_effect,
-    palette_treatment,
-    surrogate_names,
-    mapping_minor_2_major
+    surrogate_names
 )
 from ciim.src.config import get_config
 from ciim.src.feature_association.helper import retrieve_sig_stats
-from ciim.src.feature_association.plots import (
-    heamap_plot_minor_cell_types,
-    plot_overlap,
-    plot_analysis_and_centrality,
-    plot_donor_level_perturbation_effect
-)
-from ciim.src.feature_association.disease import plot_healthy_disease_trend
+
 from ciim.src.utils.util import retrieve_net_consensus
-from ciim.src.pathway_analysis.util import pathway_kde_func
-from ciim.src.pathway_analysis.plots import plot_pathway_kde
 from ciim.src.config import palette_cell_types, palette_datasets, palette_trend_2, colors_blind
-from ciim.src.feature_association.helper import retrieve_sig_net, calculate_tf_activity, retrieve_sig_stats, retrieve_features_stats
-from ciim.src.feature_association.plots import plot_net_nx, plot_sig_tfs_stats, plot_analysis_and_centrality, plot_overlap
+from ciim.src.feature_association.helper import retrieve_sig_net, retrieve_sig_stats, retrieve_features_stats
+from ciim.src.feature_association.plots import plot_sig_tfs_stats
 
 
 warnings.filterwarnings("ignore")

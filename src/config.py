@@ -105,6 +105,7 @@ palette_treatment = OrderedDict([
     ('Decrease after treatment', '#1E8449'),   # forest green (darker and more neutral)
 ])
 CELL_TYPES = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
+# CELL_TYPES = ['CD8T']
 palette_cell_types = {name: color for name, color in zip(CELL_TYPES, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}
 # - mapping
 mapping_major_2_minor = {
@@ -285,11 +286,13 @@ DATASET_CONFIGS = {
             '24 h LPS + ruxolitinib': '24 h LPS',
             '24 h LPS': '24 h RPMI'
         },
-        name_mapping=OrderedDict({
-            '24 h RPMI + ruxolitinib': 'Ruxolitinib (ctr: RPMI)',
-            '24 h LPS + ruxolitinib': 'Ruxolitinib (ctr: LPS)',
-            '24 h LPS': 'LPS (ctr: RPMI)'
-        }),
+        # name_mapping=OrderedDict({
+        #     '24 h RPMI + ruxolitinib': 'Ruxolitinib (ctr: RPMI)',
+        #     '24 h LPS + ruxolitinib': 'Ruxolitinib (ctr: LPS)',
+        #     '24 h LPS': 'LPS (ctr: RPMI)'
+        # }),
+        name_mapping = {},
+        
         target_treatments=['Ruxolitinib (ctr: RPMI)', 'Ruxolitinib (ctr: LPS)'],
         # Clock analysis settings
         clock_test_type='mixed_effect',

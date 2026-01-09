@@ -463,7 +463,7 @@ def test_mixed_effects(df, ctr, treatment, target_variable='predicted_age', conf
     
     if df[condition_col].dtype == 'object' or df[condition_col].dtype.name == 'category':
         df[condition_col] = pd.Categorical(df[condition_col], categories=[ctr, treatment], ordered=True)
-        # df[condition_col] = df[condition_col].cat.codes  # 0 for ctr, 1 for treatment (matches legacy)
+        df[condition_col] = df[condition_col].cat.codes  # 0 for ctr, 1 for treatment - ensures coefficient is (treatment - ctr)
     
     # Fit mixed model
     model = smf.mixedlm(formula, df, groups=df[group_key])
@@ -472,8 +472,6 @@ def test_mixed_effects(df, ctr, treatment, target_variable='predicted_age', conf
     # Extract p-value and coefficient for main condition effect
     # The coefficient name depends on the formula and encoding
     coef_names = result.params.index.tolist()
-    print(result)
-    aaa
     
     # Try to find the condition effect coefficient
     # It could be named as the condition_col or C(condition_col)[T.treatment]
