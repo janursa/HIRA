@@ -5,6 +5,7 @@ from tqdm import tqdm
 import argparse
 import anndata as ad
 import pandas as pd
+from hiara.src.utils.util import retrieve_adata
 import scanpy as sc 
 import numpy as np 
 from scipy.stats import spearmanr
@@ -12,79 +13,9 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import subprocess
 
-from hiara.src.config import CELL_TYPES, minor_cell_types, BASE_DIR
+from hiara.src.config import CELL_TYPES, minor_cell_types, PRIOR_DIR
 from hiara.src.grn_inference.inference import main as main_inference
 from task_grn_inference.src.utils.util import basic_qc
-
-parser = argparse.ArgumentParser()
-parser.add_argument('--dataset_file', 
-    type=str,
-    required=True,
-    help="Processed dataset file after filtering"
-    )
-
-
-parser.add_argument(
-    '--save_grns_dir',
-    type=str,
-    required=True,
-    help="File of the dataset"
-)
-
-parser.add_argument(
-    '--force',
-    action='store_true',
-    help="Force to rewrite existing files (only grns)."
-)
-
-parser.add_argument(
-    '--num_workers',
-    type=int,
-    default=1,
-)
-
-parser.add_argument(
-    '--data_type',
-    type=str,
-    default='sc',
-    help="Type of data: bulk or single-cell"
-)
-
-parser.add_argument(
-    '--cell_type_granularity',
-    type=str,
-    default='major',
-    help="Whether to infer GRNs for major or minor cell types."
-)
-
-args = parser.parse_args()
-
-
-par = {
-    # - grn inference parameters
-        'dataset_file': args.dataset_file,
-        'weight_t': 0.05,
-        # 'cell_types': minor_cell_types,
-        # 'cell_type_col': 'Sub_CT',
-        'min_genes_per_cell': 10, 
-        'max_genes_per_cell': 5000 if args.data_type == 'sc' else 1e6, 
-        'min_cells_per_gene': 1000 if args.data_type == 'sc' else 100,
-        'data_type': args.data_type,
-        'num_workers': args.num_workers,
-        'force': args.force,
-        'top_n_edges': 100_000,
-        'save_grns_dir': args.save_grns_dir,
-        # 'temp_dir': 'output/grns/temp/',
-} 
-
-if args.cell_type_granularity == 'major':
-    par['cell_types'] = CELL_TYPES
-    par['cell_type_col'] = 'Major_CT'
-elif args.cell_type_granularity == 'minor':
-    par['cell_types'] = minor_cell_types
-    par['cell_type_col'] = 'Sub_CT'
-else:
-    raise ValueError(f"Unknown cell type granularity: {args.cell_type_granularity}. Use 'major' or 'minor'.")
 
 def wrapper_grn(task, par):
     '''
@@ -92,7 +23,8 @@ def wrapper_grn(task, par):
     '''
     (cell_type, save_file_name) = task
 
-    adata = ad.read_h5ad(par['dataset_file'], backed='r')
+    # adata = ad.read_h5ad(par['dataset_file'], backed='r')
+    adata = retrieve_adata(dataset=par['dataset'], data_type=par['data_type'], condition='healthy')
     obs = adata.obs.copy()
 
     # Filter for the specific cell type, age group and batch group
@@ -106,11 +38,11 @@ def wrapper_grn(task, par):
 
     mask_sample = cell_type_mask
     if mask_sample.sum() == 0:
-        print(f"Error: No cells left after filtering for {cell_type}_{age_group}_{batch_group}", flush=True)
+        print(f"Error: No cells left after filtering for {cell_type}", flush=True)
         return  
-    gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
-    mask_genes = np.isin(adata.var_names, gene_names)
-    adata = adata[mask_sample, mask_genes].to_memory()
+    # gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
+    # mask_genes = np.isin(adata.var_names, gene_names)
+    # adata = adata[mask_sample, mask_genes].to_memory()
     adata = basic_qc(adata, min_cells_per_gene=par['min_cells_per_gene'], min_genes_per_cell=par['min_genes_per_cell'], max_genes_per_cell=par['max_genes_per_cell'])
 
     # Infer GRN
@@ -138,8 +70,8 @@ def infer_grns_all(par):
     '''
     print(par, flush=True)
     # - read dataset
-    adata = ad.read_h5ad(par['dataset_file'], backed='r')
-    obs = adata.obs.copy()
+    # adata = ad.read_h5ad(par['dataset_file'], backed='r')
+    # obs = adata.obs.copy()
 
     # - prepare tasks
     tasks = []
@@ -158,6 +90,76 @@ def infer_grns_all(par):
             pass
 
 if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset', 
+        type=str,
+        required=True,
+        )
+
+
+    parser.add_argument(
+        '--save_grns_dir',
+        type=str,
+        required=True,
+        help="File of the dataset"
+    )
+
+    parser.add_argument(
+        '--force',
+        action='store_true',
+        help="Force to rewrite existing files (only grns)."
+    )
+
+    parser.add_argument(
+        '--num_workers',
+        type=int,
+        default=1,
+    )
+
+    parser.add_argument(
+        '--data_type',
+        type=str,
+        default='sc',
+        help="Type of data: bulk or single-cell"
+    )
+
+    parser.add_argument(
+        '--cell_type_granularity',
+        type=str,
+        default='major',
+        help="Whether to infer GRNs for major or minor cell types."
+    )
+
+    args = parser.parse_args()
+
+
+    par = {
+        # - grn inference parameters
+            'dataset': args.dataset,
+            'weight_t': 0.05,
+            # 'cell_types': minor_cell_types,
+            # 'cell_type_col': 'Sub_CT',
+            'min_genes_per_cell': 10, 
+            'max_genes_per_cell': 5000 if args.data_type == 'sc' else 1e6, 
+            'min_cells_per_gene': 1000 if args.data_type == 'sc' else 100,
+            'data_type': args.data_type,
+            'num_workers': args.num_workers,
+            'force': args.force,
+            'top_n_edges': 100_000,
+            'save_grns_dir': args.save_grns_dir,
+            # 'temp_dir': 'output/grns/temp/',
+    } 
+
+    if args.cell_type_granularity == 'major':
+        par['cell_types'] = CELL_TYPES
+        par['cell_type_col'] = 'Major_CT'
+    elif args.cell_type_granularity == 'minor':
+        par['cell_types'] = minor_cell_types
+        par['cell_type_col'] = 'Sub_CT'
+    else:
+        raise ValueError(f"Unknown cell type granularity: {args.cell_type_granularity}. Use 'major' or 'minor'.")
+
     # - run GRN inference
     print('running grn inference...', flush=True)
     os.makedirs(par['save_grns_dir'], exist_ok=True)

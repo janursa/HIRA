@@ -23,7 +23,7 @@ import numpy as np
 from collections import defaultdict
 import matplotlib.pyplot as plt
 from hiara.src.config import surrogate_names
-from hiara.src.feature_association.helper import retrieve_feature_data
+from hiara import retrieve_feature_data, retrieve_sig_stats, retrieve_features_stats
 from hiara.src.feature_association.plots import heatplot_age_trend
 # Import common utilities and configuration
 from hiara.src.config import (
@@ -34,11 +34,9 @@ from hiara.src.config import (
     palette_trend,
     palette_disease_effect,
     palette_treatment,
-    surrogate_names,
-    mapping_minor_2_major
+    surrogate_names
 )
 from hiara.src.config import get_config
-from hiara.src.feature_association.helper import retrieve_sig_stats, retrieve_features_stats
 from hiara.src.feature_association.plots import (
     heamap_plot_minor_cell_types,
     plot_overlap,
@@ -81,8 +79,7 @@ def format_tf_activity_for_disease_trend_plot(dataset, data_type, cell_type, tf,
     tf_acts = retrieve_feature_data(dataset=dataset, cell_type=cell_type, data_type=data_type, condition=None)
     tf_acts = tf_acts[(tf_acts.obs['age'] >= age_limit[0]) & (tf_acts.obs['age'] <= age_limit[1])]
     tf_acts = tf_acts[:, tf_acts.var_names == tf]
-    # print(tf_acts)
-    # aaa
+
     
     if tf_acts.shape[1] == 0:
         return None
@@ -289,9 +286,7 @@ def plot_aging_overlap(stats_sig, args):
                 on='gene', 
                 how='inner'
             )
-            
-            # print(merged[['gene', 'slope', 'slope_condition']].head(10))    
-            # aaa    
+              
             if len(merged) > 0:
                 same_direction = (np.sign(merged['slope']) == np.sign(merged['slope_condition'])).sum()
                 opposite_direction = (np.sign(merged['slope']) != np.sign(merged['slope_condition'])).sum()
@@ -682,18 +677,19 @@ def plot_age_stratified_or_comparison(stats, stats_sig, args):
     top_aging_tfs = args.top_aging_tfs
     output_dir = args.output_dir
     feature_type = args.feature_type
-    
+
     palette_all = {**palette_trend, **palette_disease_effect, **palette_treatment}
     
     aging_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=feature_type).drop_duplicates(subset=['cell_type', 'gene'])
+
     aging_stats_sig = aging_stats_sig[['gene', 'cell_type', 'slope']]
     
     if analysis_type == 'disease' or analysis_type == 'aging':
-        _plot_age_stratified_disease(stats, stats_sig, dataset, target_cell_types, top_aging_tfs, aging_stats_sig, palette_all, output_dir)
+        _plot_age_stratified_disease(stats, dataset, target_cell_types, top_aging_tfs, aging_stats_sig, palette_all, output_dir)
     else:
-        _plot_perturbation_comparison(stats, dataset, target_cell_types, top_aging_tfs, aging_stats_sig, palette_all, output_dir)
+        _plot_perturbation_comparison(stats_sig, dataset, target_cell_types, top_aging_tfs, aging_stats_sig, palette_all, output_dir)
 
-def _plot_age_stratified_disease(stats, stats_sig, disease_name, target_cell_types, top_aging_tfs, aging_stats_sig, palette_all, output_dir):
+def _plot_age_stratified_disease(stats, disease_name, target_cell_types, top_aging_tfs, aging_stats_sig, palette_all, output_dir):
     """Plot age-stratified analysis for disease data."""
     
     # Check if we have cmv_young and cmv_old configs
@@ -732,21 +728,23 @@ def _plot_age_stratified_disease(stats, stats_sig, disease_name, target_cell_typ
             ].copy()
             stats_d = stats_d[['gene', 'cell_type', 'slope', 'p_value_adj']].drop_duplicates()
             # Map age group name for display
-            display_name = age_group_display_map.get(age_group, age_group)
-            stats_d['analysis'] = display_name
+            # display_name = age_group_display_map.get(age_group, age_group)
+            stats_d['analysis'] = age_group
             # For soundlife aging or CMV analysis, use aging trend labels; otherwise use disease labels
             if disease_name == 'soundlife' or has_cmv_configs:
                 stats_d['trend'] = ['Increase in aging' if x > 0 else 'Decrease in aging' for x in stats_d['slope']]
             else:
                 stats_d['trend'] = ['Increase in disease' if x > 0 else 'Decrease in disease' for x in stats_d['slope']]
+            # stats_d['age_group'] = age_group
             stats_store.append(stats_d)
         
         stats_condition = pd.concat(stats_store)
         
         # Use display names for categorical ordering
-        display_age_groups = [age_group_display_map.get(ag, ag) for ag in age_groups]
+
+
         stats_condition['analysis'] = stats_condition['analysis'].astype(
-            pd.CategoricalDtype(categories=display_age_groups, ordered=True)
+            pd.CategoricalDtype(categories=age_groups, ordered=True)
         )
         
         # --- Restrict to overlapping genes ---
@@ -767,7 +765,7 @@ def _plot_age_stratified_disease(stats, stats_sig, disease_name, target_cell_typ
         
         plot_analysis_and_centrality(
             df, 
-            all_groups=display_age_groups,  # Use display names instead of original age_groups
+            all_groups=age_groups,  # Use display names instead of original age_groups
             figsize=(2.1, 4), 
             palette_all=palette_all, 
             plot_centrality=False, 
@@ -1316,10 +1314,9 @@ def wrapper_tf_act_plots(stats, stats_sig, args):
         elif args.analysis_type == 'disease' or args.analysis_type == 'aging':
             # For disease/aging, also generate the overlap heatmap
             plot_aging_disease_overlap_heatmap(stats_sig, args)
-    
     # 4. Age-stratified or comparison analysis
     plot_age_stratified_or_comparison(
-        stats, 
+        stats,
         stats_sig, 
         args
     )
