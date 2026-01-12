@@ -11,7 +11,7 @@ conda activate py10
 set -e  # Exit on error from this point forward
 
 # Build command - pass all arguments directly to Python script
-CMD="python -m ciim.src.feature_association.run_analysis $@"
+CMD="python -m hiara.src.feature_association.run_analysis $@"
 
 # Run analysis
 echo "Running analysis..."

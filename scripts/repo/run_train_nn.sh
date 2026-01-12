@@ -19,6 +19,6 @@ source ~/miniconda3/etc/profile.d/conda.sh
 
 conda activate cpa
 
-python /home/jnourisa/projs/ongoing/ciim/src/clock/NN/script_train.py --mode train
+python /home/jnourisa/projs/ongoing/hiara/src/clock/NN/script_train.py --mode train
 # echo "Running testing ..." 
 # python src/clock/NN/script_train.py --mode test

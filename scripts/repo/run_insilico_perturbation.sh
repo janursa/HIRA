@@ -14,4 +14,4 @@
 set -e
 
 # python src/workflows/in_silico_simulation/script.py 
-python /home/jnourisa/projs/ongoing/ciim/src/insilico_perturbation/optimization/script.py
+python /home/jnourisa/projs/ongoing/hiara/src/insilico_perturbation/optimization/script.py

@@ -9,15 +9,15 @@ from scipy.sparse import csr_matrix
 import scanpy as sc
 
 
-from ciim.src.config import base_dir, task_grn_benchmark_dir
+from hiara.src.config import TASK_GRN_BENCHMARK_DIR
  
 
 
 ## VIASH START
 par = {
-    'op_perturbation_raw': f'{task_grn_benchmark_dir}/resources/datasets_raw/op_perturbation_sc_counts.h5ad',
+    'op_perturbation_raw': f'{TASK_GRN_BENCHMARK_DIR}/resources/datasets_raw/op_perturbation_sc_counts.h5ad',
     
-    'op_perturbation_bulk': f'{base_dir}/datasets/bulk/op_bulk.h5ad',
+    'op_perturbation_bulk': f'{DATA_DIR}/bulk/op_bulk.h5ad',
     
 }
 ## VIASH END
@@ -25,7 +25,7 @@ par = {
 meta = { 
     'helper_dir': './'
 }   
-sys.path.append(task_grn_benchmark_dir)
+sys.path.append(TASK_GRN_BENCHMARK_DIR)
 sys.path.append(meta['helper_dir'])
 from helper import preprocess_sc, filter_func, normalize_func, pseudobulk_sum_func
 

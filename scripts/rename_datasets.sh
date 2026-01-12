@@ -1,6 +1,6 @@
 #!/bin/bash
 
-BASE_DIR="/Users/jno24/Documents/projs/ongoing/ciim/base_folder"
+BASE_DIR="/Users/jno24/Documents/projs/ongoing/hiara/base_folder"
 
 echo "=================================================="
 echo "Dataset File Renaming Script"

@@ -4,14 +4,11 @@ import pandas as pd
 import anndata as ad
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
-import scipy.sparse as sp
-import sys
-import os
-import json
 import scanpy as sc
-import matplotlib.pyplot as plt
-from collections import defaultdict
-from ciim.src.config import base_dir, SAVE_DIR, PRIOR_DIR, DISCOVERY_COHORTS, mapping_minor_2_major, grn_consensus_min_degree, get_config
+from hiara.src.config import AGING_COHORTS, mapping_minor_2_major, grn_consensus_min_degree, get_config, PRIOR_DIR, DATA_DIR
+
+# increase width of output display
+pd.set_option('display.max_columns', None)
 
 def read_gmt(file_path: str) -> dict[str, list[str]]:
     """Reas gmt file and returns a dict of gene"""
@@ -27,11 +24,18 @@ def read_gmt(file_path: str) -> dict[str, list[str]]:
                 "genes": genes,
             }
     return gene_sets
-def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, condition=None): 
-    base_path = f"{base_dir}/datasets/"
-    gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
+
+def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, condition=None, only_net_genes=False): 
+    gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
     assert data_type in ['sc', 'bulk', 'metacell'], f'Unknown type {data_type}'
-    adata = ad.read_h5ad(f"{base_path}/{data_type}/{dataset}.h5ad")
+    adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/{dataset}.h5ad", backed='r')
+    if cell_type is not None:
+        if cell_type not in adata.obs['cell_type'].unique():
+            raise ValueError(f'Given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
+        adata = adata[adata.obs['cell_type'] == cell_type]
+        adata = adata.to_memory()
+    else:
+        adata = adata.to_memory()
     # if 'age' not in adata.obs.columns:
     #     print('Warning: "age" column not found in adata.obs. Setting to default age of 20.')
     #     adata.obs['age'] = 20
@@ -41,10 +45,7 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
     adata.obs['dataset'] = dataset
     adata = adata[:, adata.var_names.isin(gene_names)]
 
-    if cell_type is not None:
-        if cell_type not in adata.obs['cell_type'].unique():
-            raise ValueError(f'Given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
-        adata = adata[adata.obs['cell_type'] == cell_type]
+    
     if 'age' in adata.obs.columns:
         adata = adata[~adata.obs['age'].isna()].copy()
         adata.obs['age'] = adata.obs['age'].astype(float).astype(int)
@@ -72,23 +73,27 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
                 raise ValueError(f'Given condition "{condition}" not in {adata.obs["condition"].unique()}')
         adata = adata[adata.obs['condition'] == condition]
     
-    
-    
     adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + adata.obs['age'].astype(str)
-        
+
+    if only_net_genes:
+        net = retrieve_net_consensus(cell_type=cell_type)
+        adata = adata[:, adata.var_names.isin(net['target'].unique())].copy()
+    
+    if dataset == 'CXCL9':
+        adata = adata[adata.obs['condition'].isin(['24 h LPS + ruxolitinib', '24 h RPMI + ruxolitinib', '24 h LPS', '24 h RPMI'])]  # remove this condition due to low sample size
     return adata
 
-def retrieve_net(dataset, cell_type, only_promotor_based=False, top_n=100_000):  
-    from ciim.src.config import SAVE_DIR
-    data_type='bulk'
+def retrieve_net(dataset, cell_type, only_promotor_based=False, top_n=100_000, data_type='sc'):  
+    from hiara.src.config import OUTPUT_DIR
+    
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
     if dataset not in ['soundlife']:
-        folder = f"{SAVE_DIR}/grns/{dataset}/{data_type}/"
+        folder = f"{OUTPUT_DIR}/grns/{dataset}/{data_type}/"
     else:
-        folder = f"{SAVE_DIR}/grns/{dataset}/bulk/"
+        folder = f"{OUTPUT_DIR}/grns/{dataset}/bulk/"
     net = pd.read_csv(f"{folder}/net_{cell_type_major}.csv")
-    gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
+    gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
     net = net[net['target'].isin(gene_names)]
     if only_promotor_based:
         net = net[net['promotor_based']]
@@ -104,7 +109,8 @@ def retrieve_nets(datasets, cell_type, only_promotor_based=False):
     nets = pd.concat(net_store, ignore_index=True)
     return nets
 
-def retrieve_net_consensus(datasets=DISCOVERY_COHORTS, cell_type='CD8T', min_degree=grn_consensus_min_degree, only_promotor_based=False):
+def retrieve_net_consensus(datasets=AGING_COHORTS, cell_type='CD8T', min_degree=grn_consensus_min_degree, only_promotor_based=False):
+    print('Retrieving consensus GRN for', cell_type, 'with min degree', min_degree)
     from scipy.stats import zscore
     net_store = []
     for dataset in datasets:
@@ -195,7 +201,7 @@ def flesh_out_collectri():
 
     # Create the new curated DataFrame
     curated_net = pd.DataFrame(expanded_rows)
-    curated_net.to_csv(f'{base_dir}/prior/collectri_with_source.csv', index=False)
+    curated_net.to_csv(f'{PRIOR_DIR}/collectri_with_source.csv', index=False)
 # - pseudotime analysis
 def run_pseudotime_analysis(adata, seed=32):
     # - add root age: #TODO: run this multiple times to choose different root cells 
@@ -208,6 +214,50 @@ def run_pseudotime_analysis(adata, seed=32):
         # sc.pl.umap(adata, color=['dpt_pseudotime', 'age'], cmap='viridis', show=True, size=3*(adata.obs['cell_count'] / adata.obs['cell_count'].max() * 100))
         # sc.pl.pca(adata, color=['dpt_pseudotime', 'age'], cmap='viridis', show=True, size=3*(adata.obs['cell_count'] / adata.obs['cell_count'].max() * 100))
     return adata
+
+def retrieve_sig_net(data_type='bulk', cell_type=None):
+    df = pd.read_csv(f'{OUTPUT_DIR}/sig_nets/sig_nets_{type}.csv')
+    if cell_type is not None:
+        df = df[df['cell_type'] == cell_type]
+    return df
+
+def determine_sig_network(data_type,  min_degree=3):
+    os.makedirs(f'{OUTPUT_DIR}/sig_nets', exist_ok=True)
+    stats_tfs = retrieve_sig_stats(data_type, feature_type='tf_activity')
+    stats_targets = retrieve_sig_stats(data_type, feature_type='gene_expression')
+    
+    datasets = AGING_COHORTS
+    
+
+    nets_stats_store = []
+    for cell_type in CELL_TYPES:
+        stats_tfs_t = stats_tfs[stats_tfs['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'gene'])[['gene', 'meta_p_adj', 'slope', 'trend']]
+        stats_targets_t = stats_targets[stats_targets['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'target'])[['target', 'meta_p_adj', 'slope', 'trend']]
+        
+        if len(stats_tfs_t) == 0:
+            print('No source for', cell_type, ' skipping it')
+            continue
+        if len(stats_targets_t) == 0:
+            print('No target for', cell_type, ' skipping it')
+            continue
+        
+        # - get the nets
+        net = retrieve_net_consensus(datasets, cell_type, min_degree=min_degree)
+        sig_tfs = stats_tfs_t['gene'].unique()
+        sig_targets = stats_targets_t['target'].unique()
+        net = net[(net['source'].isin(sig_tfs)) & (net['target'].isin(sig_targets))]
+        net = net.groupby(['source', 'target'])['weight'].mean().reset_index() # probably not necessary
+        # - get the stats
+        nets_stats = pd.merge(net, stats_tfs_t, left_on='source', right_on='gene', how='left')
+        nets_stats = pd.merge(nets_stats, stats_targets_t, left_on='target', right_on='target', how='left', suffixes=('_source', '_target'))
+        nets_stats = nets_stats[['source', 'target', 'weight', 'slope_source', 'slope_target', 'meta_p_adj_source', 'meta_p_adj_target', 'trend_source', 'trend_target']]
+        nets_stats['cell_type'] = cell_type
+        nets_stats_store.append(nets_stats)
+    nets_stats = pd.concat(nets_stats_store)
+
+    os.makedirs(f'{OUTPUT_DIR}/sig_nets', exist_ok=True)
+    nets_stats.to_csv(f'{OUTPUT_DIR}/sig_nets/sig_nets_{type}.csv')
+
 
 def stability_selection_booststrap(X, y, n_bootstrap=100, top_k=10):
     """
@@ -380,38 +430,6 @@ import numpy as np
 
 
 def test_mixed_effects(df, ctr, treatment, target_variable='predicted_age', config=None, group_key=None):
-    """
-    Flexible mixed-effects model testing.
-    
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Data containing samples
-    ctr : str
-        Control group name
-    treatment : str
-        Treatment group name
-    target_variable : str
-        Dependent variable name (default: 'predicted_age')
-    formula : str, optional
-        Custom R-style formula for the model. If None, uses config or defaults.
-        Examples:
-            - Simple: "target_variable ~ condition"
-            - With covariates: "target_variable ~ condition + followup_year"
-            - Interactions: "target_variable ~ condition * vaccinated * followup_day"
-    group_key : str, optional
-        Column name for random effects grouping. If None, uses config or defaults.
-    return_full_result : bool
-        If True, returns full statsmodels result object. If False, returns (pval, coef)
-    config : ConditionConfig, optional
-        Configuration object. If provided, uses config.mixed_effects_formula and config.mixed_effects_group
-    
-    Returns
-    -------
-    tuple or statsmodels result
-        If return_full_result=False: (p_value, coefficient) for 'condition' effect
-        If return_full_result=True: Full fitted model result object
-    """
     import warnings
     warnings.filterwarnings("ignore")
     import statsmodels.formula.api as smf
@@ -423,10 +441,6 @@ def test_mixed_effects(df, ctr, treatment, target_variable='predicted_age', conf
     # Determine the actual condition column name from config
     condition_col = config.condition_column if (config is not None and hasattr(config, 'condition_column')) else 'condition'
     
-    # Replace 'condition' placeholder in formula with actual column name if different
-    if condition_col != 'condition' and 'condition' in formula:
-        formula = formula.replace('C(condition)', f'C({condition_col})').replace(' condition ', f' {condition_col} ')
-
     # For interaction models (formula contains *), use ALL data without filtering
     df = df[df[condition_col].isin([ctr, treatment])].copy()
     
@@ -464,7 +478,9 @@ def test_mixed_effects(df, ctr, treatment, target_variable='predicted_age', conf
     if df[condition_col].dtype == 'object' or df[condition_col].dtype.name == 'category':
         df[condition_col] = pd.Categorical(df[condition_col], categories=[ctr, treatment], ordered=True)
         df[condition_col] = df[condition_col].cat.codes  # 0 for ctr, 1 for treatment - ensures coefficient is (treatment - ctr)
-    
+
+    # replace feature_values with target_variable
+    formula = formula.replace('feature_values', target_variable)
     # Fit mixed model
     model = smf.mixedlm(formula, df, groups=df[group_key])
     result = model.fit()

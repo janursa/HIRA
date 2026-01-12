@@ -1,6 +1,6 @@
 
 import anndata as ad
-from ciim.src.config import DATASET_NAME_MAPPING, get_config
+from hiara.src.config import DATASET_NAME_MAPPING, get_config
 import argparse
 
 ## VIASH START
@@ -29,7 +29,7 @@ par = vars(parser.parse_args())
 run_test = par['run_test']
 
 ## VIASH END
-from ciim.src.process_dataset.preprocess.helper import annotate_celltypes, qc_check, format_data, qc_post_annotation
+from hiara.src.process_dataset.preprocess.helper import annotate_celltypes, qc_check, format_data, qc_post_annotation
 
 def all_preprocessing_steps(adata):
     print('Running QC...', flush=True)

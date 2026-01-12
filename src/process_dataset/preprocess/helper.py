@@ -11,7 +11,7 @@ import seaborn as sns
 import pandas as pd
 import anndata as ad
 import gc
-from ciim.src.config import get_config
+from hiara.src.config import get_config
 
 def format_data(adata, dataset_name):
     if dataset_name == 'op':

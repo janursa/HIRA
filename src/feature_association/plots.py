@@ -9,9 +9,9 @@ import matplotlib.patches as mpatches
 import numpy as np
 
 
-from ciim.src.config import CELL_TYPES, base_dir, SAVE_DIR, colors_blind, DISCOVERY_COHORTS ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
-from ciim.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data
-from ciim.src.utils.util import retrieve_net, retrieve_adata
+from hiara.src.config import CELL_TYPES, OUTPUT_DIR, colors_blind, AGING_COHORTS ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
+from hiara.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data
+from hiara.src.utils.util import retrieve_net, retrieve_adata
 
 # - retrieve the feature data (donor level) for the case TF 
 def plot_donor_level_perturbation_effect(case_tf, ctr, treatment, cell_type, p_value_adj, dataset, ax=None, bbox_to_anchor=(1.02, .8)):
@@ -261,7 +261,7 @@ def plot_ctr_condition_distribution(cell_types, genes, treatment, ctr, dataset, 
                     continue
                 assert stats_g["p_value_adj"].values.shape[0] == 1, f"Multiple p-values found for {gene} in {cell_type} {treatment} {ctr}"
                 adj_p = stats_g["p_value_adj"].values[0]
-                slope = stats_g["slope_condition"].values[0]
+                slope = stats_g["slope"].values[0]
                 slope_str = '+' if slope > 0 else '-'
                 y_max = feature_data_df[gene].max()  # Highest point in the plot
 
@@ -300,8 +300,7 @@ def plot_sig_tfs_stats(df, figsize=(3.5, 2), palette=None, ax=None):
 class ModularizedNetPlot:
     @staticmethod
     def prepare_net_only_tfs(cell_type, race, data_type, min_degree=3):
-        from ciim.src.feature_association.helper import retrieve_nets, retrieve_sig_stats
-        from ciim.src.config import   DISCOVERY_COHORTS
+        from hiara.src.feature_association.helper import retrieve_nets, retrieve_sig_stats
 
         stats_sig = retrieve_sig_stats(race=race, data_type=data_type).drop_duplicates(subset=['cell_type', 'gene'])
         stats_sig_t = stats_sig[stats_sig['cell_type'] == cell_type].set_index(['gene'])
@@ -388,7 +387,7 @@ class ModularizedNetPlot:
         return collapsed_net
     @staticmethod
     def add_trend_to_collapsed_net_only_tfs(collapsed_net, data_type, race, cell_type):
-        from ciim.src.feature_association.helper import retrieve_sig_stats
+        from hiara.src.feature_association.helper import retrieve_sig_stats
         # - sumarize the trends for the collapsed net
         stats_sig = retrieve_sig_stats(race=race, data_type=data_type).drop_duplicates(subset=['cell_type', 'gene'])
         stats_sig_t = stats_sig[stats_sig['cell_type'] == cell_type].set_index(['gene'])
@@ -536,7 +535,7 @@ def dotplot_category_color(df, ax,
 
 def plot_feature_values_per_datasets(cell_type, features, data_type, datasets, feature_type='gene_expression', age_limit=[20, 75], cluster=False, figsize=None):
     import matplotlib.pyplot as plt
-    from ciim.src.config import surrogate_names
+    from hiara.src.config import surrogate_names
 
     n_datasets = len(datasets)
     n_features = len(features)
@@ -589,7 +588,7 @@ def plot_feature_values_per_datasets(cell_type, features, data_type, datasets, f
     return fig
 def plot_feature_values_all_datasets(cell_type, feature, feature_type, datasets, ax=None, show_cbar=True, data_type='bulk', 
                                     age_limit=[20, 80], show_ylabels=True):
-    from ciim.src.feature_association.helper import retrieve_feature_data, bin_feature_values
+    from hiara.src.feature_association.helper import retrieve_feature_data, bin_feature_values
     
     mean_expr_store = []
     for dataset in datasets:
@@ -758,9 +757,9 @@ def plot_analysis_and_centrality(df, all_groups, palette_all, feature_col='gene'
 def plot_overlap(
         stats_drug_sig, 
         aging_stats_sig, 
-        how='inner',
+        agreement,  # treatment effect should be 'opposite' to aging
+        how='left',
         col='cell_type',
-        agreement='opposite',  # treatment effect should be 'opposite' to aging
         ax=None,
         legend=True,
         figsize=(2.5, 2),
@@ -874,10 +873,10 @@ def plot_gene_score_association_with_age(cell_type, datasets, data_type, feature
                               top_features=20, min_degree=4, filter_meta_significant=False, race='european', width=3,
                              margins_ax1={'x': 0.1, 'y': 0.1}, margins_ax2={'x': 0.1, 'y': 0.1}, show_size_legend = False, figsize=None,
                              n_top_terms=20):
-    from ciim.src.utils.plots import dotplot
+    from hiara.src.utils.plots import dotplot
     from matplotlib.colors import TwoSlopeNorm
-    from ciim.src.config import cmap_trend, palette_trend_2, surrogate_names
-    from ciim.src.feature_association.helper import retrieve_features_stats, retrieve_sig_stats
+    from hiara.src.config import cmap_trend, palette_trend_2, surrogate_names
+    from hiara.src.feature_association.helper import retrieve_features_stats, retrieve_sig_stats
     import matplotlib.gridspec as gridspec
     import pandas as pd
     import numpy as np
@@ -1033,10 +1032,10 @@ def plot_features_vs_datasets(cell_type, datasets, data_type, features=None, fea
                               top_features=20, min_degree=4, filter_meta_significant=False, race='european', 
                               show_size_legend=False):
 
-    from ciim.src.utils.plots import dotplot
-    from ciim.src.config import cmap_trend, surrogate_names
-    from ciim.src.feature_association.helper import retrieve_features_stats, retrieve_sig_stats
-    from ciim.src.utils.util import retrieve_net
+    from hiara.src.utils.plots import dotplot
+    from hiara.src.config import cmap_trend, surrogate_names
+    from hiara.src.feature_association.helper import retrieve_features_stats, retrieve_sig_stats
+    from hiara.src.utils.util import retrieve_net
     import matplotlib.gridspec as gridspec
     import pandas as pd
     import numpy as np
@@ -1108,7 +1107,7 @@ def plot_features_vs_datasets(cell_type, datasets, data_type, features=None, fea
         if feature_type == 'tf_activity':
             pass
             # - check if the features are in the tf_all list
-            # tf_all = np.loadtxt(f"{base_dir}/prior/tf_all.csv", dtype=str)
+            # tf_all = np.loadtxt(f"{PRIOR_DIR}/tf_all.csv", dtype=str)
             # features = [tf for tf in features if tf in tf_all]
 
         # - check if the features are in the stats (remove those that are not present in at least one dataset)
@@ -1356,7 +1355,7 @@ def plot_tf_interactions_plus_target_stats_binary(net, ax=None, show_legend=True
 
     # Optionally annotate targets that are TFs
     if annotate_targets:
-        tf_all = np.loadtxt(f"{base_dir}/prior/tf_all.csv", dtype=str)
+        tf_all = np.loadtxt(f"{PRIOR_DIR}/tf_all.csv", dtype=str)
         plt.draw()
         for label in ax.get_xticklabels():
             if label.get_text() in tf_all:
@@ -1394,7 +1393,6 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
     norm = TwoSlopeNorm(vmin=-.1, vcenter=0, vmax=.1)
     
     net['dataset'] = net['dataset'].apply(lambda name: surrogate_names.get(name, name))
-    # net['dataset'] = net['dataset'].astype(CategoricalDtype(categories=DISCOVERY_COHORTS, ordered=True))
     net['slope_direction'] = net['slope'].apply(lambda x: 'Increase in aging' if x > 0 else 'Decrease in aging')
 
     if ax is None:
@@ -1419,7 +1417,7 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
     ax.margins(x=0.05, y=0.2)
     plt.xticks(rotation=90)
     if annotate_targets:
-        tf_all = np.loadtxt(f"{base_dir}/prior/tf_all.csv", dtype=str)
+        tf_all = np.loadtxt(f"{PRIOR_DIR}/tf_all.csv", dtype=str)
         # Set tick labels with color
         plt.draw()  # ensures tick labels are populated
 
@@ -1483,8 +1481,8 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
 
 
 def wrapper_flesh_out_tf_interactions(datasets, cell_type, tf, data_type='bulk', n_top=10, keep_sig_only=False, sizes=(20, 100), ax=None, show_legend=True):
-    from ciim.src.feature_association.helper import retrieve_features_stats
-    from ciim.src.feature_association.plots import plot_tf_interactions_plus_target_stats
+    from hiara.src.feature_association.helper import retrieve_features_stats
+    from hiara.src.feature_association.plots import plot_tf_interactions_plus_target_stats
     # - get the net for different datasets
     top_targets = []
     net_store = []
@@ -1586,7 +1584,7 @@ def plot_trend_tfs(cell_type, tfs, data_type='bulk', dataset='data1', ax=None):
     adata = adata[adata.obs['cell_type'] == cell_type]
     nets = retrieve_net(dataset, cell_type)
     tf_acts = calculate_tf_activity(adata, nets)
-    from ciim.src.process_dataset.preprocess.helper import binarize_age
+    from hiara.src.process_dataset.preprocess.helper import binarize_age
     tf_acts.obs = binarize_age(tf_acts.obs)
 
     tf_acts_s = tf_acts[:, tf_acts.var_names.isin(tfs)]
@@ -1602,7 +1600,7 @@ def plot_trend_targets_binarized(cell_type, genes, dataset='data1', ax=None):
     adata = retrieve_adata(dataset)
     adata = adata[adata.obs['cell_type'] == cell_type]
     adata = adata[:, adata.var_names.isin(genes)]
-    from ciim.src.process_dataset.preprocess.helper import binarize_age
+    from hiara.src.process_dataset.preprocess.helper import binarize_age
     adata.obs = binarize_age(adata.obs)
     # print(adata.obs.groupby(['age_group'])['donor_age'].nunique())
 
@@ -1629,7 +1627,7 @@ def plot_overall_heatmap(stats_all,
                         draw_legend=True
 
                         ):
-    from ciim.src.config import palette_trend_2
+    from hiara.src.config import palette_trend_2
     from matplotlib.colors import ListedColormap, BoundaryNorm
     from scipy.cluster.hierarchy import linkage
     from matplotlib.patches import Patch
@@ -2105,13 +2103,13 @@ def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net
             plt.title(f"{surrogate_names.get(dataset, dataset)}", fontsize=16, pad=20)
     if draw_collectri:
         # - add collectri
-        collectri = pd.read_csv(f'{base_dir}/prior/collectri_with_source.csv')
+        collectri = pd.read_csv(f'{PRIOR_DIR}/collectri_with_source.csv')
         collectri['dataset'] = collectri['ref']
         evidence = collectri.copy()
         if False:
             # - add skeleton
             # skeleton = pd.read_csv(f'/home/jnourisa/projs/ongoing/task_grn_inference/resources/grn_benchmark/prior//skeleton.csv')
-            skeleton = pd.read_csv(f'{base_dir}/prior/skeleton_promotor.csv')
+            skeleton = pd.read_csv(f'{PRIOR_DIR}/skeleton_promotor.csv')
             skeleton['weight'] = 1
             skeleton['dataset'] = 'skeleton'
             evidence = pd.concat([evidence, skeleton], ignore_index=True)
@@ -2247,7 +2245,7 @@ def heamap_plot_minor_cell_types(stats_all, palette,
                                             annotate_x_ticks=True, dendrogram_visible=True,
                                             show_legend=True):
 
-    from ciim.src.config import palette_cell_types, surrogate_names
+    from hiara.src.config import palette_cell_types, surrogate_names
     from matplotlib.colors import ListedColormap, BoundaryNorm
     from scipy.cluster.hierarchy import linkage
     from matplotlib.patches import Patch
@@ -2512,8 +2510,8 @@ class DotPlotTFtarget:
         tf_gene_interaction_legend()
 
     def combine_data(self, stats_source, stats_target, net):
-        from ciim.src.feature_association.helper import compute_trend
-        from ciim.src.helper import determine_centrality
+        from hiara.src.feature_association.helper import compute_trend
+        from hiara.src.helper import determine_centrality
 
         stats_source = compute_trend(stats_source, pval_col='meta_p_adj', slope_col='slope', col='source')
         stats_source = stats_source[['source', 'meta_p_adj', 'trend']].drop_duplicates()

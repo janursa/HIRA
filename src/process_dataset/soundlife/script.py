@@ -17,7 +17,7 @@ parser = argparse.ArgumentParser(description='Process SoundLife datasets')
 parser.add_argument(
     '--input_dir',
     type=str,
-    default='/home/jnourisa/projs/ongoing/ciim/downloads',
+    default='/home/jnourisa/projs/ongoing/hiara/downloads',
     help="Directory containing SoundLife .h5ad files"
 )
 
@@ -38,7 +38,7 @@ parser.add_argument(
 parser.add_argument(
     '--temp_dir',
     type=str,
-    default='/home/jnourisa/projs/ongoing/ciim/src/process_dataset/soundlife/temp',
+    default='/home/jnourisa/projs/ongoing/hiara/src/process_dataset/soundlife/temp',
     help="Temporary directory for individual pseudobulked files"
 )
 

@@ -21,17 +21,17 @@ import anndata as ad
 from statsmodels.stats.multitest import multipletests
 
 # Import common utilities and configuration
-from ciim.src.config import (
+from hiara.src.config import (
     PLOTS_DIR, 
-    SAVE_DIR,
-    cell_types as default_cell_types,
+    OUTPUT_DIR,
+    CELL_TYPES as default_cell_types,
     surrogate_names,
     colors_blind
 )
 
-from ciim.src.config import get_config
-from ciim.src.utils.util import test_mixed_effects, test_paired, test_unpaired
-from ciim.src.clock.plots import (
+from hiara.src.config import get_config
+from hiara.src.utils.util import test_mixed_effects, test_paired, test_unpaired
+from hiara.src.clock.plots import (
     wrapper_age_acceleration_disease,
     wrapper_plot_age_acceleration_disease_bins,
     plot_group_strip,
@@ -39,16 +39,16 @@ from ciim.src.clock.plots import (
     plot_scatter_age_vs_predictedAge
 )
 
-from ciim.src.clock.helper import get_all_predictions
+from hiara.src.clock.helper import get_all_predictions
 
 warnings.filterwarnings("ignore")
 
 # Set matplotlib defaults
 plt.rcParams["figure.dpi"] = 150
 plt.rcParams["font.family"] = "Arial"
-
-
-
+# increase the pd display width
+pd.set_option('display.width', 1000)
+pd.set_option('display.max_columns', 100)
 
 def apply_data_filter(obs, config):
     """
@@ -151,6 +151,7 @@ def perform_statistical_tests(obs_pert, experiments, dataset, test_type='mixed_e
     dict
         Dictionary mapping (cell_type, ctr, treatment) to (p_value, slope)
     """
+    config = get_config(dataset)
     pval_map = {}
     
     for cell_type in obs_pert['cell_type'].unique():
@@ -179,7 +180,8 @@ def perform_statistical_tests(obs_pert, experiments, dataset, test_type='mixed_e
                 p_value, slope = test_mixed_effects(
                     df_sub, ctr, treatment, 
                     target_variable='predicted_age', 
-                    group_key=group_key
+                    group_key=group_key,
+                    config=config
                 )
 
             if np.isnan(p_value):
@@ -197,7 +199,6 @@ def perform_statistical_tests(obs_pert, experiments, dataset, test_type='mixed_e
             else:
                 rejected, corrected_pvals, _, _ = multipletests(raw_pvals, method='fdr_bh')
             
-            print(f"{cell_type}: {pvalue_show_type} p-values - {corrected_pvals}")
             
             for (label, corr_pval, slope) in zip(test_labels, corrected_pvals, slopes):
                 pval_map[label] = (corr_pval, slope)
@@ -877,6 +878,7 @@ Examples:
         action='store_true',
         help='Skip dataset-specific detailed plots'
     )
+
     
     args = parser.parse_args()
     
@@ -908,8 +910,7 @@ Examples:
     print("\nLoading predictions...")
     obs = get_all_predictions(
         args.cell_types, 
-        [args.dataset],
-        version=args.version
+        [args.dataset]
     )
     
     if len(obs) == 0:

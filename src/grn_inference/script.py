@@ -12,8 +12,8 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import subprocess
 
-from ciim.src.config import CELL_TYPES, minor_cell_types, base_dir
-from ciim.src.grn_inference.inference import main as main_inference
+from hiara.src.config import CELL_TYPES, minor_cell_types, BASE_DIR
+from hiara.src.grn_inference.inference import main as main_inference
 from task_grn_inference.src.utils.util import basic_qc
 
 parser = argparse.ArgumentParser()
@@ -108,7 +108,7 @@ def wrapper_grn(task, par):
     if mask_sample.sum() == 0:
         print(f"Error: No cells left after filtering for {cell_type}_{age_group}_{batch_group}", flush=True)
         return  
-    gene_names = np.loadtxt(f'{base_dir}/prior/gene_names.txt', dtype=str)
+    gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
     mask_genes = np.isin(adata.var_names, gene_names)
     adata = adata[mask_sample, mask_genes].to_memory()
     adata = basic_qc(adata, min_cells_per_gene=par['min_cells_per_gene'], min_genes_per_cell=par['min_genes_per_cell'], max_genes_per_cell=par['max_genes_per_cell'])

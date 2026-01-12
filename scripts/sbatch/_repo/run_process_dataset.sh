@@ -12,7 +12,7 @@
 
 only_male=false
 downsample=false
-input_dataset_file="/vol/projects/CIIM/Healthy_Single_Cell_Data/output/processed_data/processed_data.h5ad"
+input_dataset_file="/vol/projects/HIARA/Healthy_Single_Cell_Data/output/processed_data/processed_data.h5ad"
 processed_dataset_file='/vol/projects/jnourisa/adata_only_male_downsampled.h5ad'
 
 

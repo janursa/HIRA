@@ -21,22 +21,21 @@ warnings.filterwarnings("ignore")
 plt.rcParams["figure.figsize"] = 4, 4
 
 # --- Directories and Imports ---
-from ciim.src.config import (
+from hiara.src.config import (
     aging_clock_train_datasets, palette_genders, palette_treatment,
-    mapping_major_2_minor, mapping_minor_2_major, cell_types,
-    datasets_e, DISCOVERY_COHORTS, datasets_a, palette_datasets,
-    datasets_disease, datasets_drug_perturbation, SAVE_DIR,
+    mapping_major_2_minor, mapping_minor_2_major, CELL_TYPES, palette_datasets,
+    datasets_disease, datasets_drug_perturbation, OUTPUT_DIR,
     palette_datasets_pretty, surrogate_names, colors_blind,
     palette_trend, palette_trend_2, palette_regulation, palette_cell_types
 )
-from ciim.src.feature_association.helper import retrieve_sig_stats
-from ciim.src.insilico_perturbation.helper import wrapper_in_silico_perturbation
+from hiara.src.feature_association.helper import retrieve_sig_stats
+from hiara.src.insilico_perturbation.helper import wrapper_in_silico_perturbation
 
 def run_single_aging_tf_perturbation():
     print('Running single aging TF perturbation...')
     # --- Single TF Perturbation ---
     perturbation_mode = 'overexpression'
-    save_file = f"{SAVE_DIR}/perturbation/single_aging_tf_perturbation.csv"
+    save_file = f"{OUTPUT_DIR}/perturbation/single_aging_tf_perturbation.csv"
 
     par_single = {
         'simulation_iteration': simulation_iteration,

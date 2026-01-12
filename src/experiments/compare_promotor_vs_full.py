@@ -15,12 +15,12 @@ import seaborn as sns
 from scipy.stats import spearmanr, pearsonr
 from matplotlib_venn import venn2
 
-from ciim.src.config import PLOTS_DIR, SAVE_DIR, cell_types, palette_cell_types
+from hiara.src.config import PLOTS_DIR, OUTPUT_DIR, cell_types, palette_cell_types
 
 
 def load_stats(data_type='bulk', suffix=''):
     """Load statistics from analysis."""
-    file_path = f'{SAVE_DIR}/tf_activity/stats_all_{data_type}{suffix}.csv'
+    file_path = f'{OUTPUT_DIR}/tf_activity/stats_all_{data_type}{suffix}.csv'
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Stats file not found: {file_path}")
     return pd.read_csv(file_path)

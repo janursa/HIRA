@@ -17,20 +17,17 @@ from pandas.api.types import CategoricalDtype
 pd.set_option("display.max_columns", None)
 
 # Import common utilities and configuration
-from ciim.src.config import (
+from hiara.src.config import (
     PLOTS_DIR, 
     CELL_TYPES, 
-    DISCOVERY_COHORTS,
+    AGING_COHORTS,
     palette_trend,
     surrogate_names
 )
-from ciim.src.config import get_config
-from ciim.src.feature_association.helper import retrieve_sig_stats
-
-from ciim.src.utils.util import retrieve_net_consensus
-from ciim.src.config import palette_cell_types, palette_datasets, palette_trend_2, colors_blind
-from ciim.src.feature_association.helper import retrieve_sig_net, retrieve_sig_stats, retrieve_features_stats
-from ciim.src.feature_association.plots import plot_sig_tfs_stats
+from hiara import retrieve_net_consensus
+from hiara import palette_cell_types, palette_datasets, palette_trend_2, colors_blind
+from hiara import retrieve_sig_stats, retrieve_features_stats
+from hiara.src.feature_association.plots import plot_sig_tfs_stats
 
 
 warnings.filterwarnings("ignore")
@@ -43,10 +40,10 @@ plt.rcParams["font.family"] = "Arial"
 
 ## Heatmap of sig TFs across cell types and cohorts
 def plot_heatmap_overal():
-    from ciim.src.feature_association.plots import plot_overall_heatmap
+    from hiara.src.feature_association.plots import plot_overall_heatmap
 
     stats_all['cell_type'] = pd.Categorical(stats_all['cell_type'], categories=CELL_TYPES, ordered=True)
-    stats_all['dataset'] = pd.Categorical(stats_all['dataset'], categories=DISCOVERY_COHORTS, ordered=True)
+    stats_all['dataset'] = pd.Categorical(stats_all['dataset'], categories=AGING_COHORTS, ordered=True)
 
     plot_overall_heatmap(stats_all, 
                         sig_dots_y_offset=3, 
@@ -76,7 +73,7 @@ def plot_sig_tf_counts(args):
 
 ## Identify sig networks
 def plot_sig_networks(data_type = 'bulk'):
-    from ciim.src.feature_association.helper import determine_sig_network
+    from hiara.src.feature_association.helper import determine_sig_network
     
     
 
@@ -249,13 +246,13 @@ def plot_interaction_of_aging_TFs_between_cell_types(data_type = 'bulk'):
     plt.savefig(file_name, dpi=300, transparent=True, bbox_inches='tight')
     # plt.title(surrogate_names[race], pad=40, fontsize=10, fontweight='bold')
 
-    from ciim.src.feature_association.plots import plot_features_vs_datasets
+    from hiara.src.feature_association.plots import plot_features_vs_datasets
     ttypes = ['CD8T', 'CD4T', 'NK']
     mask = interaction_main_df[ttypes].sum(axis=1)==len(ttypes)
     features = mask[mask].index.unique()
     print(len(features))
     for cell_type in ttypes:
-        plot_features_vs_datasets(cell_type=cell_type, data_type=data_type, datasets=DISCOVERY_COHORTS, features=features, 
+        plot_features_vs_datasets(cell_type=cell_type, data_type=data_type, datasets=AGING_COHORTS, features=features, 
                                     feature_type='tf_activity', sizes=(90, 100), min_degree=1, race='both', 
                                     filter_meta_significant=True,
                                     )
@@ -263,7 +260,7 @@ def plot_interaction_of_aging_TFs_between_cell_types(data_type = 'bulk'):
         print(f"Saving figure to {file_name}")
         plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
     if False: ### Shared sig TFs between CD8T and CD4T
-        from ciim.src.feature_association.plots import plot_joint_scatter
+        from hiara.src.feature_association.plots import plot_joint_scatter
         ttypes = ['CD8T', 'CD4T']
         mask = interaction_main_df[ttypes].sum(axis=1)==len(ttypes)
         features = mask[mask].index
@@ -275,7 +272,7 @@ def plot_interaction_of_aging_TFs_between_cell_types(data_type = 'bulk'):
         plot_joint_scatter(df, vars=['CD4T', 'CD8T'], annotate=True, ax=ax)
         ax.margins(x=0.1, y=0.1)
 def gsea_analysis():
-    from ciim.src.pathway_analysis.util import get_genesets, pathway_kde_func, get_hallmark, gsea_func, wrapper_gsea
+    from hiara.src.pathway_analysis.util import get_genesets, pathway_kde_func, get_hallmark, gsea_func, wrapper_gsea
 
     wrapper_gsea(stats_sig)
     file_name = f"{PLOTS_DIR}/gsea_tf_activity.png"
@@ -283,11 +280,11 @@ def gsea_analysis():
     plt.savefig(file_name, bbox_inches='tight', dpi=200)
 
 def plot_case_tf(data_type='bulk'):
-    from ciim.src.feature_association.plots import plot_feature_values_all_datasets, plot_feature_values_per_datasets
+    from hiara.src.feature_association.plots import plot_feature_values_all_datasets, plot_feature_values_per_datasets
     n_top_targets = 10
     selected_cell_types = ['CD8T', 'CD4T', 'NK'] # ['CD8T', 'CD4T', 'NK'] #Tcm_Naive_CD8
     n_panels = len(selected_cell_types)
-    datasets = DISCOVERY_COHORTS
+    datasets = AGING_COHORTS
     plot_both = True
     show_cbar=False
     for case_tf in ['SATB1', 'GATA3']:  # 'TCF7' 'SATB1' 
@@ -317,7 +314,7 @@ def plot_case_tf(data_type='bulk'):
             plt.savefig(file_name, bbox_inches='tight', dpi=300)
 
 def plot_sig_genes_counts_hallmarks(data_type='bulk'):
-    from ciim.src.config import PRIOR_DIR
+    from hiara.src.config import PRIOR_DIR
     # Load aging hallmark genes with gene set information
     gene_col = 'gene' 
     geneset_col = 'gene_set'
@@ -433,8 +430,8 @@ if __name__ == "__main__":
         plot_sig_tf_counts(args)
         plot_central_features()
         plot_interaction_of_aging_TFs_between_cell_types()
-        gsea_analysis()
         plot_case_tf()
+        gsea_analysis()
 
         # plot_sig_networks()
     elif feature_type == 'aging_hallmarks':

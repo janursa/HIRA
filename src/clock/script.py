@@ -1,6 +1,6 @@
 
-from ciim.src.clock.train import wrapper_build_model_cell_type
-from ciim.src.config import cell_types
+from hiara.src.clock.train import wrapper_build_model_cell_type
+from hiara.src.config import cell_types
 import os
 
 import argparse

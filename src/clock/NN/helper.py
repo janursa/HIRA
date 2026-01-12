@@ -1,4 +1,4 @@
-from ciim.src.config import SAVE_DIR
+from hiara.src.config import OUTPUT_DIR
 import scanpy as sc
 
 
@@ -11,8 +11,8 @@ else:
     run_id=f'{data_type}'
 batch_key = 'dataset'
 
-save_path_train = f'{SAVE_DIR}/NN/{run_id}_train'
-save_path_test = f'{SAVE_DIR}/NN/{run_id}_test'
+save_path_train = f'{OUTPUT_DIR}/NN/{run_id}_train'
+save_path_test = f'{OUTPUT_DIR}/NN/{run_id}_test'
 
 
 # test_datasets = ['data13_Japanese', 'data12'] #'data12'

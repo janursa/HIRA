@@ -5,10 +5,7 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from scipy import stats
 
-from ciim.src.config import SAVE_DIR, surrogate_names, palette_datasets_pretty
-from ciim.src.feature_association.helper import retrieve_sig_stats
-from ciim.src.feature_association.helper import retrieve_net_consensus
-from ciim.src.config import DISCOVERY_COHORTS, colors_blind
+from hiara.src.config import OUTPUT_DIR, surrogate_names, palette_datasets_pretty
 
     
 def wrapper_plot_age_acceleration_for_tf_perturbation(
@@ -17,7 +14,7 @@ def wrapper_plot_age_acceleration_for_tf_perturbation(
                     features=None, 
                     value_col='signed_neg_log10_pval',
                     figsize = (3, 5)):
-    from ciim.src.config import SAVE_DIR, surrogate_names, palette_datasets_pretty, colors_blind, palette_trend_2
+    from hiara.src.config import OUTPUT_DIR, surrogate_names, palette_datasets_pretty, colors_blind, palette_trend_2
     
 
     # Sort TFs by signed mean_diff for plotting

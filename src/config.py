@@ -15,7 +15,7 @@ import os
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 # Variables
-meta_analysis_min_cohorts = 3
+meta_analysis_min_cohorts = 2
 grn_consensus_min_degree = 2
 # Dataset name mapping: raw -> processed
 DATASET_NAME_MAPPING = {
@@ -25,28 +25,30 @@ DATASET_NAME_MAPPING = {
     "data13": "aida",
     "SLE": "perez_sle"
 }
-try:
-    base_dir = os.environ["CIIM_DATA_DIR"]
-    task_grn_benchmark_dir = os.environ["TASK_GRN_BENCHMARK_DIR"]
-except KeyError:
-    import platform
-    if platform.system() == 'Linux':
-        base_dir = '/vol/projects/jnourisa/'
-        # base_dir = '/home/jnourisa/projs/ongoing/ciim/'
-        task_grn_benchmark_dir = '/home/jnourisa/projs/ongoing/task_grn_inference/'
-    else:
-        base_dir = '/Users/jno24/Documents/projs/ongoing/ciim/base_folder'
-        task_grn_benchmark_dir = '/Users/jno24/Documents/projs/ongoing/task_grn_inference/'
-SAVE_DIR = f'{base_dir}/output/'
-FEATURES_DIR = f'{SAVE_DIR}/features/'
-CLOCKS_DIR = f"{SAVE_DIR}/clock/"
-PLOTS_DIR = f"{SAVE_DIR}/plots/"
-PRIOR_DIR = f"{base_dir}/prior/"
-os.makedirs(SAVE_DIR, exist_ok=True)
+
+import platform
+if platform.system() == 'Linux':
+    HIARA_DIR = '/home/jnourisa/projs/ongoing/hiara/'
+    base_dir = '/vol/projects/jnourisa/'
+    TASK_GRN_BENCHMARK_DIR = '/home/jnourisa/projs/ongoing/task_grn_inference/'
+else:
+    HIARA_DIR = '/Users/jno24/Documents/projs/ongoing/hiara/'
+    base_dir = '/Users/jno24/Documents/projs/ongoing/hiara/base_folder'
+    TASK_GRN_BENCHMARK_DIR = '/Users/jno24/Documents/projs/ongoing/task_grn_inference/'
+DATA_DIR = f'{base_dir}/datasets/'
+PRIOR_DIR = f'{base_dir}/prior/'
+OUTPUT_DIR = f'{base_dir}/output/'
+FEATURES_DIR = f'{OUTPUT_DIR}/features/'
+CLOCKS_DIR = f"{OUTPUT_DIR}/clock/"
+PLOTS_DIR = f"{OUTPUT_DIR}/plots/"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(CLOCKS_DIR, exist_ok=True)
 os.makedirs(PLOTS_DIR, exist_ok=True)
 os.makedirs(PRIOR_DIR, exist_ok=True)
 os.makedirs(FEATURES_DIR, exist_ok=True)
+
+clock_version = 'V1'
+use_local_clocks = True  # If True, use clocks saved in CLOCKS_DIR;
 
 surrogate_names = {
                     'onek1k':'OneK1K',
@@ -61,15 +63,13 @@ surrogate_names = {
                     }
 # - datasets
 ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife']
-AGING_COHORTS = ['onek1k', 'abf300', 'soundlife', 'aida']
-DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
-# DISCOVERY_COHORTS = ['onek1k', 'abf300', 'zhang']
+AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
+# DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
 CLOCK_TRAINING_COHORTS = [
                 'onek1k',
                 'abf300'
                 ]
 CLOCK_TEST_COHORTS = [
-                'zhang',
                 'aida',
                 'perez_sle'
                 ]
@@ -154,7 +154,6 @@ class ConditionConfig:
     pseudobulk_group: Optional[List[str]] = None
     # Data columns
     condition_column: Optional[str] = None # Column name in obs: 'condition', 'perturbation', 'Max_WHO_Group'
-    control_group: Optional[str] = None     # Control group name: 'healthy', 'PBS', 'Dimethyl Sulfoxide'
     
     # Treatments to compare (can be 'all' for auto-detection)
     treatment_groups: List[str] | Literal['all'] = 'all'
@@ -169,8 +168,6 @@ class ConditionConfig:
     # Data filtering (for splitting datasets into subsets)
     data_filter: Optional[Dict[str, any]] = None  # E.g., {'vaccinated': True, 'followup_day': [0, 7, 90]}
     
-    # Comparison mode
-    comparison_mode: Literal['opposite', 'same', 'both'] = 'opposite'
     
     # Special handling
     control_mapping: Optional[Dict[str, str]] = None  # For datasets with multiple controls
@@ -183,9 +180,10 @@ class ConditionConfig:
     # Plotting control
     target_treatments: Optional[List[str]] = None  # Which conditions to plot in overlap analysis
     
+    
     # ========== CLOCK ANALYSIS SPECIFIC ==========
     # Statistical testing for clock predictions
-    clock_test_type: Optional[str] = None  # 'paired', 'unpaired', 'mixed_effect'
+    clock_test_type: Optional[str] = None  # 'paired', 'unpaired', 'mixed-effect'
     clock_group_key: Optional[str] = None  # For mixed effects in clock analysis (e.g., 'donor_id')
     clock_pvalue_correction: Optional[str] = 'corrected'  # 'raw' or 'corrected' (FDR)
     clock_pvalue_threshold: float = 0.05  # Significance threshold
@@ -225,14 +223,15 @@ DATASET_CONFIGS = {
     "perez_sle": ConditionConfig(
         name="perez_sle",
         condition_column='condition',
-        control_group='healthy',
+        control_mapping='healthy',
         treatment_groups=['SLE'],
         test_type='unpaired',
-        comparison_mode='same',  # Pathological aging (same direction as aging)
         display_name='SLE',
+        # target_conditions=None,
         name_mapping={
             'normal': 'healthy',
-            'systemic lupus erythematosus': 'SLE'
+            'systemic lupus erythematosus': 'SLE',
+            'SLE vs healthy': 'SLE'
         },
 
         # Clock analysis settings
@@ -245,57 +244,55 @@ DATASET_CONFIGS = {
     "op": ConditionConfig(
         name="op",
         condition_column='condition',  # Will auto-detect 'perturbation' if needed
-        control_group='Dimethyl Sulfoxide',
+        control_mapping='Dimethyl Sulfoxide',
         treatment_groups=['Ruxolitinib'],  # Auto-detect all drugs
         test_type='mixed-effect',
         mixed_effects_formula='feature_values ~ condition',
         mixed_effects_group='plate_name',
-        comparison_mode='opposite',  # Rejuvenating (opposite to aging)
         display_name='OP Compounds',
-        target_treatments=['Ruxolitinib'],
+        # target_conditions=['Ruxolitinib'],
         # Clock analysis settings
-        clock_test_type='mixed_effect',
+        clock_test_type='mixed-effect',
         clock_group_key='plate_name',
         clock_pvalue_correction='corrected',
         clock_experiments='auto',  # Auto-generate from data: (control, treatment) for all treatments
-        clock_mock_names=True,  # Mock compound names (keep top 1, rename others)
+        clock_mock_names=False,  # Mock compound names (keep top 1, rename others)
         clock_plot_config={
             'rejuvenating': {'figsize': (7.5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
             'aging': {'figsize': (5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
         },
-        name_mapping = {},
+        name_mapping = {
+            'Ruxolitinib vs Dimethyl Sulfoxide': 'Ruxolitinib',
+        },
         pseudobulk_group=['cell_type', 'plate_name', 'condition', 'well', 'donor_id']
     ),
     
     "CXCL9": ConditionConfig(
         name="CXCL9",
         condition_column='condition',
-        control_group=None,  # Multiple controls handled specially
         treatment_groups=[
             '24 h RPMI + ruxolitinib',
             '24 h LPS + ruxolitinib',
-            '24 h LPS'
+            # '24 h LPS'
         ],
-        test_type='mixed-effect',
+        test_type= 'mixed-effect',
         mixed_effects_formula='feature_values ~ condition',
         mixed_effects_group='donor_id',
-        comparison_mode='opposite',
         display_name='Ruxolitinib',
         control_mapping={
             '24 h RPMI + ruxolitinib': '24 h RPMI',
             '24 h LPS + ruxolitinib': '24 h LPS',
             '24 h LPS': '24 h RPMI'
         },
-        # name_mapping=OrderedDict({
-        #     '24 h RPMI + ruxolitinib': 'Ruxolitinib (ctr: RPMI)',
-        #     '24 h LPS + ruxolitinib': 'Ruxolitinib (ctr: LPS)',
-        #     '24 h LPS': 'LPS (ctr: RPMI)'
-        # }),
-        name_mapping = {},
+        name_mapping=OrderedDict({
+            '24 h RPMI + ruxolitinib vs 24 h RPMI': 'Ruxolitinib (ctr: RPMI)',
+            '24 h LPS + ruxolitinib vs 24 h LPS': 'Ruxolitinib (ctr: LPS)',
+            '24 h LPS vs 24 h RPMI': 'LPS (ctr: RPMI)'
+        }),
         
-        target_treatments=['Ruxolitinib (ctr: RPMI)', 'Ruxolitinib (ctr: LPS)'],
+        # target_conditions=['Ruxolitinib (ctr: RPMI)', 'Ruxolitinib (ctr: LPS)'],
         # Clock analysis settings
-        clock_test_type='mixed_effect',
+        clock_test_type='mixed-effect',
         clock_group_key='donor_id',
         clock_pvalue_correction='raw',
         clock_experiments=[
@@ -319,16 +316,17 @@ DATASET_CONFIGS = {
     "parsebioscience": ConditionConfig(
         name="parsebioscience",
         condition_column='condition',  # Will auto-detect 'perturbation' if needed
-        control_group='PBS',
-        treatment_groups='all',  # Auto-detect all cytokines
+        control_mapping='PBS',
+        treatment_groups=['IL-10'],  # Auto-detect all cytokines
         test_type='mixed-effect',
         mixed_effects_formula='feature_values ~ condition',
         mixed_effects_group='donor_id',
-        comparison_mode='opposite',
         display_name='Cytokines',
-        target_treatments=['IL-10'],
         # Clock analysis settings
-        clock_test_type='mixed_effect',
+        name_mapping={
+            'IL-10 vs PBS': 'IL-10',
+        },
+        clock_test_type='mixed-effect',
         clock_group_key='donor_id',
         clock_pvalue_correction='corrected',
         clock_experiments='auto',  # Auto-generate from data
@@ -347,14 +345,14 @@ DATASET_CONFIGS = {
     # ========== AGING DATASETS (Longitudinal) ==========
     "soundlife": ConditionConfig(
             name="soundlife",
-            comparison_mode='same',
             pseudobulk_group=['cell_type', 'donor_id', 'visitName'],
             name_mapping={'healthy': 'healthy', 'CMV':'healthy'},
             condition_column='age_group',  
-            control_group='young',
+            control_mapping='young',
             treatment_groups=['old'],
+
             test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ condition',
+            mixed_effects_formula='feature_values ~ age_group',
             mixed_effects_group='donor_id',
         )
 }
@@ -380,7 +378,7 @@ def get_config(dataset_name: str) -> ConditionConfig:
     """
     if dataset_name not in DATASET_CONFIGS:
         raise ValueError(f"Dataset '{dataset_name}' not found in configurations.")
-    
+
     config = DATASET_CONFIGS[dataset_name]
     
     return config

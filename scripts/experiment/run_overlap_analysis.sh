@@ -123,7 +123,7 @@ echo ""
 echo "STEP 2: Running overlap analysis..."
 echo "=========================================="
 
-python -m ciim.src.overlap_analysis.run_drug_reversal \
+python -m hiara.src.overlap_analysis.run_drug_reversal \
     --dataset "$DATASET" \
     --cell-types $CELL_TYPES \
     --feature-type "$FEATURE_TYPE" \

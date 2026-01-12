@@ -6,12 +6,12 @@ from scipy.stats import ttest_ind
 import numpy as np
 from pandas.api.types import CategoricalDtype
 from statsmodels.stats.multitest import multipletests
-from ciim.src.config import surrogate_names, cell_types, palette_genders
+from hiara import surrogate_names, CELL_TYPES, palette_genders
 
 palette_disease = {'Healthy': '#56B4E9', 'SLE': '#F0E442', 'Mild': '#2ca02c', 'Severe': '#e377c2'}
 
 def plot_scatter_age_vs_predictedAge(df, dataset='', ax=None, hue='sex', palette={},  s=50, alpha=0.5):
-    from ciim.src.clock.helper import evaluate_groupwise_median
+    # from hiara.src.clock.helper import evaluate_groupwise_median
     if ax is None:
         fig, ax = plt.subplots(figsize=(4, 4))
     sns.scatterplot(data=df, x='age', y='predicted_age', s=s, alpha=alpha, ax=ax, palette=palette, hue=hue)
@@ -131,6 +131,8 @@ def wrapper_age_acceleration_disease(obs, disease_dataset, figsize=(4, 2.7), con
     from scipy.stats import ttest_1samp
     from statsmodels.stats.multitest import multipletests
     import numpy as np
+
+    cell_types = CELL_TYPES
 
     # Get condition names from config or use hardcoded defaults
     if config is not None:
@@ -348,7 +350,7 @@ def plot_age_acceleration_by_group(obs, dataset, config):
 
 
 def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None):
-    
+    AGE_CUTOFF_SLE = 50
     # Get condition names from config or use hardcoded defaults
     if config is not None:
         # Map condition values using name_mapping if available
@@ -424,7 +426,6 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None
             }).reset_index()
             # Bin ages manually (for SLE, COVID, etc.)
             # Import age cutoff from common configuration
-            from ciim.src.config import AGE_CUTOFF_SLE
             age_bins = [20, AGE_CUTOFF_SLE, 80]
             obs_ct['age_bin'] = pd.cut(obs_ct['age'], bins=age_bins, right=False)
             obs_ct['age_bin'] = obs_ct['age_bin'].astype(str)

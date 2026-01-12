@@ -3,7 +3,7 @@ import argparse
 import anndata as ad
 import numpy as np
 import pandas as pd
-from ciim.src.config import get_config
+from hiara.src.config import get_config
 
 ## VIASH START
 parser = argparse.ArgumentParser()

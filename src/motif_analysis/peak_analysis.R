@@ -25,7 +25,7 @@ cell_type_mapping <- c(
   "pDC" = "MONO"  # Plasmacytoid dendritic cells, adjust if needed
 )
 
-# main_dir <- "/home/jnourisa/projs/ongoing/ciim/"
+# main_dir <- "/home/jnourisa/projs/ongoing/hiara/"
 # print(sys.frame)
 # script_dir <- dirname(sys.frame(1)$ofile)
 par = list(

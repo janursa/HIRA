@@ -15,10 +15,9 @@ from typing import List
 import pandas as pd
 import warnings
 
-from ciim.src.config import FEATURES_DIR, CELL_TYPES, DISCOVERY_COHORTS, get_config, meta_analysis_min_cohorts
-from ciim.src.feature_association.helper import (
+from hiara.src.config import FEATURES_DIR, CELL_TYPES, AGING_COHORTS, get_config, meta_analysis_min_cohorts
+from hiara.src.feature_association.helper import (
     wrapper_tf_activity,
-    wrapper_gene_expression,
     wrapper_aging_hallmarks,
     wrapper_gene_score,
     wrapper_association_with_age_condition,
@@ -31,8 +30,7 @@ warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore")
 
 
-def run_single_cohort_analysis(
-    args):
+def run_single_cohort_analysis(args):
 
     # Get configuration(s) - may be single or multiple
     dataset = args.datasets[0]
@@ -40,7 +38,6 @@ def run_single_cohort_analysis(
     feature_type = args.feature_type
     data_type = args.data_type
     skip_features = args.skip_features
-
     config = get_config(dataset)
     
     print("\n" + "=" * 80)
@@ -58,7 +55,7 @@ def run_single_cohort_analysis(
         'datasets': [dataset],
         'cell_types': cell_types,
         'association_type': args.association_type,
-        'use_consensus_net': False if dataset=='soundlife' else True,
+        'use_consensus_net': True,
     }
     
     # Step 1: Calculate features (if needed) - only once for all configs
@@ -66,8 +63,8 @@ def run_single_cohort_analysis(
         print("\n[1/3] Calculating features...")
         if feature_type == 'tf_activity':
             wrapper_tf_activity(par)
-        elif feature_type == 'gene_expression':
-            wrapper_gene_expression(par)
+        # elif feature_type == 'gene_expression':
+        #     wrapper_gene_expression(par)
         elif feature_type == 'aging_hallmarks':
             wrapper_aging_hallmarks(par)
         else:
@@ -77,10 +74,7 @@ def run_single_cohort_analysis(
         print("\n[1/3] Skipping feature calculation (using cached data)")
     
     # Step 2: Compute condition statistics for each config
-    print(f"\n[2/3] Computing condition statistics...")
-    
-    all_condition_stats = []
-    
+    print(f"\n[2/3] Computing condition statistics...")    
     condition_stats = wrapper_association_with_age_condition(
         par=par,
         features=None,
@@ -123,7 +117,7 @@ def run_multi_cohort_analysis(
         'only_promotor_based': args.promotor_only,
         'meta_analysis_min_cohorts': meta_analysis_min_cohorts,
         'condition': 'healthy',
-        'use_consensus_net': False
+        'use_consensus_net': True
     }
    
     # Step 1: Calculate features
@@ -159,6 +153,8 @@ def run_multi_cohort_analysis(
     print("MULTI-COHORT ANALYSIS COMPLETE")
     print("=" * 80)
 
+    
+
 def main():
     parser = argparse.ArgumentParser()
     
@@ -174,7 +170,7 @@ def main():
         '--datasets',
         type=str,
         nargs='+',
-        default=DISCOVERY_COHORTS,
+        default=AGING_COHORTS,
         help='List of datasets for multi-cohort mode (e.g., data1 data2 data3)'
     )
     
@@ -223,18 +219,28 @@ def main():
     )
     
     args = parser.parse_args()
-
-    if args.analysis_mode == 'single-cohort':
-        assert len(args.datasets) == 1, "--datasets must contain exactly one dataset for single-cohort mode"
+    datasets = args.datasets
+    assert len(datasets) >= 1, "At least one dataset must be specified."
+    if len(datasets) == 1:
         run_single_cohort_analysis(
             args
         )
+        multi_cohort = False
+        dataset = args.datasets[0]
     
     else:  # multi-cohort
         run_multi_cohort_analysis(
             args
             
         )
+        multi_cohort = True
+
+    stats_sig = retrieve_sig_stats(dataset=None if multi_cohort else dataset,
+                                   feature_type=args.feature_type,
+                                   data_type=args.data_type,
+                                   multi_cohort=multi_cohort).drop_duplicates(subset=['gene', 'cell_type', 'condition'])
+    print(f"\nSignificant features (FDR < 0.05) in meta-analysis:")
+    print(stats_sig.groupby(['cell_type', 'condition'])['gene'].nunique())
     
     return 0
     

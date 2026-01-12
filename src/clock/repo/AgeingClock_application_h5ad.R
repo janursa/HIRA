@@ -254,7 +254,7 @@ run_AgeingClock_LGBMSHAP <- function(
   model_choice = "LGBM_SHAPtuneNS",
   outdir = "./AC_results",
   study_name = NULL,
-  base_dir,
+  BASE_DIR,
   donor_id_col="donor_id", age_col="age",
   sex_col=NULL, condition_col=NULL, ct_col="cell_type") {
 
@@ -267,7 +267,7 @@ run_AgeingClock_LGBMSHAP <- function(
   if (ct_col!="cell_type")     map["cell_type"] <- ct_col
   svz <- harmonise_metadata(svz, map)
 
-  files       <- resolve_files(ct, model_choice, base_dir)
+  files       <- resolve_files(ct, model_choice, BASE_DIR)
   model       <- load_model_file(files$model)
   file_feats  <- read_feature_vector(files$features)
   model_feats <- get_model_features(model)
@@ -328,7 +328,7 @@ run_AgeingClock_LGBM <- function(
   model_choice = "LGBMtune",
   outdir = "./AC_results",
   study_name = NULL,
-  base_dir,
+  BASE_DIR,
   donor_id_col="donor_id", age_col="age",
   sex_col=NULL, condition_col=NULL, ct_col="cell_type") {
 
@@ -341,7 +341,7 @@ run_AgeingClock_LGBM <- function(
   if (ct_col!="cell_type")     map["cell_type"] <- ct_col
   svz <- harmonise_metadata(svz, map)
 
-  files       <- resolve_files(ct, model_choice, base_dir)
+  files       <- resolve_files(ct, model_choice, BASE_DIR)
   model       <- load_model_file(files$model)
   file_feats  <- read_feature_vector(files$features)
   model_feats <- get_model_features(model)
@@ -435,7 +435,7 @@ for (cell_type in cell_types) {
     adata, cell_type,
     study_name    = "noname",
     outdir        = "../output/clock",
-    base_dir      = "/vol/projects/aehsani/ImmuneAgeing/Immuneageing_vF/out_for_application",
+    BASE_DIR      = "/vol/projects/aehsani/ImmuneAgeing/Immuneageing_vF/out_for_application",
     donor_id_col  = "donor_id",
     age_col       = "age",
     sex_col       = "sex",

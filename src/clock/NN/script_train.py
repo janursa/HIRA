@@ -11,9 +11,9 @@ import os
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 import cpa
-from ciim.src.clock.NN.helper import  get_params, save_path_train, save_path_test, batch_key, data_type, cell_type_train
-from ciim.src.clock.helper import  format_data
-from ciim.src.config import aging_clock_train_datasets as train_datasets
+from hiara.src.clock.NN.helper import  get_params, save_path_train, save_path_test, batch_key, data_type, cell_type_train
+from hiara.src.clock.helper import  format_data
+from hiara.src.config import aging_clock_train_datasets as train_datasets
 
 
 import argparse 
@@ -54,7 +54,7 @@ if __name__ == '__main__':
         adata_train = model.adata
         print('Loading test data ... ')
         adata_test = format_data(test_datasets, cell_type_train, data_type)
-        from ciim.src.clock.helper import align_feature_space
+        from hiara.src.clock.helper import align_feature_space
         adata_test = align_feature_space(adata_test, adata_train.var_names)
         
         model.setup_anndata_test(adata_test, is_count_data=True if data_type == 'sc' else False)

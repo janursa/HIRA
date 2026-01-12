@@ -17,10 +17,10 @@ TEST_MODE=false
 
 # Build command
 CMD="python src/process_dataset/soundlife/script.py \
-    --input_dir /vol/projects/CIIM/soundlife/ \
+    --input_dir /vol/projects/HIARA/soundlife/ \
     --output_bulk /vol/projects/jnourisa/datasets/bulk/soundlife.h5ad \
     --output_metacell /vol/projects/jnourisa/datasets/metacell/soundlife.h5ad \
-    --temp_dir /home/jnourisa/projs/ongoing/ciim/tmp/soundlife_processing"
+    --temp_dir /home/jnourisa/projs/ongoing/hiara/tmp/soundlife_processing"
 
 # Add test flag if in test mode
 if [ "$TEST_MODE" = true ]; then

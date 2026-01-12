@@ -16,9 +16,9 @@ import matplotlib.patches as mpatches
 import scipy
 import networkx as nx
 from scipy.stats import spearmanr, linregress
-from ciim.src.config import surrogate_names, palette_datasets, palette_regulation
-from ciim.src.feature_association.helper import calculate_tf_activity
-from ciim.src.utils.util import retrieve_adata, retrieve_net
+from hiara.src.config import surrogate_names, palette_datasets, palette_regulation
+from hiara.src.feature_association.helper import calculate_tf_activity
+from hiara.src.utils.util import retrieve_adata, retrieve_net
 
 
 

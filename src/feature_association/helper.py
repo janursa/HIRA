@@ -1,3 +1,4 @@
+import subprocess
 import numpy as np
 from scipy.stats import linregress, spearmanr
 import pandas as pd
@@ -8,11 +9,11 @@ from concurrent.futures import ThreadPoolExecutor
 import scanpy as sc
 import anndata as ad
 from statsmodels.stats.multitest import multipletests
-from ciim.src.config import FEATURES_DIR,   surrogate_names, DISCOVERY_COHORTS
+from hiara.src.config import FEATURES_DIR, get_config,  surrogate_names, AGING_COHORTS, HIARA_DIR
 from tqdm import tqdm
-from ciim.src.config import SAVE_DIR, FEATURES_DIR
+from hiara.src.config import OUTPUT_DIR, FEATURES_DIR
 from scipy.sparse import issparse
-from ciim.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net
+from hiara.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -38,16 +39,20 @@ def retrieve_features_stats(data_type, feature_type, cell_type=None, multi_cohor
         if cell_type not in stats['cell_type'].unique():
             raise ValueError(f'Given cell type "{cell_type}" not in {stats["cell_type"].unique()}')
         stats = stats[stats['cell_type'] == cell_type]
+    if 'comparison' in stats.columns:
+        config = get_config(dataset)
+        stats['comparison'] = stats['comparison'].map(lambda name: config.name_mapping.get(name, name))
     return stats
 
 def retrieve_sig_stats(data_type='bulk', feature_type='tf_activity', filter_inconsistent=True, cell_type=None, multi_cohort=True, dataset=None):
-    from ciim.src.config import FEATURES_DIR
     stats = retrieve_features_stats(data_type=data_type, feature_type=feature_type, multi_cohort=multi_cohort, dataset=dataset)
-    if multi_cohort:
+    slope_t = 0.1
+    if multi_cohort:  
         p_val_col = 'meta_p_adj'
         stats = stats[stats[p_val_col] < 0.05]
         if filter_inconsistent:
             stats = stats[stats['trend'] != 'Inconsistent']
+        
     else:
         p_val_col = 'p_value_adj'
         stats = stats[stats[p_val_col] < 0.05]
@@ -55,19 +60,25 @@ def retrieve_sig_stats(data_type='bulk', feature_type='tf_activity', filter_inco
         if cell_type not in stats['cell_type'].unique():
             raise ValueError(f'Given cell type "{cell_type}" not in {stats["cell_type"].unique()}')
         stats = stats[stats['cell_type'] == cell_type]
+        
+    slope_col = 'slope'
+    
+    # Slope-based filtering: Keep only genes where ALL datasets have abs(slope) > slope_t
+    def has_consistent_slope(group):
+        return (group[slope_col].abs() > slope_t).all()
+    stats = stats.groupby(['gene', 'cell_type']).filter(has_consistent_slope)
+    
     return stats
 
-def retrieve_feature_data(dataset, smoothened=False, cell_type=None, data_type='bulk', feature_type='tf_activity', condition='healthy', suffix=''):
-    from ciim.src.config import get_config
-    if smoothened:
-        file_path = f'{FEATURES_DIR}/{feature_type}_smoothed/{data_type}/{dataset}_{cell_type}{suffix}.h5ad'
-    else:
-        file_path = f'{FEATURES_DIR}/{feature_type}/{data_type}/{dataset}_{cell_type}{suffix}.h5ad'
+def retrieve_feature_data(dataset, cell_type=None, data_type='bulk', feature_type='tf_activity', condition='healthy', suffix=''):
+    if feature_type == 'gene_expression':
+        adata = retrieve_adata(dataset=dataset, cell_type=cell_type, data_type=data_type)
+        return adata
+    file_path = f'{FEATURES_DIR}/{feature_type}/{data_type}/{dataset}_{cell_type}{suffix}.h5ad'
     if os.path.exists(file_path) == False:
         raise ValueError(f'File {file_path} does not exist')
 
     adata = ad.read_h5ad(file_path)
-    # adata.obs['condition'] = adata.obs['condition'].map(lambda x: x.replace('normal', 'healthy')) # watch out this one
 
     # Filter by condition
     if condition is not None and 'condition' in adata.obs.columns:
@@ -88,50 +99,6 @@ def write_feature_data(adata, dataset, cell_type, data_type, feature_type='tf_ac
     os.makedirs(output_dir, exist_ok=True)
     adata.write_h5ad(f'{output_dir}/{dataset}_{cell_type}{suffix}.h5ad')
 
-
-
-def retrieve_sig_net(data_type='bulk', cell_type=None):
-    df = pd.read_csv(f'{SAVE_DIR}/sig_nets/sig_nets_{type}.csv')
-    if cell_type is not None:
-        df = df[df['cell_type'] == cell_type]
-    return df
-
-def determine_sig_network(data_type,  min_degree=3):
-    os.makedirs(f'{SAVE_DIR}/sig_nets', exist_ok=True)
-    stats_tfs = retrieve_sig_stats(data_type, feature_type='tf_activity')
-    stats_targets = retrieve_sig_stats(data_type, feature_type='gene_expression')
-    
-    datasets = DISCOVERY_COHORTS
-    
-
-    nets_stats_store = []
-    for cell_type in CELL_TYPES:
-        stats_tfs_t = stats_tfs[stats_tfs['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'gene'])[['gene', 'meta_p_adj', 'slope', 'trend']]
-        stats_targets_t = stats_targets[stats_targets['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'target'])[['target', 'meta_p_adj', 'slope', 'trend']]
-        
-        if len(stats_tfs_t) == 0:
-            print('No source for', cell_type, ' skipping it')
-            continue
-        if len(stats_targets_t) == 0:
-            print('No target for', cell_type, ' skipping it')
-            continue
-        
-        # - get the nets
-        net = retrieve_net_consensus(datasets, cell_type, min_degree=min_degree)
-        sig_tfs = stats_tfs_t['gene'].unique()
-        sig_targets = stats_targets_t['target'].unique()
-        net = net[(net['source'].isin(sig_tfs)) & (net['target'].isin(sig_targets))]
-        net = net.groupby(['source', 'target'])['weight'].mean().reset_index() # probably not necessary
-        # - get the stats
-        nets_stats = pd.merge(net, stats_tfs_t, left_on='source', right_on='gene', how='left')
-        nets_stats = pd.merge(nets_stats, stats_targets_t, left_on='target', right_on='target', how='left', suffixes=('_source', '_target'))
-        nets_stats = nets_stats[['source', 'target', 'weight', 'slope_source', 'slope_target', 'meta_p_adj_source', 'meta_p_adj_target', 'trend_source', 'trend_target']]
-        nets_stats['cell_type'] = cell_type
-        nets_stats_store.append(nets_stats)
-    nets_stats = pd.concat(nets_stats_store)
-
-    os.makedirs(f'{SAVE_DIR}/sig_nets', exist_ok=True)
-    nets_stats.to_csv(f'{SAVE_DIR}/sig_nets/sig_nets_{type}.csv')
 
 
 def bin_feature_values(adata):
@@ -190,7 +157,7 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
                 return {
                     'gene': gene,
                     "p_value": pval,
-                    "slope_condition": coef,
+                    "slope": coef,
                     'ctrl': ctr_group,
                     'condition': condition
                 }
@@ -201,12 +168,12 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
                 return {
                     'gene': gene,
                     "p_value": pval,
-                    "slope_condition": coef,
+                    "slope": coef,
                     'ctrl': ctr_group,
                     'condition': condition
                 }
             elif test_type == 'mixed-effect':
-                from ciim.src.utils.util import test_mixed_effects
+                from hiara.src.utils.util import test_mixed_effects
                 
                 obs_ctr = adata.obs.loc[mask_ctr, :]
                 obs_ctr['feature_values'] = values_control
@@ -227,7 +194,7 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
                 return {
                     'gene': gene,
                     "p_value": pval,
-                    "slope_condition":  coef ,
+                    "slope":  coef ,
                     'ctrl': ctr_group,
                     'condition': name_mapping.get(condition, condition)
                 }
@@ -312,17 +279,66 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
 
     return stats_df
 
+def run_meta_analysis(stats_all, meta_association_type='max', min_degree=2, temp_dir='../output/tf_activity/'):
+    os.makedirs(temp_dir, exist_ok=True)
+    # ---------- prepare
+    assert stats_all.shape[0]> 0, 'No stats for meta analysis'
+    print('Meta analysis...')
+    stats_all_c = stats_all.copy()
+    stats_all_c.rename(columns={'p_value': 'pvalue'}, inplace=True)
+    
+    # -------- actual run
+    if min_degree is not None:
+        stats_all_c = stats_all_c.groupby(['gene', 'cell_type']).filter(lambda group: group['dataset'].nunique() >= min_degree)
+    
+    cell_types = stats_all_c['cell_type'].unique()
+    df_meta_store = []
+    for cell_type in cell_types:
+        df = stats_all_c[stats_all_c['cell_type'] == cell_type]
+        df['pvalue'] = df['pvalue'] + 1E-20 # to avoid 0 p value
+        
+        file_path = f'{temp_dir}/stats_{cell_type}.csv'
+        df.to_csv(file_path, index=False)
+        out_path = f'{temp_dir}/stats_{cell_type}_meta.csv'
+
+        Rscript_file = f'{HIARA_DIR}/src/feature_association//meta_analysis/script.R'
+        # Run the R script with the provided file paths
+        try:
+            subprocess.run(
+                ["Rscript", Rscript_file, file_path, out_path, meta_association_type],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"Error while running R script: {Rscript_file}")
+            print("STDOUT:", e.stdout.decode())  # Standard Output
+            print("STDERR:", e.stderr.decode())  # Error Output from R
+            raise
+        df_meta = pd.read_csv(out_path)
+
+        assert df_meta.isna().sum().sum() == 0
+        df_meta['cell_type'] = cell_type
+        print(cell_type, df_meta.shape)
+        df_meta_store.append(df_meta)
+    if df_meta_store:
+        df_meta_all = pd.concat(df_meta_store)
+    else:
+        df_meta_all = pd.DataFrame() 
+    
+    if df_meta_all.shape[0]==0:
+        print(f"No meta analysis results for {stats_all['cell_type'].unique()}")
+        return None
+    stats_all = stats_all.merge(df_meta_all, on=['gene', 'cell_type'], how='left')
+    return stats_all
+
 def wrapper_meta_analysis(stats_features, par):
-    from ciim.src.feature_association.meta_analysis.helper import run_meta_analysis
     feature_col = 'gene'
     min_degree = par['meta_analysis_min_cohorts']
-    
-    cell_types = stats_features['cell_type'].unique()
-    # - 
-    def run_func(datasets, min_degree, meta_association_type):
+    def run_func(min_degree, meta_association_type):
         stats_store = []
         for cell_type in stats_features['cell_type'].unique():
-            stats = stats_features[(stats_features['cell_type'] == cell_type) & (stats_features['dataset'].isin(datasets) & (stats_features['condition']=='healthy'))]
+            stats = stats_features[(stats_features['cell_type'] == cell_type) & (stats_features['condition']=='healthy')]
             if len(stats) == 0:
                 print('No stats for', cell_type, ' skipping it')
                 continue
@@ -346,7 +362,7 @@ def wrapper_meta_analysis(stats_features, par):
     
     meta_association_type='fisher'
     print(f'Running meta analysis for all datasets, min degree  {min_degree}, meta_association_type {meta_association_type}')
-    stats = run_func(DISCOVERY_COHORTS, min_degree, meta_association_type)
+    stats = run_func(min_degree, meta_association_type)
 
     #- save
     return stats
@@ -384,9 +400,7 @@ def wrapper_association_with_age_condition(par, association_type, features=None,
     
     stats_store = []
     for cell_type in tqdm(cell_types_l, desc='cell types'):
-        for dataset in datasets:
-            # Use the provided config (None for aging analysis, specific config for condition analysis)
-            
+        for dataset in datasets:            
             # Load data
             adata = retrieve_feature_data(
                 dataset=dataset, 
@@ -414,7 +428,7 @@ def wrapper_association_with_age_condition(par, association_type, features=None,
             if association_type == 'continous':
                 print('Aging analysis for', cell_type, 'in', dataset)
                 stats = association_with_age(adata_sub, association_type='spearman')
-                stats['condition'] = 'healthy'
+                stats['condition'] = condition
             elif association_type == 'grouped':
                 # Condition analysis using config
                 print('Condition analysis for', cell_type, 'in', dataset)
@@ -451,60 +465,46 @@ def _compute_condition_stats_from_config(adata, config, test_type):
     """
     Compute condition statistics using configuration object.
     
-    This replaces the large if-elif chain with config-driven logic.
     """
-    from ciim.src.config import ConditionConfig
     
     # Auto-detect condition column for datasets with variants
     condition_col = config.condition_column
-    if hasattr(config, 'condition_column_variants'):
-        for variant in config.condition_column_variants:
-            if variant in adata.obs.columns:
-                condition_col = variant
-                break
-    
+
     # Get treatment groups
     if config.treatment_groups == 'all':
-        all_conditions = adata.obs[condition_col].unique()
-        treatment_groups = [c for c in all_conditions if c != config.control_group]
+        treatment_groups = adata.obs[condition_col].unique()
     else:
         treatment_groups = config.treatment_groups
+    control_mapping = config.control_mapping
+    assert control_mapping is not None, 'control_mapping should be defined.'
+    if isinstance(control_mapping, str):
+        # Single control for all treatments
+        config.control_mapping = {treatment: control_mapping for treatment in treatment_groups}
     
-    # Handle datasets with multiple controls (e.g., CXCL9)
-    if config.control_mapping is not None:
-        stats_list = []
-        for treatment in treatment_groups:
-            control = config.control_mapping[treatment]
-            stats = determine_stats_condition(
-                adata,
-                ctr_group=control,
-                condition_col=condition_col,
-                test_type=test_type,
-                conditions=[treatment],
-                config=config
-            )
-            # print('\n Control used for', treatment, 'is', control)
-            # print('\n', stats[stats['p_value']<0.05].shape)
-            # aaa
-            if config.name_mapping:
-                stats['condition'] = stats['condition'].replace(config.name_mapping)
-            stats_list.append(stats)
-        stats = pd.concat(stats_list)
-    else:
-        # Standard case: single control group
+    stats_list = []
+    for treatment in treatment_groups:
+        
+        control = config.control_mapping[treatment]
+        if treatment == control:
+            continue
         stats = determine_stats_condition(
             adata,
-            ctr_group=config.control_group,
+            ctr_group=control,
             condition_col=condition_col,
             test_type=test_type,
-            conditions=treatment_groups,
+            conditions=[treatment],
             config=config
         )
-        if config.name_mapping:
-            # Only apply name mapping if 'condition' column exists (non-interaction models)
-            if 'condition' in stats.columns:
-                stats['condition'] = stats['condition'].replace(config.name_mapping)
-    
+        stats['comparison'] = f'{treatment} vs {control}'
+        stats['comparison'] = stats['comparison'].map(lambda name: config.name_mapping.get(name, name))
+
+        # print('\n Control used for', treatment, 'is', control)
+        # print('\n', 'Total', stats.shape, ' sig:',stats[stats['p_value']<0.05].shape)
+        # aaa
+        
+        stats_list.append(stats)
+    stats = pd.concat(stats_list)
+
     return stats
 
 def wrapper_tf_activity(par):
@@ -523,7 +523,7 @@ def wrapper_tf_activity(par):
         for cell_type in tqdm(cell_types, desc='cell types'):
             adata_t = adata[adata.obs['cell_type']==cell_type]
             if par['use_consensus_net']:
-                net = retrieve_net_consensus(datasets=DISCOVERY_COHORTS, cell_type=cell_type, only_promotor_based=only_promotor_based)
+                net = retrieve_net_consensus(cell_type=cell_type, only_promotor_based=only_promotor_based)
             else:
                 net = retrieve_net(dataset=dataset, cell_type=cell_type, only_promotor_based=only_promotor_based)
             if adata_t.shape[0] < 10:
@@ -535,7 +535,7 @@ def wrapper_tf_activity(par):
             write_feature_data(tf_acts, dataset, cell_type, data_type, suffix='_promotor' if only_promotor_based else '')
 
 def wrapper_gene_score(par):
-    from ciim.src.utils.util import get_genesets
+    from hiara.src.utils.util import get_genesets
     # --------- load data
     cell_types = par['cell_types']
     type = par['type']
@@ -596,27 +596,27 @@ def wrapper_gene_score(par):
             adata_scores = sc.AnnData(X=X_df.values, obs=obs, var=var)
             write_feature_data(adata_scores, dataset, cell_type, type, feature_type=feature_type)
 
-def wrapper_gene_expression(par):
-    # --------- load data
-    cell_types = par['cell_types']
-    type = par['type']
-    datasets = par['datasets']
-    print('Loading data...')
-    adata_dict = {dataset: retrieve_adata(dataset, type) for dataset in datasets}
+# def wrapper_gene_expression(par):
+#     # --------- load data
+#     cell_types = par['cell_types']
+#     type = par['type']
+#     datasets = par['datasets']
+#     print('Loading data...')
+#     adata_dict = {dataset: retrieve_adata(dataset, type) for dataset in datasets}
 
-    print('Calculating gene expression...')
-    stats_store = []
-    for cell_type in tqdm(cell_types, desc='cell types'):
-        for dataset in datasets:
-            adata = adata_dict[dataset][adata_dict[dataset].obs['cell_type']==cell_type]
+#     print('Calculating gene expression...')
+#     stats_store = []
+#     for cell_type in tqdm(cell_types, desc='cell types'):
+#         for dataset in datasets:
+#             adata = adata_dict[dataset][adata_dict[dataset].obs['cell_type']==cell_type]
 
-            if type == 'sc':
-                sc.pp.normalize_total(adata)
-                sc.pp.log1p(adata)
-            write_feature_data(adata, dataset, cell_type, type, feature_type='gene_expression')
+#             if type == 'sc':
+#                 sc.pp.normalize_total(adata)
+#                 sc.pp.log1p(adata)
+#             write_feature_data(adata, dataset, cell_type, type, feature_type='gene_expression')
 
 def wrapper_aging_hallmarks(par):
-    from ciim.src.config import PRIOR_DIR
+    from hiara.src.config import PRIOR_DIR
     # --------- load data
     cell_types = par['cell_types']
     type = par['type']
@@ -706,7 +706,8 @@ def association_with_age(adata, association_type, gene_col='gene'):
         adata_sub = adata[:, mask_gene]
 
         df = adata_sub.to_df()
-        df = df.merge(adata_sub.obs[['age']], left_index=True, right_index=True)
+        df = df.reset_index(drop=True)
+        df['age'] = adata_sub.obs['age'].values
         df.sort_values('age', inplace=True)
 
         ages = df['age'].values

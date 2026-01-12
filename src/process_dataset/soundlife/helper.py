@@ -9,8 +9,8 @@ import scanpy as sc
 import pandas as pd
 import anndata as ad
 import gc
-from ciim.src.config import get_config
-from ciim.src.process_dataset.preprocess.helper import qc_check
+from hiara.src.config import get_config
+from hiara.src.process_dataset.preprocess.helper import qc_check
 
 def format_columns(adata):
     """

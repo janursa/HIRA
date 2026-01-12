@@ -2,8 +2,8 @@ import scanpy as sc
 import pandas as pd
 from scipy import io
 
-data_dir = '/vol/projects/CIIM/processed/multiome/IBD/data/'
-to_save = '/vol/projects/CIIM/processed/multiome/IBD/'
+data_dir = '/vol/projects/HIARA/processed/multiome/IBD/data/'
+to_save = '/vol/projects/HIARA/processed/multiome/IBD/'
 
 for data_type in ['rna', 'atac']:
 

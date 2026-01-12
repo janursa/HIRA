@@ -8,7 +8,7 @@ library(Seurat)
 library(GenomicRanges)
 library(ggplot2)
 library(patchwork)
-setwd("/home/jnourisa/projs/ongoing/ciim/input/motif_analysis")
+setwd("/home/jnourisa/projs/ongoing/hiara/input/motif_analysis")
 counts <- Read10X_h5(filename = "10k_pbmc_ATACv2_nextgem_Chromium_Controller_filtered_peak_bc_matrix.h5")
 metadata <- read.csv(
   file = "10k_pbmc_ATACv2_nextgem_Chromium_Controller_singlecell.csv",
