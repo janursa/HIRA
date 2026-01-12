@@ -44,7 +44,6 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         adata.X = adata.layers['lognorm'] if 'lognorm' in adata.layers else adata.layers['X_norm']
     adata.obs['dataset'] = dataset
     adata = adata[:, adata.var_names.isin(gene_names)]
-
     
     if 'age' in adata.obs.columns:
         adata = adata[~adata.obs['age'].isna()].copy()

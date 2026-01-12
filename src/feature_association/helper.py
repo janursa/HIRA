@@ -224,18 +224,12 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
         return results
     
     # Determine age stratification based on dataset and config
-    if 'SLE' in dataset:
+    if 'sle' in dataset:
         # SLE: Run for each age subset
         age_masks = {
             'Both age groups': adata.obs.index.notnull(),  # All samples
             'Younger than 50': adata.obs['age'] < 50,
             'Older than 50': adata.obs['age'] >= 50
-        }
-    elif config is not None and config.data_filter is not None and 'age_group' in config.data_filter:
-        # Config has age_group filter - use that value (data is already filtered)
-        filtered_age_group = config.data_filter['age_group']
-        age_masks = {
-            filtered_age_group: adata.obs.index.notnull()  # All samples (already filtered by config)
         }
     else:
         # Default: no age stratification

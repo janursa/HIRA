@@ -9,9 +9,6 @@ from scipy.stats import spearmanr
 import scipy.sparse as sp
 import pandas as pd
 
-from hiara.src.config import BASE_DIR
-
-
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
