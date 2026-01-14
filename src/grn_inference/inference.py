@@ -5,14 +5,14 @@ import argparse
 import anndata as ad
 import scanpy as sc 
 import numpy as np 
-from scipy.stats import spearmanr
-import scipy.sparse as sp
 import pandas as pd
 
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 from statsmodels.stats.multitest import multipletests
+from scipy.sparse import issparse
+from hiara import PRIOR_DIR
 
 
 def efficient_melting(net, gene_names):
@@ -44,19 +44,12 @@ def efficient_melting_full(net, gene_names):
     return df
 
 def infer_grn(X, gene_names, p_value_filter=False):
-    from scipy.stats import spearmanr
-    from statsmodels.stats.multitest import multipletests
-    from scipy.sparse import issparse
-
-    # Remove genes with zero variance
     std_devs = sparse_std(X)
     nonzero_mask = std_devs != 0
+    print(f"Number of genes removed due to zero variance: {np.sum(~nonzero_mask)}", flush=True)
     gene_names = gene_names[nonzero_mask]
     X_filtered = X[:, nonzero_mask]
-
     if p_value_filter:
-        # Compute Spearman correlation and p-values
-        
         if issparse(X_filtered):
             X_filtered = X_filtered.todense().A
         # X_filtered shape: (n_cells, n_genes)
@@ -110,14 +103,14 @@ def sparse_corrcoef(A, B=None):
 
 
 def main(expression_sample, gene_names, weight_t):
-
     if False:
         net = infer_grn(expression_sample, gene_names)
         net['weight'] = pd.to_numeric(net['weight'], errors='coerce')
         
     else:
         net = infer_grn(expression_sample, gene_names, p_value_filter=True)
-    net = net[net['weight'].abs() > weight_t]
+    if True:
+        net = net[net['weight'].abs() > weight_t]
 
     tf_all = np.loadtxt(f"{PRIOR_DIR}/tf_all.csv", dtype=str)
     net = net[net['source'].isin(tf_all)]

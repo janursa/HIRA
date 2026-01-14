@@ -11,6 +11,7 @@ disease and perturbation datasets, generating various visualizations including:
 """
 
 import argparse
+from calendar import c
 import os
 import sys
 import warnings
@@ -85,7 +86,7 @@ def apply_data_filter(obs, config):
     return filtered_obs
 
 
-def get_experiment_setup(dataset, obs_pert, config):
+def get_experiment_setup(obs_pert, config):
     """
     Get experiment setup (control-treatment pairs) for a dataset from config.
     
@@ -106,27 +107,32 @@ def get_experiment_setup(dataset, obs_pert, config):
     # Get settings from config
     pvalue_show_type = config.clock_pvalue_correction if config.clock_pvalue_correction else 'corrected'
     pretty_names = config.clock_pretty_names if config.clock_pretty_names else {}
-    test_type = config.clock_test_type if config.clock_test_type else 'mixed_effect'
-    group_key = config.clock_group_key if config.clock_group_key else 'donor_id'
+    test_type = config.clock_test_type  
+    group_key = config.clock_group_key 
     mock_names = config.clock_mock_names if hasattr(config, 'clock_mock_names') else False
     plot_config = config.clock_plot_config if config.clock_plot_config else {}
     
+    clock_experiments = config.clock_experiments 
+    assert clock_experiments is not None, "clock_experiments must be specified in config"
     # Get experiments
-    if config.clock_experiments == 'auto' or config.clock_experiments is None:
-        # Auto-generate experiments from control group
-        control = config.control_group
-        experiments = [
-            (control, treatment) 
-            for treatment in obs_pert['condition'].unique() 
-            if treatment != control
-        ]
+    if config.clock_experiments == 'all':
+        conditions = obs_pert['condition'].unique().tolist()
+        control_mapping = config.control_mapping
+        experiments = []
+        for cond in conditions:
+            if isinstance(control_mapping, str):
+                ctr = control_mapping
+            else:
+                ctr = control_mapping[cond]
+            if cond != ctr:
+                experiments.append((ctr, cond))
     else:
         experiments = config.clock_experiments
     
     return experiments, pvalue_show_type, pretty_names, test_type, group_key, mock_names, plot_config
 
 
-def perform_statistical_tests(obs_pert, experiments, dataset, test_type='mixed_effect', 
+def perform_statistical_tests(obs_pert, experiments, dataset, test_type='mixed-effect', 
                               pvalue_show_type='corrected', group_key='donor_id'):
     """
     Perform statistical tests for all experiments.
@@ -176,13 +182,15 @@ def perform_statistical_tests(obs_pert, experiments, dataset, test_type='mixed_e
                 p_value, slope = test_paired(df_sub, ctr, treatment)
             elif test_type == 'unpaired':
                 p_value, slope = test_unpaired(df_sub, ctr, treatment)
-            elif test_type == 'mixed_effect':
+            elif test_type == 'mixed-effect':
                 p_value, slope = test_mixed_effects(
                     df_sub, ctr, treatment, 
                     target_variable='predicted_age', 
                     group_key=group_key,
                     config=config
                 )
+            else:
+                raise ValueError(f"Unknown test_type: {test_type}")
 
             if np.isnan(p_value):
                 print(f"Warning: NaN p-value for {cell_type} {ctr} vs {treatment}. Skipping.")
@@ -270,18 +278,16 @@ def analyze_disease(obs, dataset, output_dir, cell_types, config=None):
     print("\n" + "="*60)
     print(f"Disease Analysis: {dataset}")
     print("="*60)
-    
-    # If config specifies a different condition_column, use that instead of 'condition'
-    if config and config.condition_column != 'condition':
-        if config.condition_column in obs.columns:
-            print(f"Using {config.condition_column} as condition column")
-            obs = obs.copy()
-            obs['condition'] = obs[config.condition_column].astype(str)
-            # Apply name mapping if available
-            if config.name_mapping:
-                obs['condition'] = obs['condition'].map(lambda x: config.name_mapping.get(x, x))
-        else:
-            print(f"Warning: Condition column '{config.condition_column}' not found in data")
+    assert config is not None, "Config must be provided"
+    control_mapping = config.control_mapping
+    if isinstance(control_mapping, dict):
+        raise ValueError("Not implemented for dict control_mapping")
+
+    disease_name = config.display_name
+    ctr = control_mapping
+    cond = config.treatment_groups
+    assert len(cond) == 1, "Only single treatment group supported"
+    cond = cond[0]
     
     # Overall age acceleration plot
     print("Generating age acceleration plot...")
@@ -289,8 +295,8 @@ def analyze_disease(obs, dataset, output_dir, cell_types, config=None):
     wrapper_age_acceleration_disease(
         obs_filtered, 
         disease_dataset=dataset, 
-        figsize=(3, 2.5),
-        config=config
+        ctr=ctr, cond=cond,
+        figsize=(3, 2.5)
     )
     plt.title('')
     output_path = os.path.join(output_dir, f'clock_{dataset}.png')
@@ -305,7 +311,7 @@ def analyze_disease(obs, dataset, output_dir, cell_types, config=None):
             continue
             
         print(f"Generating age-stratified plot for {cell_type}...")
-        wrapper_plot_age_acceleration_disease_bins(obs_ct, disease_dataset=dataset, config=config)
+        wrapper_plot_age_acceleration_disease_bins(obs_ct, disease_dataset=dataset, ctr=ctr, cond=cond)
         output_path = os.path.join(output_dir, f'clock_{dataset}_bins_{cell_type}.png')
         plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
@@ -313,7 +319,7 @@ def analyze_disease(obs, dataset, output_dir, cell_types, config=None):
     
     # Age-stratified analysis - all cell types
     print("Generating combined age-stratified plot...")
-    wrapper_plot_age_acceleration_disease_bins(obs_filtered, disease_dataset=dataset, config=config)
+    wrapper_plot_age_acceleration_disease_bins(obs_filtered, disease_dataset=dataset, ctr=ctr, cond=cond)
     output_path = os.path.join(output_dir, f'clock_{dataset}_bins.png')
     plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
     plt.close()
@@ -680,7 +686,7 @@ def analyze_perturbation(obs_pert, dataset, output_dir, experiments, pval_map,
 
 
 def plot_specific_perturbations(obs_pert, dataset, cell_types, pval_map, 
-                                pretty_names, output_dir, test_type='mixed_effect'):
+                                pretty_names, output_dir, test_type='mixed-effect'):
     """
     Plot specific perturbation comparisons (dataset-specific).
     
@@ -943,13 +949,13 @@ Examples:
         obs_pert = obs.copy()
         obs_pert['test_group'] = obs_pert['donor_age'].copy()
         
-        # Filter out specific conditions if needed (e.g., Belinostat for CXCL9)
-        if args.dataset == 'CXCL9':
+        # # Filter out specific conditions if needed (e.g., Belinostat for CXCL9)
+        if args.dataset == 'op':
             obs_pert = obs_pert[~obs_pert['condition'].isin(['Belinostat'])]
         
         # Get experiment setup from config
         experiments, pvalue_show_type, pretty_names, test_type, group_key, mock_names, plot_config = get_experiment_setup(
-            args.dataset, obs_pert, config
+            obs_pert, config
         )
         
         print(f"Number of experiments: {len(experiments)}")

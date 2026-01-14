@@ -114,7 +114,7 @@ def run_multi_cohort_analysis(
         'cell_types': args.cell_types,
         'datasets': args.datasets,
         'temp_dir': f'{FEATURES_DIR}/tmp/',
-        'only_promotor_based': args.promotor_only,
+        'only_promotor': args.promotor_only,
         'meta_analysis_min_cohorts': meta_analysis_min_cohorts,
         'condition': 'healthy',
         'use_consensus_net': True

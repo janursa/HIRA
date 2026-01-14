@@ -44,9 +44,9 @@ for dataset in $datasets; do
         if [ "$dataset" = "op" ]; then
                 input_file="/home/jnourisa/projs/ongoing/task_grn_inference/resources/datasets_raw/op_perturbation_sc_counts.h5ad"
         elif [ "$dataset" = "CXCL9" ]; then
-                input_file="/vol/projects/HIARA/Healthy_Single_Cell_Data/count_matrix/CXCL9_TI.h5ad"
+                input_file="/vol/projects/CIIM/Healthy_Single_Cell_Data/count_matrix/CXCL9_TI.h5ad"
         else
-                input_file="/vol/projects/HIARA/Healthy_Single_Cell_Data/count_matrix/${dataset}_CMtx.h5ad"
+                input_file="/vol/projects/CIIM/Healthy_Single_Cell_Data/count_matrix/${dataset}_CMtx.h5ad"
         fi
         
         PROCESSED_FILES_DIR="${MAIN_DIR}/datasets/sc/"

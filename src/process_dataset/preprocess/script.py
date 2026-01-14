@@ -29,11 +29,11 @@ par = vars(parser.parse_args())
 run_test = par['run_test']
 
 ## VIASH END
-from hiara.src.process_dataset.preprocess.helper import annotate_celltypes, qc_check, format_data, qc_post_annotation
+from hiara.src.process_dataset.preprocess.helper import annotate_celltypes, basic_qc, format_data, qc_post_annotation
 
 def all_preprocessing_steps(adata):
     print('Running QC...', flush=True)
-    adata = qc_check(adata)
+    adata = basic_qc(adata)
     print('Running cell type annotation...', flush=True)
     adata = annotate_celltypes(adata)
     print('Cell type annotation done.', flush=True)

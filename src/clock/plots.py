@@ -124,7 +124,7 @@ def plot_scatter_age_vs_predictedAge(df, dataset='', ax=None, hue='sex', palette
 #     ax.set_title(f"{disease_name}", fontsize=12, weight='bold', pad=15)
 #     plt.tight_layout()
 
-def wrapper_age_acceleration_disease(obs, disease_dataset, figsize=(4, 2.7), config=None):
+def wrapper_age_acceleration_disease(obs, disease_dataset, ctr, cond, figsize=(4, 2.7)):
     import pandas as pd
     import seaborn as sns
     import matplotlib.pyplot as plt
@@ -133,36 +133,7 @@ def wrapper_age_acceleration_disease(obs, disease_dataset, figsize=(4, 2.7), con
     import numpy as np
 
     cell_types = CELL_TYPES
-
-    # Get condition names from config or use hardcoded defaults
-    if config is not None:
-        # Map condition values using name_mapping if available
-        control_val = config.control_group
-        treatment_val = config.treatment_groups[0] if isinstance(config.treatment_groups, list) else config.treatment_groups
-        
-        # Apply name mapping if available
-        if config.name_mapping:
-            ctr = config.name_mapping.get(control_val, control_val)
-            cond = config.name_mapping.get(treatment_val, treatment_val)
-        else:
-            ctr = control_val
-            cond = treatment_val
-        
-        # Use display name from config
-        disease_name = config.display_name if config.display_name else disease_dataset
-    elif disease_dataset == 'Covid_50MHH':
-        disease_name = 'COVID-19'
-        ctr = 'Mild'
-        cond = 'Severe'
-    elif disease_dataset == 'SLE_European':
-        disease_name = 'SLE'
-        ctr = 'Healthy'
-        cond = 'SLE'
-    else:
-        disease_name = disease_dataset
-        ctr = 'Control'
-        cond = 'Treatment'
-
+    
     obs_disease = obs[obs['dataset'] == disease_dataset].copy()
 
     obs_disease['age'] = obs_disease['age'].astype(float)
@@ -246,11 +217,11 @@ def wrapper_age_acceleration_disease(obs, disease_dataset, figsize=(4, 2.7), con
     ax.margins(x=0.2, y=0.2)
     ax.legend(title='Actual age', bbox_to_anchor=(1.01, .9), loc='upper left', frameon=False)
     ax.axhline(0, linestyle='--', color='gray', linewidth=1)
-    ax.set_title(f"{disease_name}", fontsize=12, weight='bold', pad=15)
+    # ax.set_title(f"{disease_name}", fontsize=12, weight='bold', pad=15)
     plt.tight_layout()
 
 
-def plot_age_acceleration_by_group(obs, dataset, config):
+def plot_age_acceleration_by_group(obs, dataset, ctr, cond):
     """
     Plot age acceleration for a specific age group (used when data is already filtered by age_group).
     Shows a simple bar plot comparing conditions within a single age group.
@@ -269,18 +240,7 @@ def plot_age_acceleration_by_group(obs, dataset, config):
     import matplotlib.pyplot as plt
     from scipy.stats import ttest_ind
     import numpy as np
-    
-    # Get condition names from config
-    control_val = config.control_group
-    treatment_val = config.treatment_groups[0] if isinstance(config.treatment_groups, list) else config.treatment_groups
-    
-    # Apply name mapping if available
-    if config.name_mapping:
-        ctr = config.name_mapping.get(control_val, control_val)
-        cond = config.name_mapping.get(treatment_val, treatment_val)
-    else:
-        ctr = control_val
-        cond = treatment_val
+
     
     obs_disease = obs[obs['dataset'] == dataset].copy()
     obs_disease['age'] = obs_disease['age'].astype(float)
@@ -340,40 +300,18 @@ def plot_age_acceleration_by_group(obs, dataset, config):
     ax.margins(x=0.2, y=0.2)
     
     # Get age group label from config
-    age_group_label = config.data_filter.get('age_group', 'Unknown')
-    if isinstance(age_group_label, list):
-        age_group_label = age_group_label[0]
+    # age_group_label = [config.data_filter.get('age_group', 'Unknown')]
+    # if isinstance(age_group_label, list):
+    #     age_group_label = age_group_label[0]
     
-    title = f"{config.display_name}" if config.display_name else f"{dataset} - {age_group_label}"
-    ax.set_title(title, fontsize=11, weight='bold', pad=10)
+    # title = f"{config.display_name}" if config.display_name else f"{dataset} - {age_group_label}"
+    # ax.set_title(title, fontsize=11, weight='bold', pad=10)
     plt.tight_layout()
 
 
-def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None):
+def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, ctr, cond):
     AGE_CUTOFF_SLE = 50
-    # Get condition names from config or use hardcoded defaults
-    if config is not None:
-        # Map condition values using name_mapping if available
-        control_val = config.control_group
-        treatment_val = config.treatment_groups[0] if isinstance(config.treatment_groups, list) else config.treatment_groups
-        
-        # Apply name mapping if available
-        if config.name_mapping:
-            ctr = config.name_mapping.get(control_val, control_val)
-            cond = config.name_mapping.get(treatment_val, treatment_val)
-        else:
-            ctr = control_val
-            cond = treatment_val
-    elif disease_dataset == 'Covid_50MHH':
-        disease_name = 'COVID-19'
-        ctr = 'Mild'
-        cond = 'Severe'
-    elif disease_dataset == 'SLE_European':
-        disease_name = 'SLE'
-        ctr = 'Healthy'
-        cond = 'SLE'
-    else:
-        raise ValueError("Unknown dataset")
+    
 
     obs_disease = obs[obs['dataset'] == disease_dataset].copy()
     obs_disease['age'] = obs_disease['age'].astype(float)
@@ -469,7 +407,7 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None
         plot_df_c['condition'] = plot_df_c['condition'].apply(lambda name: surrogate_names.get(name, name))
         
         # Use None for palette if config is provided (let seaborn auto-generate)
-        palette_to_use = None if config is not None else palette_disease
+        palette_to_use = palette_disease
         
         sns.barplot(data=plot_df_c, x='age_bin', y='age_residual', hue='condition', width=0.5,
                     ax=ax, palette=palette_to_use, ci='sd', errorbar='sd', capsize=0.1, linewidth=.1, alpha=.8, errcolor='black', errwidth=1.5)
@@ -525,7 +463,7 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, config=None
 def plot_experiment(test_type, df_all, ctr, treatment, cell_type, pval_map, ax=None):
     if ax is None:
         fig, ax = plt.subplots(figsize=(2, 2))
-    assert test_type in ['paired', 'unpaired', 'mixed_effect']
+    assert test_type in ['paired', 'unpaired', 'mixed-effect']
 
     # subset data
     df_sub = df_all[df_all['condition'].isin([ctr, treatment])].copy()

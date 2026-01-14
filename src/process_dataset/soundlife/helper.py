@@ -10,7 +10,7 @@ import pandas as pd
 import anndata as ad
 import gc
 from hiara.src.config import get_config
-from hiara.src.process_dataset.preprocess.helper import qc_check
+from hiara.src.process_dataset.preprocess.helper import basic_qc
 
 def format_columns(adata):
     """
@@ -299,7 +299,7 @@ def process_single_file(file_path, output_path, test_mode=False, output_path_met
     adata = format_columns(adata)
     
     # Apply QC
-    adata = qc_check(adata)
+    adata = basic_qc(adata)
     
     # Map cell types and filter
     adata = map_cell_types(adata)

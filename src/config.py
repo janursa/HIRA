@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 # Variables
 meta_analysis_min_cohorts = 2
-grn_consensus_min_degree = 2
+grn_consensus_min_degree = 1 #TODO: fix me
 # Dataset name mapping: raw -> processed
 DATASET_NAME_MAPPING = {
     "data1": "onek1k",
@@ -37,7 +37,13 @@ else:
     TASK_GRN_BENCHMARK_DIR = '/Users/jno24/Documents/projs/ongoing/task_grn_inference/'
 DATA_DIR = f'{base_dir}/datasets/'
 PRIOR_DIR = f'{base_dir}/prior/'
-OUTPUT_DIR = f'{base_dir}/output/'
+if True:
+    OUTPUT_DIR = f'/home/jnourisa/projs/ongoing/hiara//output/'
+    GRNS_DIR = f'{base_dir}/output/grns'
+else:
+    OUTPUT_DIR = f'{base_dir}/output/'
+    GRNS_DIR = f'{OUTPUT_DIR}/grns'
+    
 FEATURES_DIR = f'{OUTPUT_DIR}/features/'
 CLOCKS_DIR = f"{OUTPUT_DIR}/clock/"
 PLOTS_DIR = f"{OUTPUT_DIR}/plots/"
@@ -60,6 +66,7 @@ surrogate_names = {
                     'parsebioscience': 'Parse Bioscience', 
                     'soundlife': 'SoundLife',
                     'CXCL9': 'CXCL9',
+                    'healthy': 'Healthy'
                     }
 # - datasets
 ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife']
@@ -255,7 +262,7 @@ DATASET_CONFIGS = {
         clock_test_type='mixed-effect',
         clock_group_key='plate_name',
         clock_pvalue_correction='corrected',
-        clock_experiments='auto',  # Auto-generate from data: (control, treatment) for all treatments
+        clock_experiments='all',  # Auto-generate from data: (control, treatment) for all treatments
         clock_mock_names=False,  # Mock compound names (keep top 1, rename others)
         clock_plot_config={
             'rejuvenating': {'figsize': (7.5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
@@ -329,7 +336,7 @@ DATASET_CONFIGS = {
         clock_test_type='mixed-effect',
         clock_group_key='donor_id',
         clock_pvalue_correction='corrected',
-        clock_experiments='auto',  # Auto-generate from data
+        clock_experiments='all',  # Auto-generate from data
         clock_plot_config={
             'CD4T': {
                 'rejuvenating': {'figsize': (4, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
@@ -357,7 +364,7 @@ DATASET_CONFIGS = {
         )
 }
 
-def get_config(dataset_name: str) -> ConditionConfig:
+def get_config(dataset: str) -> ConditionConfig:
     """
     Get configuration for a dataset.
     
@@ -376,9 +383,9 @@ def get_config(dataset_name: str) -> ConditionConfig:
     ValueError
         If dataset not found
     """
-    if dataset_name not in DATASET_CONFIGS:
-        raise ValueError(f"Dataset '{dataset_name}' not found in configurations.")
+    if dataset not in DATASET_CONFIGS:
+        raise ValueError(f"Dataset '{dataset}' not found in configurations.")
 
-    config = DATASET_CONFIGS[dataset_name]
+    config = DATASET_CONFIGS[dataset]
     
     return config

@@ -39,7 +39,7 @@ def retrieve_features_stats(data_type, feature_type, cell_type=None, multi_cohor
         if cell_type not in stats['cell_type'].unique():
             raise ValueError(f'Given cell type "{cell_type}" not in {stats["cell_type"].unique()}')
         stats = stats[stats['cell_type'] == cell_type]
-    if 'comparison' in stats.columns:
+    if dataset is not None and multi_cohort==False:
         config = get_config(dataset)
         stats['comparison'] = stats['comparison'].map(lambda name: config.name_mapping.get(name, name))
     return stats
@@ -70,7 +70,7 @@ def retrieve_sig_stats(data_type='bulk', feature_type='tf_activity', filter_inco
     
     return stats
 
-def retrieve_feature_data(dataset, cell_type=None, data_type='bulk', feature_type='tf_activity', condition='healthy', suffix=''):
+def retrieve_feature_data(dataset, cell_type=None, data_type='bulk', feature_type='tf_activity', condition=None, suffix=''):
     if feature_type == 'gene_expression':
         adata = retrieve_adata(dataset=dataset, cell_type=cell_type, data_type=data_type)
         return adata
@@ -383,8 +383,8 @@ def wrapper_association_with_age_condition(par, association_type, features=None,
     feature_type = par['feature_type']
     data_type = par['data_type']
     cell_types = par['cell_types']
-    only_promotor_based = par.get('only_promotor_based', False)
-    suffix = '_promotor' if only_promotor_based else ''
+    only_promotor = par.get('only_promotor', False)
+    suffix = '_promotor' if only_promotor else ''
 
     print(f'Association {feature_type} with condition...')
     if 'minor' in data_type:
@@ -423,14 +423,16 @@ def wrapper_association_with_age_condition(par, association_type, features=None,
                 print('Aging analysis for', cell_type, 'in', dataset)
                 stats = association_with_age(adata_sub, association_type='spearman')
                 stats['condition'] = condition
+                stats['comparison'] = 'aging'
             elif association_type == 'grouped':
                 # Condition analysis using config
                 print('Condition analysis for', cell_type, 'in', dataset)
-                stats = _compute_condition_stats_from_config(
+                stats = associate_with_condition(
                     adata_sub, 
                     config, 
                     test_type=test_type or config.test_type
                 )
+                
             else:
                 raise ValueError(f'Unknown analysis type: {association_type}')
             if stats is None or len(stats) == 0:
@@ -455,7 +457,7 @@ def wrapper_association_with_age_condition(par, association_type, features=None,
     return stats_all
 
 
-def _compute_condition_stats_from_config(adata, config, test_type):
+def associate_with_condition(adata, config, test_type):
     """
     Compute condition statistics using configuration object.
     
@@ -469,6 +471,7 @@ def _compute_condition_stats_from_config(adata, config, test_type):
         treatment_groups = adata.obs[condition_col].unique()
     else:
         treatment_groups = config.treatment_groups
+
     control_mapping = config.control_mapping
     assert control_mapping is not None, 'control_mapping should be defined.'
     if isinstance(control_mapping, str):
@@ -491,10 +494,6 @@ def _compute_condition_stats_from_config(adata, config, test_type):
         )
         stats['comparison'] = f'{treatment} vs {control}'
         stats['comparison'] = stats['comparison'].map(lambda name: config.name_mapping.get(name, name))
-
-        # print('\n Control used for', treatment, 'is', control)
-        # print('\n', 'Total', stats.shape, ' sig:',stats[stats['p_value']<0.05].shape)
-        # aaa
         
         stats_list.append(stats)
     stats = pd.concat(stats_list)
@@ -507,9 +506,9 @@ def wrapper_tf_activity(par):
     cell_types = par['cell_types']
     datasets = par['datasets']
     condition = par.get('condition', None)
-    only_promotor_based = par.get('only_promotor_based', False)
+    only_promotor = par.get('only_promotor', False)
     print('Calculating TF activity...')
-    print(f'  - Promotor-based only: {only_promotor_based}')
+    print(f'  - Promotor-based only: {only_promotor}')
     for dataset in datasets:
         print(dataset, data_type)
         adata = retrieve_adata(dataset=dataset, data_type=data_type, condition=condition)
@@ -517,16 +516,16 @@ def wrapper_tf_activity(par):
         for cell_type in tqdm(cell_types, desc='cell types'):
             adata_t = adata[adata.obs['cell_type']==cell_type]
             if par['use_consensus_net']:
-                net = retrieve_net_consensus(cell_type=cell_type, only_promotor_based=only_promotor_based)
+                net = retrieve_net_consensus(cell_type=cell_type, only_promotor=only_promotor)
             else:
-                net = retrieve_net(dataset=dataset, cell_type=cell_type, only_promotor_based=only_promotor_based)
+                net = retrieve_net(dataset=dataset, cell_type=cell_type, only_promotor=only_promotor)
             if adata_t.shape[0] < 10:
                 continue
             tf_acts = calculate_tf_activity(adata_t, net)
             tf_acts.obs['dataset'] = dataset
             tf_acts.uns['dataset'] = dataset
             tf_acts = tf_acts[tf_acts.obs['age'].isna()==False] # there is a bug in the code that causes age to be NaN
-            write_feature_data(tf_acts, dataset, cell_type, data_type, suffix='_promotor' if only_promotor_based else '')
+            write_feature_data(tf_acts, dataset, cell_type, data_type, suffix='_promotor' if only_promotor else '')
 
 def wrapper_gene_score(par):
     from hiara.src.utils.util import get_genesets
@@ -754,7 +753,7 @@ def association_with_age(adata, association_type, gene_col='gene'):
         stats_df['p_value_adj'] = adj_p
     else:
         stats_df['p_value_adj'] = []
-
+    
     return stats_df
 
 def compute_trend(df, pval_col='meta_p_adj', slope_col='slope', col='gene'):

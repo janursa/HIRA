@@ -56,7 +56,7 @@ def format_data(adata, dataset_name):
     return adata
 
 ### QC Check
-def qc_check(adata):
+def basic_qc(adata):
     print('Shape before filtering:', adata.shape)
     adata.var["mt"] = adata.var_names.str.startswith("MT-")
     sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)

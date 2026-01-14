@@ -82,38 +82,38 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         adata = adata[adata.obs['condition'].isin(['24 h LPS + ruxolitinib', '24 h RPMI + ruxolitinib', '24 h LPS', '24 h RPMI'])]  # remove this condition due to low sample size
     return adata
 
-def retrieve_net(dataset, cell_type, only_promotor_based=False, top_n=100_000, data_type='sc'):  
-    from hiara.src.config import OUTPUT_DIR
+def retrieve_net(dataset, cell_type, only_promotor=False, top_n=100_000, data_type='sc'):  
+    from hiara.src.config import GRNS_DIR
     
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
     if dataset not in ['soundlife']:
-        folder = f"{OUTPUT_DIR}/grns/{dataset}/{data_type}/"
+        folder = f"{GRNS_DIR}/{dataset}/{data_type}/"
     else:
-        folder = f"{OUTPUT_DIR}/grns/{dataset}/bulk/"
+        folder = f"{GRNS_DIR}/{dataset}/bulk/"
     net = pd.read_csv(f"{folder}/net_{cell_type_major}.csv")
     gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
     net = net[net['target'].isin(gene_names)]
-    if only_promotor_based:
+    if only_promotor:
         net = net[net['promotor_based']]
     net = net.sort_values(by='weight', ascending=False, key=abs).head(top_n)
     return net[['source', 'target', 'weight', 'cell_type']]
 
-def retrieve_nets(datasets, cell_type, only_promotor_based=False):
+def retrieve_nets(datasets, cell_type, only_promotor=False):
     net_store = []
     for dataset in datasets:
-        net = retrieve_net(dataset=dataset, cell_type=cell_type, only_promotor_based=only_promotor_based)
+        net = retrieve_net(dataset=dataset, cell_type=cell_type, only_promotor=only_promotor)
         net['dataset'] = dataset
         net_store.append(net)
     nets = pd.concat(net_store, ignore_index=True)
     return nets
 
-def retrieve_net_consensus(datasets=AGING_COHORTS, cell_type='CD8T', min_degree=grn_consensus_min_degree, only_promotor_based=False):
+def retrieve_net_consensus(datasets=AGING_COHORTS, cell_type='CD8T', min_degree=grn_consensus_min_degree, only_promotor=False):
     print('Retrieving consensus GRN for', cell_type, 'with min degree', min_degree)
     from scipy.stats import zscore
     net_store = []
     for dataset in datasets:
-        net = retrieve_net(dataset, cell_type, only_promotor_based=only_promotor_based)
+        net = retrieve_net(dataset, cell_type, only_promotor=only_promotor)
         net['dataset'] = dataset
         net_store.append(net)
 

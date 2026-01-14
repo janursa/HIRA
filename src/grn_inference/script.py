@@ -16,6 +16,7 @@ import subprocess
 from hiara.src.config import CELL_TYPES, minor_cell_types, PRIOR_DIR
 from hiara.src.grn_inference.inference import main as main_inference
 from task_grn_inference.src.utils.util import basic_qc
+from hiara import get_config
 
 def wrapper_grn(task, par):
     '''
@@ -24,25 +25,23 @@ def wrapper_grn(task, par):
     (cell_type, save_file_name) = task
 
     # adata = ad.read_h5ad(par['dataset_file'], backed='r')
-    adata = retrieve_adata(dataset=par['dataset'], data_type=par['data_type'], condition='healthy')
-    obs = adata.obs.copy()
+    adata = retrieve_adata(dataset=par['dataset'], data_type=par['data_type'], condition='healthy', cell_type=cell_type)
+    config = get_config(dataset=par['dataset'])
+    pseudobulk_group = config.pseudobulk_group
+    # for each pseudobulk_group, select only 5000 single cells
+    print('Shape before sampling: ', adata.shape, flush=True)
+    sampled_indices = []
+    for group_name, group_df in adata.obs.groupby(pseudobulk_group, sort=False):
+        sample_size = min(5000, len(group_df))
+        sampled_indices.extend(group_df.sample(n=sample_size).index.tolist())
+    adata = adata[sampled_indices].copy()
+    print('Shape after sampling: ', adata.shape, flush=True)
 
-    # Filter for the specific cell type, age group and batch group
-    # Determine masks
-    if cell_type == 'all_celltypes':
-        cell_type_mask = np.full(obs.shape[0], True, dtype=bool)
-    elif cell_type == 'T':
-        cell_type_mask = (obs[par['cell_type_col']].isin(['CD4T', 'CD8T']))
-    else:
-        cell_type_mask = (obs[par['cell_type_col']] == cell_type)
-
-    mask_sample = cell_type_mask
-    if mask_sample.sum() == 0:
-        print(f"Error: No cells left after filtering for {cell_type}", flush=True)
-        return  
-    # gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
-    # mask_genes = np.isin(adata.var_names, gene_names)
-    # adata = adata[mask_sample, mask_genes].to_memory()
+    if False:
+        obs = adata.obs.copy()
+        gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
+        mask_genes = np.isin(adata.var_names, gene_names)
+        adata = adata[:, mask_genes].to_memory()
     adata = basic_qc(adata, min_cells_per_gene=par['min_cells_per_gene'], min_genes_per_cell=par['min_genes_per_cell'], max_genes_per_cell=par['max_genes_per_cell'])
 
     # Infer GRN
@@ -138,11 +137,10 @@ if __name__ == '__main__':
         # - grn inference parameters
             'dataset': args.dataset,
             'weight_t': 0.05,
-            # 'cell_types': minor_cell_types,
-            # 'cell_type_col': 'Sub_CT',
+            'cell_types': CELL_TYPES,
             'min_genes_per_cell': 10, 
             'max_genes_per_cell': 5000 if args.data_type == 'sc' else 1e6, 
-            'min_cells_per_gene': 1000 if args.data_type == 'sc' else 100,
+            'min_cells_per_gene': 500 if args.data_type == 'sc' else 100,
             'data_type': args.data_type,
             'num_workers': args.num_workers,
             'force': args.force,
@@ -150,15 +148,6 @@ if __name__ == '__main__':
             'save_grns_dir': args.save_grns_dir,
             # 'temp_dir': 'output/grns/temp/',
     } 
-
-    if args.cell_type_granularity == 'major':
-        par['cell_types'] = CELL_TYPES
-        par['cell_type_col'] = 'Major_CT'
-    elif args.cell_type_granularity == 'minor':
-        par['cell_types'] = minor_cell_types
-        par['cell_type_col'] = 'Sub_CT'
-    else:
-        raise ValueError(f"Unknown cell type granularity: {args.cell_type_granularity}. Use 'major' or 'minor'.")
 
     # - run GRN inference
     print('running grn inference...', flush=True)
