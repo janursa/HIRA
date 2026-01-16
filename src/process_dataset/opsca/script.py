@@ -9,16 +9,15 @@ from scipy.sparse import csr_matrix
 import scanpy as sc
 
 
-from hiara.src.config import TASK_GRN_BENCHMARK_DIR
+from hiara import TASK_GRN_BENCHMARK_DIR, DATA_DIR
  
 
 
 ## VIASH START
 par = {
-    'op_perturbation_raw': f'{TASK_GRN_BENCHMARK_DIR}/resources/datasets_raw/op_perturbation_sc_counts.h5ad',
-    
-    'op_perturbation_bulk': f'{DATA_DIR}/bulk/op_bulk.h5ad',
-    
+    # 'op_perturbation_raw': f'{TASK_GRN_BENCHMARK_DIR}/resources/datasets_raw/op_perturbation_sc_counts.h5ad',
+    'op_perturbation_raw': f'/vol/projects/jnourisa/task_grn_benchmark/resources/datasets_raw/op_perturbation_sc_counts.h5ad',
+    'op_perturbation_bulk': f'{DATA_DIR}/bulk/op.h5ad',
 }
 ## VIASH END
 
@@ -27,14 +26,14 @@ meta = {
 }   
 sys.path.append(TASK_GRN_BENCHMARK_DIR)
 sys.path.append(meta['helper_dir'])
-from helper import preprocess_sc, filter_func, normalize_func, pseudobulk_sum_func
+from helper import preprocess_sc, filter_func, pseudobulk_sum_func
+from task_grn_inference import normalize_func
 
 def main_perturbation(par):
     cell_counts_t = 10
         
     sc_counts_f = preprocess_sc(par)
     bulk_adata = pseudobulk_sum_func(sc_counts_f)
-    # bulk_adata = pseudobulk_mean_func(bulk_adata)
     bulk_adata = filter_func(bulk_adata, cell_counts_t)
 
     bulk_adata.obs = bulk_adata.obs.rename(columns={'sm_name':'perturbation'})
@@ -57,7 +56,7 @@ def main_perturbation(par):
 
     # join metadata into obs
     bulk_adata.obs = bulk_adata.obs.merge(meta, left_on='donor_id', right_on='donor_id', how='left')
-    
+    print('Writing bulk adata with shape:', bulk_adata.shape, ' to ', par['op_perturbation_bulk'], flush=True)
     bulk_adata.write(par['op_perturbation_bulk'])
 
 if __name__ == '__main__':

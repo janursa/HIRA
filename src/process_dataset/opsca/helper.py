@@ -4,7 +4,9 @@ import numpy as np
 import sctk
 from scipy import sparse
 import scanpy as sc
-from task_grn_inference.src.process_data.helper_data import sum_by
+from task_grn_inference import sum_by
+from hiara import basic_qc
+
 
 import sys
 
@@ -18,53 +20,15 @@ def preprocess_sc(par):
     del sc_counts.obsm 
     sc_counts.var_names_make_unique()
     # merge cell types
-    CELL_TYPES = ['NK cells', 'T cells CD4+', 'T cells CD8+', 'T regulatory cells', 'B cells', 'Myeloid cells']
-    T_cell_types = ['T regulatory cells', 'T cells CD4+']
-    cell_type_map = {cell_type: 'T cells CD4+' if cell_type in T_cell_types else cell_type for cell_type in CELL_TYPES}
-    sc_counts.obs['cell_type'] = sc_counts.obs['cell_type'].map(cell_type_map)
-    sc_counts.obs['cell_type'] = sc_counts.obs['cell_type'].apply(lambda name: {'B cells': 'B', 'Myeloid cells':'MONO', 'NK cells':'NK', 'T cells CD8+':'CD8T', 'T cells CD4+': 'CD4T' }.get(name, name))
+    if True:
+        CELL_TYPES = ['NK cells', 'T cells CD4+', 'T cells CD8+', 'T regulatory cells', 'B cells', 'Myeloid cells']
+        T_cell_types = ['T regulatory cells', 'T cells CD4+']
+        cell_type_map = {cell_type: 'CD4+' if cell_type in T_cell_types else cell_type for cell_type in CELL_TYPES}
+        sc_counts.obs['cell_type'] = sc_counts.obs['cell_type'].map(cell_type_map)
+        sc_counts.obs['cell_type'] = sc_counts.obs['cell_type'].apply(lambda name: {'B cells': 'B', 'Myeloid cells':'MONO', 'NK cells':'NK', 'T cells CD8+':'CD8T', 'CD4+': 'CD4T' }.get(name, name))
 
-    sc_counts.obs['cell_type'].unique()
+    sc_counts = basic_qc(sc_counts)
 
-    # qc 
-    sctk.calculate_qc(sc_counts)
-    sctk.cellwise_qc(sc_counts)
-
-    # filtering
-    # cell wise
-    filter_percent_hb = sc_counts.obs.percent_hb>.2
-    filter_percent_hb.sum()
-    # gene wise
-    plates = sc_counts.obs['plate_name'].unique()
-
-    # Step 2: Initialize a DataFrame to store counts
-    gene_counts_per_plate = pd.DataFrame(index=sc_counts.var_names, columns=plates, dtype=int)
-
-    # Step 3: Iterate over each plate and calculate expression counts
-    for plate in plates:
-        # Subset the AnnData object for the current plate
-        subset = sc_counts[sc_counts.obs['plate_name'] == plate]
-
-        # Calculate expression counts (genes x cells > 0)
-        expressed_genes = (subset.X > 0).sum(axis=0)
-
-        # Check if the result needs conversion from sparse matrix format
-        if isinstance(expressed_genes, np.matrix):
-            expressed_genes = np.array(expressed_genes).flatten()
-
-        # Store the counts in the DataFrame
-        gene_counts_per_plate[plate] = expressed_genes
-
-    # Step 4: Aggregate counts across plates (max or sum based on the requirement)
-    # We use `max` here to find if any gene meets the criteria in at least one plate
-    max_counts = gene_counts_per_plate.max(axis=1)
-
-    # Step 5: Create a mask for genes to keep (genes expressed in at least 100 cells in any plate)
-    genes_to_keep = max_counts >= 100
-    print('retained genes:', genes_to_keep.sum())
-    # actual filtering
-    sc_counts = sc_counts[(~filter_percent_hb), genes_to_keep]
-    # clean
     sc_counts.obs = sc_counts.obs[['cell_type', 'sm_name', 'donor_id', 'row', 'plate_name', 'well']]
     sc_counts.var = sc_counts.var[[]]
 
