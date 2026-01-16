@@ -9,7 +9,7 @@ import matplotlib.patches as mpatches
 import numpy as np
 
 
-from hiara.src.config import CELL_TYPES, OUTPUT_DIR, colors_blind, AGING_COHORTS ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
+from hiara.src.config import CELL_TYPES, OUTPUT_DIR, colors_blind, DISCOVERY_COHORTS ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
 from hiara.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data
 from hiara.src.utils.util import retrieve_net, retrieve_adata
 

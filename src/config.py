@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 # Variables
 meta_analysis_min_cohorts = 2
-grn_consensus_min_degree = 1 #TODO: fix me
+grn_consensus_min_degree = 2 #TODO: fix me
 # Dataset name mapping: raw -> processed
 DATASET_NAME_MAPPING = {
     "data1": "onek1k",
@@ -70,8 +70,8 @@ surrogate_names = {
                     }
 # - datasets
 ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife']
-AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
-# DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
+AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife']
+DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
 CLOCK_TRAINING_COHORTS = [
                 'onek1k',
                 'abf300'

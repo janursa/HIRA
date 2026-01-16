@@ -43,40 +43,31 @@ def efficient_melting_full(net, gene_names):
     df = df[df['source'] != df['target']]  # remove self-pairs if needed
     return df
 
-def infer_grn(X, gene_names, p_value_filter=False):
+def infer_grn(X, gene_names, p_value_filter=True):
     std_devs = sparse_std(X)
     nonzero_mask = std_devs != 0
     print(f"Number of genes removed due to zero variance: {np.sum(~nonzero_mask)}", flush=True)
     gene_names = gene_names[nonzero_mask]
     X_filtered = X[:, nonzero_mask]
+    
+    if issparse(X_filtered):
+        X_filtered = X_filtered.todense().A
+    print(f"Computing Spearman correlation for matrix shape: {X_filtered.shape}")
+    corr, p_values = spearmanr(X_filtered, nan_policy='raise')
+    print(corr.shape)
+    
+    # Melt correlation and p-value matrices into edge list format
+    corr_df = efficient_melting_full(corr, gene_names)
+    
+    # FDR correction
     if p_value_filter:
-        if issparse(X_filtered):
-            X_filtered = X_filtered.todense().A
-        # X_filtered shape: (n_cells, n_genes)
-        # spearmanr computes correlation between columns (genes) by default
-        print(f"Computing Spearman correlation for matrix shape: {X_filtered.shape}")
-        corr, p_values = spearmanr(X_filtered, nan_policy='raise')
-        print(corr.shape)
-        
-        # Melt correlation and p-value matrices into edge list format
-        corr_df = efficient_melting_full(corr, gene_names)
         pval_df = efficient_melting_full(p_values, gene_names).rename(columns={'weight': 'p_value'})
-
-        # FDR correction
         _, fdr_corrected, _, _ = multipletests(pval_df['p_value'], method='fdr_bh')
         corr_df = corr_df[fdr_corrected < 0.05]
         net = corr_df
-
     else:
-        print("Start correlation calculation")
-        corr = sparse_corrcoef(X_filtered.T)
-        print(f"Correlation matrix shape: {corr.shape}")
+        net = corr_df
 
-        # Convert sparse matrix to dense if needed
-        if hasattr(corr, 'A'):
-            corr = corr.A
-        
-        net = efficient_melting_full(corr, gene_names)
 
     assert (net['weight'] <= 1).all(), "Correlation values should be in [-1, 1]"
     return net 
@@ -103,13 +94,8 @@ def sparse_corrcoef(A, B=None):
 
 
 def main(expression_sample, gene_names, weight_t):
+    net = infer_grn(expression_sample, gene_names, p_value_filter=True) 
     if False:
-        net = infer_grn(expression_sample, gene_names)
-        net['weight'] = pd.to_numeric(net['weight'], errors='coerce')
-        
-    else:
-        net = infer_grn(expression_sample, gene_names, p_value_filter=True)
-    if True:
         net = net[net['weight'].abs() > weight_t]
 
     tf_all = np.loadtxt(f"{PRIOR_DIR}/tf_all.csv", dtype=str)

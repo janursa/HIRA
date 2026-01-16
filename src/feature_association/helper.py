@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 import scanpy as sc
 import anndata as ad
 from statsmodels.stats.multitest import multipletests
-from hiara.src.config import FEATURES_DIR, get_config,  surrogate_names, AGING_COHORTS, HIARA_DIR
+from hiara.src.config import FEATURES_DIR, get_config,  surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
 from tqdm import tqdm
 from hiara.src.config import OUTPUT_DIR, FEATURES_DIR
 from scipy.sparse import issparse

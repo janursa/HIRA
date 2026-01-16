@@ -30,7 +30,7 @@ from hiara.src.config import (
     PLOTS_DIR, 
     OUTPUT_DIR,
     CELL_TYPES, 
-    AGING_COHORTS,
+    DISCOVERY_COHORTS,
     palette_trend,
     palette_disease_effect,
     palette_treatment,

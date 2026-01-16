@@ -60,6 +60,7 @@ def wrapper_grn(task, par):
 
     # select the top 1M edges based obs weight
     net = net.sort_values(by='weight', ascending=False, key=abs).head(par['top_n_edges'])
+    print('Shape of the inferred network: ', net.shape, flush=True)
     net.to_csv(save_file_name, index=False)
     
 
@@ -68,9 +69,6 @@ def infer_grns_all(par):
         Infer GRNs for all cell types, age groups and batch groups.
     '''
     print(par, flush=True)
-    # - read dataset
-    # adata = ad.read_h5ad(par['dataset_file'], backed='r')
-    # obs = adata.obs.copy()
 
     # - prepare tasks
     tasks = []
@@ -89,13 +87,12 @@ def infer_grns_all(par):
             pass
 
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser()
+    
     parser.add_argument('--dataset', 
         type=str,
         required=True,
         )
-
 
     parser.add_argument(
         '--save_grns_dir',
@@ -131,13 +128,11 @@ if __name__ == '__main__':
     )
 
     args = parser.parse_args()
-
-
     par = {
         # - grn inference parameters
             'dataset': args.dataset,
             'weight_t': 0.05,
-            'cell_types': CELL_TYPES,
+            'cell_types': CELL_TYPES, #TODO: fix me
             'min_genes_per_cell': 10, 
             'max_genes_per_cell': 5000 if args.data_type == 'sc' else 1e6, 
             'min_cells_per_gene': 500 if args.data_type == 'sc' else 100,
@@ -148,8 +143,6 @@ if __name__ == '__main__':
             'save_grns_dir': args.save_grns_dir,
             # 'temp_dir': 'output/grns/temp/',
     } 
-
-    # - run GRN inference
     print('running grn inference...', flush=True)
     os.makedirs(par['save_grns_dir'], exist_ok=True)
     infer_grns_all(par)

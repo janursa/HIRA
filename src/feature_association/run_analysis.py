@@ -15,7 +15,7 @@ from typing import List
 import pandas as pd
 import warnings
 
-from hiara.src.config import FEATURES_DIR, CELL_TYPES, AGING_COHORTS, get_config, meta_analysis_min_cohorts
+from hiara.src.config import FEATURES_DIR, CELL_TYPES, DISCOVERY_COHORTS, get_config, meta_analysis_min_cohorts
 from hiara.src.feature_association.helper import (
     wrapper_tf_activity,
     wrapper_aging_hallmarks,
@@ -170,7 +170,7 @@ def main():
         '--datasets',
         type=str,
         nargs='+',
-        default=AGING_COHORTS,
+        default=DISCOVERY_COHORTS,
         help='List of datasets for multi-cohort mode (e.g., data1 data2 data3)'
     )
     

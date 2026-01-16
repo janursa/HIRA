@@ -20,7 +20,7 @@ pd.set_option("display.max_columns", None)
 from hiara.src.config import (
     PLOTS_DIR, 
     CELL_TYPES, 
-    AGING_COHORTS,
+    DISCOVERY_COHORTS,
     palette_trend,
     surrogate_names
 )
@@ -43,7 +43,7 @@ def plot_heatmap_overal():
     from hiara.src.feature_association.plots import plot_overall_heatmap
 
     stats_all['cell_type'] = pd.Categorical(stats_all['cell_type'], categories=CELL_TYPES, ordered=True)
-    stats_all['dataset'] = pd.Categorical(stats_all['dataset'], categories=AGING_COHORTS, ordered=True)
+    stats_all['dataset'] = pd.Categorical(stats_all['dataset'], categories=DISCOVERY_COHORTS, ordered=True)
 
     plot_overall_heatmap(stats_all, 
                         sig_dots_y_offset=3, 
@@ -252,7 +252,7 @@ def plot_interaction_of_aging_TFs_between_cell_types(data_type = 'bulk'):
     features = mask[mask].index.unique()
     print(len(features))
     for cell_type in ttypes:
-        plot_features_vs_datasets(cell_type=cell_type, data_type=data_type, datasets=AGING_COHORTS, features=features, 
+        plot_features_vs_datasets(cell_type=cell_type, data_type=data_type, datasets=DISCOVERY_COHORTS, features=features, 
                                     feature_type='tf_activity', sizes=(90, 100), min_degree=1, race='both', 
                                     filter_meta_significant=True,
                                     )
@@ -284,7 +284,7 @@ def plot_case_tf(data_type='bulk'):
     n_top_targets = 10
     selected_cell_types = ['CD8T', 'CD4T', 'NK'] # ['CD8T', 'CD4T', 'NK'] #Tcm_Naive_CD8
     n_panels = len(selected_cell_types)
-    datasets = AGING_COHORTS
+    datasets = DISCOVERY_COHORTS
     plot_both = True
     show_cbar=False
     for case_tf in ['SATB1', 'GATA3']:  # 'TCF7' 'SATB1' 

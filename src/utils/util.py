@@ -5,7 +5,7 @@ import anndata as ad
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
 import scanpy as sc
-from hiara.src.config import AGING_COHORTS, mapping_minor_2_major, grn_consensus_min_degree, get_config, PRIOR_DIR, DATA_DIR
+from hiara.src.config import DISCOVERY_COHORTS, mapping_minor_2_major, grn_consensus_min_degree, get_config, PRIOR_DIR, DATA_DIR
 
 # increase width of output display
 pd.set_option('display.max_columns', None)
@@ -108,7 +108,7 @@ def retrieve_nets(datasets, cell_type, only_promotor=False):
     nets = pd.concat(net_store, ignore_index=True)
     return nets
 
-def retrieve_net_consensus(datasets=AGING_COHORTS, cell_type='CD8T', min_degree=grn_consensus_min_degree, only_promotor=False):
+def retrieve_net_consensus(datasets=DISCOVERY_COHORTS, cell_type='CD8T', min_degree=grn_consensus_min_degree, only_promotor=False):
     print('Retrieving consensus GRN for', cell_type, 'with min degree', min_degree)
     from scipy.stats import zscore
     net_store = []
@@ -225,7 +225,7 @@ def determine_sig_network(data_type,  min_degree=3):
     stats_tfs = retrieve_sig_stats(data_type, feature_type='tf_activity')
     stats_targets = retrieve_sig_stats(data_type, feature_type='gene_expression')
     
-    datasets = AGING_COHORTS
+    datasets = DISCOVERY_COHORTS
     
 
     nets_stats_store = []
