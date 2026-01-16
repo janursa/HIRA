@@ -29,6 +29,7 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
     gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
     assert data_type in ['sc', 'bulk', 'metacell'], f'Unknown type {data_type}'
     adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/{dataset}.h5ad", backed='r')
+    
     if cell_type is not None:
         if cell_type not in adata.obs['cell_type'].unique():
             raise ValueError(f'Given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
@@ -44,7 +45,6 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         adata.X = adata.layers['lognorm'] if 'lognorm' in adata.layers else adata.layers['X_norm']
     adata.obs['dataset'] = dataset
     adata = adata[:, adata.var_names.isin(gene_names)]
-    
     if 'age' in adata.obs.columns:
         adata = adata[~adata.obs['age'].isna()].copy()
         adata.obs['age'] = adata.obs['age'].astype(float).astype(int)
@@ -99,16 +99,16 @@ def retrieve_net(dataset, cell_type, only_promotor=False, top_n=100_000, data_ty
     net = net.sort_values(by='weight', ascending=False, key=abs).head(top_n)
     return net[['source', 'target', 'weight', 'cell_type']]
 
-def retrieve_nets(datasets, cell_type, only_promotor=False):
-    net_store = []
-    for dataset in datasets:
-        net = retrieve_net(dataset=dataset, cell_type=cell_type, only_promotor=only_promotor)
-        net['dataset'] = dataset
-        net_store.append(net)
-    nets = pd.concat(net_store, ignore_index=True)
-    return nets
+# def retrieve_nets(datasets, cell_type, only_promotor=False):
+#     net_store = []
+#     for dataset in datasets:
+#         net = retrieve_net(dataset=dataset, cell_type=cell_type, only_promotor=only_promotor)
+#         net['dataset'] = dataset
+#         net_store.append(net)
+#     nets = pd.concat(net_store, ignore_index=True)
+#     return nets
 
-def retrieve_net_consensus(datasets=DISCOVERY_COHORTS, cell_type='CD8T', min_degree=grn_consensus_min_degree, only_promotor=False):
+def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=grn_consensus_min_degree, only_promotor=False):
     print('Retrieving consensus GRN for', cell_type, 'with min degree', min_degree)
     from scipy.stats import zscore
     net_store = []
@@ -116,9 +116,7 @@ def retrieve_net_consensus(datasets=DISCOVERY_COHORTS, cell_type='CD8T', min_deg
         net = retrieve_net(dataset, cell_type, only_promotor=only_promotor)
         net['dataset'] = dataset
         net_store.append(net)
-
     nets = pd.concat(net_store)
-
     nets['link'] = nets['source'] + '_' + nets['target']
 
     # Filter out inconsistent links (keep those with consistent sign)
@@ -220,42 +218,42 @@ def retrieve_sig_net(data_type='bulk', cell_type=None):
         df = df[df['cell_type'] == cell_type]
     return df
 
-def determine_sig_network(data_type,  min_degree=3):
-    os.makedirs(f'{OUTPUT_DIR}/sig_nets', exist_ok=True)
-    stats_tfs = retrieve_sig_stats(data_type, feature_type='tf_activity')
-    stats_targets = retrieve_sig_stats(data_type, feature_type='gene_expression')
+# def determine_sig_network(data_type,  min_degree=3):
+#     os.makedirs(f'{OUTPUT_DIR}/sig_nets', exist_ok=True)
+#     stats_tfs = retrieve_sig_stats(data_type, feature_type='tf_activity')
+#     stats_targets = retrieve_sig_stats(data_type, feature_type='gene_expression')
     
-    datasets = DISCOVERY_COHORTS
+#     datasets = DISCOVERY_COHORTS
     
 
-    nets_stats_store = []
-    for cell_type in CELL_TYPES:
-        stats_tfs_t = stats_tfs[stats_tfs['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'gene'])[['gene', 'meta_p_adj', 'slope', 'trend']]
-        stats_targets_t = stats_targets[stats_targets['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'target'])[['target', 'meta_p_adj', 'slope', 'trend']]
+#     nets_stats_store = []
+#     for cell_type in CELL_TYPES:
+#         stats_tfs_t = stats_tfs[stats_tfs['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'gene'])[['gene', 'meta_p_adj', 'slope', 'trend']]
+#         stats_targets_t = stats_targets[stats_targets['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'target'])[['target', 'meta_p_adj', 'slope', 'trend']]
         
-        if len(stats_tfs_t) == 0:
-            print('No source for', cell_type, ' skipping it')
-            continue
-        if len(stats_targets_t) == 0:
-            print('No target for', cell_type, ' skipping it')
-            continue
+#         if len(stats_tfs_t) == 0:
+#             print('No source for', cell_type, ' skipping it')
+#             continue
+#         if len(stats_targets_t) == 0:
+#             print('No target for', cell_type, ' skipping it')
+#             continue
         
-        # - get the nets
-        net = retrieve_net_consensus(datasets, cell_type, min_degree=min_degree)
-        sig_tfs = stats_tfs_t['gene'].unique()
-        sig_targets = stats_targets_t['target'].unique()
-        net = net[(net['source'].isin(sig_tfs)) & (net['target'].isin(sig_targets))]
-        net = net.groupby(['source', 'target'])['weight'].mean().reset_index() # probably not necessary
-        # - get the stats
-        nets_stats = pd.merge(net, stats_tfs_t, left_on='source', right_on='gene', how='left')
-        nets_stats = pd.merge(nets_stats, stats_targets_t, left_on='target', right_on='target', how='left', suffixes=('_source', '_target'))
-        nets_stats = nets_stats[['source', 'target', 'weight', 'slope_source', 'slope_target', 'meta_p_adj_source', 'meta_p_adj_target', 'trend_source', 'trend_target']]
-        nets_stats['cell_type'] = cell_type
-        nets_stats_store.append(nets_stats)
-    nets_stats = pd.concat(nets_stats_store)
+#         # - get the nets
+#         net = retrieve_net_consensus(datasets, cell_type=cell_type, min_degree=min_degree)
+#         sig_tfs = stats_tfs_t['gene'].unique()
+#         sig_targets = stats_targets_t['target'].unique()
+#         net = net[(net['source'].isin(sig_tfs)) & (net['target'].isin(sig_targets))]
+#         net = net.groupby(['source', 'target'])['weight'].mean().reset_index() # probably not necessary
+#         # - get the stats
+#         nets_stats = pd.merge(net, stats_tfs_t, left_on='source', right_on='gene', how='left')
+#         nets_stats = pd.merge(nets_stats, stats_targets_t, left_on='target', right_on='target', how='left', suffixes=('_source', '_target'))
+#         nets_stats = nets_stats[['source', 'target', 'weight', 'slope_source', 'slope_target', 'meta_p_adj_source', 'meta_p_adj_target', 'trend_source', 'trend_target']]
+#         nets_stats['cell_type'] = cell_type
+#         nets_stats_store.append(nets_stats)
+#     nets_stats = pd.concat(nets_stats_store)
 
-    os.makedirs(f'{OUTPUT_DIR}/sig_nets', exist_ok=True)
-    nets_stats.to_csv(f'{OUTPUT_DIR}/sig_nets/sig_nets_{type}.csv')
+#     os.makedirs(f'{OUTPUT_DIR}/sig_nets', exist_ok=True)
+#     nets_stats.to_csv(f'{OUTPUT_DIR}/sig_nets/sig_nets_{type}.csv')
 
 
 def stability_selection_booststrap(X, y, n_bootstrap=100, top_k=10):
