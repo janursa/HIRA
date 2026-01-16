@@ -14,10 +14,10 @@ import warnings
 import os
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
-# Variables
+
 meta_analysis_min_cohorts = 2
-grn_consensus_min_degree = 2 #TODO: fix me
-# Dataset name mapping: raw -> processed
+grn_consensus_min_degree = 2 
+
 DATASET_NAME_MAPPING = {
     "data1": "onek1k",
     "data7_allTPs_jalil": "abf300",
@@ -35,9 +35,11 @@ else:
     HIARA_DIR = '/Users/jno24/Documents/projs/ongoing/hiara/'
     base_dir = '/Users/jno24/Documents/projs/ongoing/hiara/base_folder'
     TASK_GRN_BENCHMARK_DIR = '/Users/jno24/Documents/projs/ongoing/task_grn_inference/'
+
 DATA_DIR = f'{base_dir}/datasets/'
 PRIOR_DIR = f'{base_dir}/prior/'
-if True:
+
+if False:
     OUTPUT_DIR = f'/home/jnourisa/projs/ongoing/hiara//output/'
     GRNS_DIR = f'{base_dir}/output/grns'
 else:
@@ -322,10 +324,10 @@ DATASET_CONFIGS = {
     
     "parsebioscience": ConditionConfig(
         name="parsebioscience",
-        condition_column='condition',  # Will auto-detect 'perturbation' if needed
+        condition_column='condition',  
         control_mapping='PBS',
-        treatment_groups=['IL-10'],  # Auto-detect all cytokines
-        test_type='mixed-effect',
+        treatment_groups=['IL-10'], 
+        test_type= 'mixed-effect',#'mixed-effect',
         mixed_effects_formula='feature_values ~ condition',
         mixed_effects_group='donor_id',
         display_name='Cytokines',

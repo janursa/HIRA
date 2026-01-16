@@ -72,7 +72,7 @@ def retrieve_sig_stats(data_type='bulk', feature_type='tf_activity', filter_inco
 
 def retrieve_feature_data(dataset, cell_type=None, data_type='bulk', feature_type='tf_activity', condition=None, suffix=''):
     if feature_type == 'gene_expression':
-        adata = retrieve_adata(dataset=dataset, cell_type=cell_type, data_type=data_type)
+        adata = retrieve_adata(dataset=dataset, cell_type=cell_type, data_type=data_type, condition=condition)
         return adata
     file_path = f'{FEATURES_DIR}/{feature_type}/{data_type}/{dataset}_{cell_type}{suffix}.h5ad'
     if os.path.exists(file_path) == False:
@@ -124,12 +124,10 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
     name_mapping = {} if config is None else config.name_mapping if hasattr(config, 'name_mapping') else {}
     stats_all = []
     def stats_condition_vs_ctr(adata, condition):  
-
         mask_ctr = adata.obs[condition_col] == ctr_group
         mask_condition = adata.obs[condition_col] == condition
         
         control_group = adata.X[mask_ctr.values, :]
- 
         case_group = adata.X[mask_condition.values, :]
         if (np.sum(mask_condition) < 3) or (np.sum(mask_ctr) < 3):
             print('Not enough samples for', condition, ' vs ', ctr_group)
@@ -184,13 +182,18 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
                 
                 df = pd.concat([obs_ctr, obs_case])
                 
-                # Original behavior for non-interaction models
                 pval, coef = test_mixed_effects(df, ctr_group, condition, 
                                                 target_variable='feature_values', config=config)
-    
                 if np.isnan(pval):
                     return None
-                
+                # if gene=='TCF7':
+                #     print({
+                #     'gene': gene,
+                #     "p_value": pval,
+                #     "slope":  coef ,
+                #     'ctrl': ctr_group,
+                #     'condition': name_mapping.get(condition, condition)
+                # })
                 return {
                     'gene': gene,
                     "p_value": pval,
@@ -198,6 +201,7 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
                     'ctrl': ctr_group,
                     'condition': name_mapping.get(condition, condition)
                 }
+               
    
             else:
                 raise ValueError('Unknown test type')
@@ -234,7 +238,7 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
     else:
         # Default: no age stratification
         age_masks = {
-            'Both age groups': adata.obs.index.notnull()
+            'All age groups': adata.obs.index.notnull()
         }
     
     for age_subset, mask in age_masks.items():
@@ -245,11 +249,11 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
                 continue
             stats_df = stats_condition_vs_ctr(adata_sub, condition)
 
+
             if stats_df is None:
                 raise ValueError(f'No stats returned for condition {condition} vs {ctr_group} in dataset {dataset}')
 
             # For interaction models, apply FDR per coefficient type
-            # For regular models, apply FDR globally
             if 'coefficient' in stats_df.columns:
                 # Interaction model - apply FDR per coefficient
                 for coef_type in stats_df['coefficient'].unique():
@@ -404,6 +408,10 @@ def wrapper_association_with_age_condition(par, association_type, features=None,
                 condition=condition,
                 suffix=suffix
             )
+            # - sanity check
+            cell_types = adata.obs['cell_type'].unique()
+            assert len(cell_types) == 1 and cell_types[0] == cell_type, f'Cell type mismatch in {dataset}, {cell_type}'
+
             adata = adata[:, adata.var_names.isin(features)] if features is not None else adata
             
             # Filter by cell type
@@ -437,7 +445,7 @@ def wrapper_association_with_age_condition(par, association_type, features=None,
                 raise ValueError(f'Unknown analysis type: {association_type}')
             if stats is None or len(stats) == 0:
                 raise ValueError(f'No stats calculated for {cell_type} in {dataset}, something went wrong')
-                
+
             stats['dataset'] = dataset
             stats['cell_type'] = cell_type
             stats_store.append(stats)
