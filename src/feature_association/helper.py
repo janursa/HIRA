@@ -387,8 +387,8 @@ def wrapper_association_with_age_condition(par, association_type, features=None,
     feature_type = par['feature_type']
     data_type = par['data_type']
     cell_types = par['cell_types']
-    only_promotor = par.get('only_promotor', False)
-    suffix = '_promotor' if only_promotor else ''
+    promotor_only = par.get('promotor_only', False)
+    suffix = '_promotor' if promotor_only else ''
 
     print(f'Association {feature_type} with condition...')
     if 'minor' in data_type:
@@ -514,9 +514,9 @@ def wrapper_tf_activity(par):
     cell_types = par['cell_types']
     datasets = par['datasets']
     condition = par.get('condition', None)
-    only_promotor = par.get('only_promotor', False)
+    promotor_only = par['promotor_only']
     print('Calculating TF activity...')
-    print(f'  - Promotor-based only: {only_promotor}')
+    print(f'  - Promotor-based only: {promotor_only}')
     for dataset in datasets:
         print(dataset, data_type)
         adata = retrieve_adata(dataset=dataset, data_type=data_type, condition=condition)
@@ -524,16 +524,16 @@ def wrapper_tf_activity(par):
         for cell_type in tqdm(cell_types, desc='cell types'):
             adata_t = adata[adata.obs['cell_type']==cell_type]
             if par['use_consensus_net']:
-                net = retrieve_net_consensus(cell_type=cell_type, only_promotor=only_promotor)
+                net = retrieve_net_consensus(cell_type=cell_type, promotor_only=promotor_only)
             else:
-                net = retrieve_net(dataset=dataset, cell_type=cell_type, only_promotor=only_promotor)
+                net = retrieve_net(dataset=dataset, cell_type=cell_type, promotor_only=promotor_only)
             if adata_t.shape[0] < 10:
                 continue
             tf_acts = calculate_tf_activity(adata_t, net)
             tf_acts.obs['dataset'] = dataset
             tf_acts.uns['dataset'] = dataset
             tf_acts = tf_acts[tf_acts.obs['age'].isna()==False] # there is a bug in the code that causes age to be NaN
-            write_feature_data(tf_acts, dataset, cell_type, data_type, suffix='_promotor' if only_promotor else '')
+            write_feature_data(tf_acts, dataset, cell_type, data_type, suffix='_promotor' if promotor_only else '')
 
 def wrapper_gene_score(par):
     from hiara.src.utils.util import get_genesets
@@ -848,7 +848,7 @@ def calculate_tf_activity(adata, net, tf_all=None):
         tf_acts_adata = ad.AnnData(X=tf_acts_X.values, obs=adata.obs, var=var)
 
     else: # run my implementation
-        n_targets_t = 1
+        n_targets_t = 5
         if True:
             tf_size = net.groupby('source').size()
             tfs = tf_size[tf_size > n_targets_t].index
@@ -871,8 +871,8 @@ def calculate_tf_activity(adata, net, tf_all=None):
         var_df = pd.DataFrame(index=X_df.columns)
         var_df['source'] = var_df.index
         tf_acts_adata = ad.AnnData(X=X_df.values, obs=obs_df, var=var_df)
-        print(tf_acts_adata)
-        aaa
+        # print(tf_acts_adata)
+        # aaa
     return tf_acts_adata
 
 

@@ -12,9 +12,24 @@ import sys
 
 
 def preprocess_sc(par):
-    # clean up
     sc_counts = ad.read_h5ad(par['op_perturbation_raw'])
-    sc_counts.obs = sc_counts.obs[['well', 'row', 'col', 'plate_name', 'cell_type', 'donor_id', 'sm_name']]
+    sc_counts.obs['donor_id'] = sc_counts.obs.donor_id.map({'Donor 1': 'donor_0', 'Donor 2': 'donor_1', 'Donor 3': 'donor_2'})
+
+    meta = pd.DataFrame({
+        "donor_id": ['donor_0', 'donor_1', 'donor_2'],
+        "age": [45, 52, 45],
+        "sex": ["Female", "Male", "Male"]
+    })
+    sc_counts.obs = sc_counts.obs.rename(columns={'sm_name':'condition'})
+    sc_counts.obs = sc_counts.obs.merge(meta, left_on='donor_id', right_on='donor_id', how='left')
+
+    sc_counts.obs['sex'] = sc_counts.obs['sex'].astype(str)
+    sc_counts.obs['age'] = sc_counts.obs['age'].astype(str)
+    sc_counts.obs['is_control'] = sc_counts.obs['condition'].isin(['Dimethyl Sulfoxide'])
+    sc_counts.obs['is_positive_control'] = sc_counts.obs['condition'].isin(['Dabrafenib', 'Belinostat'])
+
+    # clean up
+    sc_counts.obs = sc_counts.obs[['well', 'row', 'col', 'plate_name', 'cell_type', 'donor_id', 'condition', 'age', 'sex', 'is_control', 'is_positive_control']]
     sc_counts.X = sc_counts.layers['counts']
     del sc_counts.layers 
     del sc_counts.obsm 
@@ -29,7 +44,6 @@ def preprocess_sc(par):
 
     sc_counts = basic_qc(sc_counts)
 
-    sc_counts.obs = sc_counts.obs[['cell_type', 'sm_name', 'donor_id', 'row', 'plate_name', 'well']]
     sc_counts.var = sc_counts.var[[]]
 
     del sc_counts.obsm
@@ -54,10 +68,9 @@ def filter_func(bulk_adata, cell_counts_t):
     ### filter
     # samples with less than 10 cells
     bulk_adata_filtered = bulk_adata.copy()
-    bulk_adata_filtered.obs['donor_id'] = bulk_adata_filtered.obs.donor_id.map({'Donor 1': 'donor_0', 'Donor 2': 'donor_1', 'Donor 3': 'donor_2'})
     # toxic ones
     outliers_toxic = ['Alvocidib', 'UNII-BXU45ZH6LI', 'CGP 60474', 'BMS-387032']
-    bulk_adata_filtered = bulk_adata_filtered[~bulk_adata_filtered.obs.sm_name.isin(outliers_toxic),:]
+    bulk_adata_filtered = bulk_adata_filtered[~bulk_adata_filtered.obs.condition.isin(outliers_toxic),:]
     # remove those with less than 10 cells left 
 
     mask_low_cell_count = bulk_adata_filtered.obs.cell_count < cell_counts_t
@@ -67,21 +80,21 @@ def filter_func(bulk_adata, cell_counts_t):
     to_go_compounds = []
     for donor_id in bulk_adata_filtered.obs.donor_id.unique():
         adata_donor = bulk_adata_filtered[bulk_adata_filtered.obs.donor_id.eq(donor_id)]
-        cell_type_n = adata_donor.obs.groupby('sm_name').size()
+        cell_type_n = adata_donor.obs.groupby('condition').size()
         to_go_compounds.append(cell_type_n[cell_type_n<=2].index.astype(str))
     to_go_compounds = np.unique(np.concatenate(to_go_compounds))
     outliers_two_celltype = ['CEP-18770 (Delanzomib)', 'IN1451', 'MLN 2238', 'Oprozomib (ONX 0912)']
     # assert np.all(to_go_compounds==outliers_two_celltype)
-    bulk_adata_filtered = bulk_adata_filtered[~bulk_adata_filtered.obs.sm_name.isin(to_go_compounds),:]
+    bulk_adata_filtered = bulk_adata_filtered[~bulk_adata_filtered.obs.condition.isin(to_go_compounds),:]
 
     # remove big class misbalance in all donors 
     outliers_misbalance_all = ['Proscillaridin A;Proscillaridin-A'] 
-    bulk_adata_filtered = bulk_adata_filtered[~bulk_adata_filtered.obs.sm_name.isin(outliers_misbalance_all),:]
+    bulk_adata_filtered = bulk_adata_filtered[~bulk_adata_filtered.obs.condition.isin(outliers_misbalance_all),:]
     # remove big class misbalance in 1 donor
     outliers_misbalance_donor_2 = ['Vorinostat']
-    bulk_adata_filtered = bulk_adata_filtered[~ (bulk_adata_filtered.obs.sm_name.isin(outliers_misbalance_donor_2) & (bulk_adata_filtered.obs.donor_id=='donor_1')),:]
+    bulk_adata_filtered = bulk_adata_filtered[~ (bulk_adata_filtered.obs.condition.isin(outliers_misbalance_donor_2) & (bulk_adata_filtered.obs.donor_id=='donor_1')),:]
     outliers_misbalance_donor_3 = ['AT13387', 'Ganetespib (STA-9090)']
-    bulk_adata_filtered = bulk_adata_filtered[~ (bulk_adata_filtered.obs.sm_name.isin(outliers_misbalance_donor_3) & (bulk_adata_filtered.obs.donor_id=='donor_2')),:]
+    bulk_adata_filtered = bulk_adata_filtered[~ (bulk_adata_filtered.obs.condition.isin(outliers_misbalance_donor_3) & (bulk_adata_filtered.obs.donor_id=='donor_2')),:]
     print(f"number of initial samples: {len(bulk_adata)}, number of samples after filtering: {len(bulk_adata_filtered)}")
     # low gene coverage
     mask_to_go_genes = ((bulk_adata_filtered.X == 0).sum(axis=0)/bulk_adata_filtered.shape[0])>0.7

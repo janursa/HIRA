@@ -55,7 +55,7 @@ def compare_significant_tfs(stats_full, stats_promotor, cell_type=None):
     # Calculate overlap
     overlap = tfs_full & tfs_promotor
     only_full = tfs_full - tfs_promotor
-    only_promotor = tfs_promotor - tfs_full
+    promotor_only = tfs_promotor - tfs_full
     
     # Calculate metrics
     jaccard = len(overlap) / len(tfs_full | tfs_promotor) if len(tfs_full | tfs_promotor) > 0 else 0
@@ -68,7 +68,7 @@ def compare_significant_tfs(stats_full, stats_promotor, cell_type=None):
         'n_promotor': len(tfs_promotor),
         'n_overlap': len(overlap),
         'n_only_full': len(only_full),
-        'n_only_promotor': len(only_promotor),
+        'n_promotor_only': len(promotor_only),
         'jaccard': jaccard,
         'overlap_pct_full': overlap_pct_full,
         'overlap_pct_promotor': overlap_pct_promotor,
@@ -76,7 +76,7 @@ def compare_significant_tfs(stats_full, stats_promotor, cell_type=None):
         'tfs_promotor': tfs_promotor,
         'tfs_overlap': overlap,
         'tfs_only_full': only_full,
-        'tfs_only_promotor': only_promotor
+        'tfs_promotor_only': promotor_only
     }
 
 
@@ -114,7 +114,7 @@ def plot_venn_diagram(comparison, output_path):
     venn2(
         subsets=(
             comparison['n_only_full'],
-            comparison['n_only_promotor'],
+            comparison['n_promotor_only'],
             comparison['n_overlap']
         ),
         set_labels=('Full GRN', 'Promotor-only GRN'),

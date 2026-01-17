@@ -56,6 +56,7 @@ def run_single_cohort_analysis(args):
         'cell_types': cell_types,
         'association_type': args.association_type,
         'use_consensus_net': True,
+        'promotor_only': args.promotor_only,
     }
     
     # Step 1: Calculate features (if needed) - only once for all configs
@@ -114,11 +115,12 @@ def run_multi_cohort_analysis(
         'cell_types': args.cell_types,
         'datasets': args.datasets,
         'temp_dir': f'{FEATURES_DIR}/tmp/',
-        'only_promotor': args.promotor_only,
+        'promotor_only': args.promotor_only,
         'meta_analysis_min_cohorts': meta_analysis_min_cohorts,
         'condition': 'healthy',
         'use_consensus_net': True
     }
+    
    
     # Step 1: Calculate features
     if not args.skip_features:
@@ -219,6 +221,7 @@ def main():
     )
     
     args = parser.parse_args()
+
     datasets = args.datasets
     assert len(datasets) >= 1, "At least one dataset must be specified."
     if len(datasets) == 1:
@@ -231,7 +234,6 @@ def main():
     else:  # multi-cohort
         run_multi_cohort_analysis(
             args
-            
         )
         multi_cohort = True
 

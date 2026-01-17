@@ -312,7 +312,7 @@ class ModularizedNetPlot:
         else:
             datasets = DISCOVERY_COHORTS
         cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-        net = retrieve_nets(datasets, cell_type_major, only_promotor=True)
+        net = retrieve_nets(datasets, cell_type_major, promotor_only=True)
 
         # - subset to only sig tfs
         net = net[(net['source'].isin(sig_tfs) & net['target'].isin(sig_tfs))]
@@ -2080,11 +2080,11 @@ def plot_net_nx(net, figsize=(6, 6), draw_evidence=True, rad_negative=-.3, rad_p
                 fontsize=10
             )
 def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net=True, draw_evidence=True, draw_collectri=True,figsize=(4, 4), figsize_collectri=(3,3), 
-                     offset_evidence=.11, arc_offset=.05, offset_evidence_collectri=.1, only_promotor=False):
+                     offset_evidence=.11, arc_offset=.05, offset_evidence_collectri=.1, promotor_only=False):
     net_store = []
     for dataset in datasets:
         cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-        net = retrieve_net(dataset=dataset, cell_type=cell_type_major, only_promotor=only_promotor)
+        net = retrieve_net(dataset=dataset, cell_type=cell_type_major, promotor_only=promotor_only)
         net['dataset'] = dataset
         net_store.append(net)
     net = pd.concat(net_store, ignore_index=True)
@@ -2125,7 +2125,7 @@ def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net
         plt.title(f"{cell_type_major} - CollecTRI", fontsize=14, pad=20, weight='bold')
     return fig
 
-def wrapper_draw_tf_target_programs(cell_type, datasets, tfs, n_targets=10, only_promotor=False, min_consensus=3):
+def wrapper_draw_tf_target_programs(cell_type, datasets, tfs, n_targets=10, promotor_only=False, min_consensus=3):
     """
     Draw network showing TF target programs - each TF with its top targets based on regulatory weights.
     
@@ -2134,13 +2134,13 @@ def wrapper_draw_tf_target_programs(cell_type, datasets, tfs, n_targets=10, only
     - datasets: List of datasets to use
     - tfs: List of transcription factors
     - n_targets: Maximum number of targets to show per TF
-    - only_promotor: Whether to use only promoter-based regulations
+    - promotor_only: Whether to use only promoter-based regulations
     """
     # Load networks from all datasets
     net_store = []
     for dataset in datasets:
         cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-        net = retrieve_net(dataset=dataset, cell_type=cell_type_major, only_promotor=only_promotor)
+        net = retrieve_net(dataset=dataset, cell_type=cell_type_major, promotor_only=promotor_only)
         # z score for weight
         net['weight'] = (net['weight'] - net['weight'].mean()) / net['weight'].std()
         net['dataset'] = dataset
