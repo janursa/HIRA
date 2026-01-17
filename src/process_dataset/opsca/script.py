@@ -42,8 +42,6 @@ def main_perturbation(par):
     bulk_adata = normalize_func(bulk_adata)
     bulk_adata.X = csr_matrix(bulk_adata.X)
 
-
-
     print('Writing bulk adata with shape:', bulk_adata.shape, ' to ', par['op_perturbation_bulk'], flush=True)
     bulk_adata.write(par['op_perturbation_bulk'])
 

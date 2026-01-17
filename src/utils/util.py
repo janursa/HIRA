@@ -5,7 +5,8 @@ import anndata as ad
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
 import scanpy as sc
-from hiara.src.config import DISCOVERY_COHORTS, mapping_minor_2_major, grn_consensus_min_degree, get_config, PRIOR_DIR, DATA_DIR
+from pathlib import Path
+from hiara.src.config import DISCOVERY_COHORTS, mapping_minor_2_major, grn_consensus_min_degree, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR
 
 # increase width of output display
 pd.set_option('display.max_columns', None)
@@ -82,9 +83,7 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         adata = adata[adata.obs['condition'].isin(['24 h LPS + ruxolitinib', '24 h RPMI + ruxolitinib', '24 h LPS', '24 h RPMI'])]  # remove this condition due to low sample size
     return adata
 
-def retrieve_net(dataset, cell_type, promotor_only=False, top_n=100_000, data_type='sc'):  
-    from hiara.src.config import GRNS_DIR
-    
+def retrieve_net(dataset, cell_type, promotor_only=False, top_n=100_000, data_type='sc'):      
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
     if dataset not in ['soundlife']:
@@ -108,7 +107,12 @@ def retrieve_net(dataset, cell_type, promotor_only=False, top_n=100_000, data_ty
 #     nets = pd.concat(net_store, ignore_index=True)
 #     return nets
 
-def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=grn_consensus_min_degree, promotor_only=False):
+def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=grn_consensus_min_degree, promotor_only=False, force=False):
+    save_name = f"{GRNS_DIR}/consensus_net_{cell_type}_minDegree{min_degree}{'_promotorOnly' if promotor_only else ''}.csv"
+    if Path(save_name).exists() and not force:
+        print('Loading existing consensus GRN for', cell_type, 'with min degree', min_degree)
+        net_mean_z = pd.read_csv(save_name)
+        return net_mean_z
     print('Retrieving consensus GRN for', cell_type, 'with min degree', min_degree)
     from scipy.stats import zscore
     net_store = []
@@ -133,7 +137,7 @@ def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=grn
         nets['zscore'] = nets.groupby('dataset')['weight'].transform(zscore)
 
         # Compute mean z-score across datasets per (source, target)
-        net_mean_z = (
+        net_mean = (
             nets.groupby(['source', 'target'])['zscore']
             .mean()
             .reset_index()
@@ -141,13 +145,14 @@ def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=grn
         )
     else:
         # just take the mean weight
-        net_mean_z = (
+        net_mean = (
             nets.groupby(['source', 'target'])['weight']
             .mean()
             .reset_index()
         )
+    net_mean.to_csv(save_name, index=False)
     
-    return net_mean_z
+    return net_mean
 
 
 def add_root_sample(adata):

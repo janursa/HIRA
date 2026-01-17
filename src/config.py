@@ -50,6 +50,7 @@ FEATURES_DIR = f'{OUTPUT_DIR}/features/'
 CLOCKS_DIR = f"{OUTPUT_DIR}/clock/"
 PLOTS_DIR = f"{OUTPUT_DIR}/plots/"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(GRNS_DIR, exist_ok=True)
 os.makedirs(CLOCKS_DIR, exist_ok=True)
 os.makedirs(PLOTS_DIR, exist_ok=True)
 os.makedirs(PRIOR_DIR, exist_ok=True)
@@ -71,7 +72,7 @@ surrogate_names = {
                     'healthy': 'Healthy'
                     }
 # - datasets
-ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife']
+ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife', 'zhang']
 AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife']
 DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
 CLOCK_TRAINING_COHORTS = [
@@ -80,7 +81,8 @@ CLOCK_TRAINING_COHORTS = [
                 ]
 CLOCK_TEST_COHORTS = [
                 'aida',
-                'perez_sle'
+                'perez_sle',
+                'zhang'
                 ]
 # - palettes  
 colors_blind = [

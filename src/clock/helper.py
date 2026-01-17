@@ -6,8 +6,8 @@ import numpy as np
 from scipy import sparse
 import pandas as pd
 from anndata import AnnData
-from hiara import retrieve_adata
-from hiara import (
+from hiara.src.utils.util import retrieve_adata
+from hiara.src.config import (
     CLOCKS_DIR,
     use_local_clocks, 
     clock_version
@@ -145,7 +145,7 @@ def wrapper_predict_age(adata, cell_type, use_local_clocks=use_local_clocks):
     from grnimmuneclock import predict_age
     adata = predict_age(adata, cell_type=cell_type, use_local_clocks=use_local_clocks)
     return adata
-def get_all_predictions(cell_types, evaluate_datasets, data_type='bulk', condition=None):
+def wrapper_clock_predictions(cell_types, evaluate_datasets, data_type='bulk', condition=None):
     obs_store = []
     for cell_type in cell_types:
         for dataset in evaluate_datasets:

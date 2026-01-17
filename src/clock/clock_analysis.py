@@ -40,7 +40,7 @@ from hiara.src.clock.plots import (
     plot_scatter_age_vs_predictedAge
 )
 
-from hiara.src.clock.helper import get_all_predictions
+from hiara.src.clock.helper import wrapper_clock_predictions
 
 warnings.filterwarnings("ignore")
 
@@ -914,7 +914,7 @@ Examples:
     
     # Get predictions
     print("\nLoading predictions...")
-    obs = get_all_predictions(
+    obs = wrapper_clock_predictions(
         args.cell_types, 
         [args.dataset]
     )
