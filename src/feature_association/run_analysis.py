@@ -120,11 +120,6 @@ def run_multi_cohort_analysis(
         'condition': 'healthy',
         'use_consensus_net': True
     }
-
-    # - run consensusn net 
-    for cell_type in args.cell_types:
-        retrieve_net_consensus(cell_type=cell_type, promotor_only=args.promotor_only, force=True)
-    
    
     # Step 1: Calculate features
     if not args.skip_features:

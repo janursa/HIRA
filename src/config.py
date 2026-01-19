@@ -29,7 +29,7 @@ DATASET_NAME_MAPPING = {
 import platform
 if platform.system() == 'Linux':
     HIARA_DIR = '/home/jnourisa/projs/ongoing/hiara/'
-    base_dir = '/vol/projects/jnourisa/'
+    base_dir = '/vol/projects/jnourisa/hiara/'
     TASK_GRN_BENCHMARK_DIR = '/home/jnourisa/projs/ongoing/task_grn_inference/'
 else:
     HIARA_DIR = '/Users/jno24/Documents/projs/ongoing/hiara/'
@@ -39,12 +39,8 @@ else:
 DATA_DIR = f'{base_dir}/datasets/'
 PRIOR_DIR = f'{base_dir}/prior/'
 
-if False:
-    OUTPUT_DIR = f'/home/jnourisa/projs/ongoing/hiara//output/'
-    GRNS_DIR = f'{base_dir}/output/grns'
-else:
-    OUTPUT_DIR = f'{base_dir}/output/'
-    GRNS_DIR = f'{OUTPUT_DIR}/grns'
+OUTPUT_DIR = f'{base_dir}/output/'
+GRNS_DIR = f'{OUTPUT_DIR}/grns'
     
 FEATURES_DIR = f'{OUTPUT_DIR}/features/'
 CLOCKS_DIR = f"{OUTPUT_DIR}/clock/"
@@ -77,12 +73,15 @@ AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife']
 DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
 CLOCK_TRAINING_COHORTS = [
                 'onek1k',
-                'abf300'
+                'abf300',
+                'soundlife'
                 ]
 CLOCK_TEST_COHORTS = [
                 'aida',
                 'perez_sle',
                 'zhang'
+                # 'onek1k',
+                # 'abf300'
                 ]
 # - palettes  
 colors_blind = [
@@ -115,8 +114,8 @@ palette_treatment = OrderedDict([
     ('Increase after treatment', '#FF7F0E'),   # bright orange (stays on warm side, but clearly distinct)
     ('Decrease after treatment', '#1E8449'),   # forest green (darker and more neutral)
 ])
-CELL_TYPES = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
-# CELL_TYPES = ['CD8T']
+# CELL_TYPES = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
+CELL_TYPES = ['CD4T', 'CD8T']
 palette_cell_types = {name: color for name, color in zip(CELL_TYPES, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}
 # - mapping
 mapping_major_2_minor = {

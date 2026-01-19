@@ -70,7 +70,7 @@ def retrieve_sig_stats(data_type='bulk', feature_type='tf_activity', filter_inco
     
     return stats
 
-def retrieve_feature_data(dataset, cell_type=None, data_type='bulk', feature_type='tf_activity', condition=None, suffix=''):
+def retrieve_feature_data(dataset, cell_type, data_type='bulk', feature_type='tf_activity', condition=None, suffix=''):
     if feature_type == 'gene_expression':
         adata = retrieve_adata(dataset=dataset, cell_type=cell_type, data_type=data_type, condition=condition)
         return adata

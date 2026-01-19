@@ -34,7 +34,8 @@ if __name__ == "__main__":
             tune_model=tune_model,
             output_dir=CLOCKS_DIR,
             version=version,
-            verbose=True
+            verbose=True,
+            scoring='spearman'
         )
         # model_dir = Path(temp_dir) / cell_type
         # model_dir.mkdir(parents=True, exist_ok=True)
