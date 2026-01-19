@@ -41,7 +41,7 @@ from hiara.src.config import get_config
 from hiara.src.feature_association.plots import (
     heamap_plot_minor_cell_types,
     plot_overlap,
-    plot_analysis_and_centrality,
+    plot_tf_act_central_tfs,
 )
 from hiara.src.utils.util import retrieve_net_consensus
 from hiara.src.pathway_analysis.util import pathway_kde_func
@@ -664,36 +664,11 @@ def plot_aging_experiment_heatmap(stats_sig, args):
             plt.close()
             print(f"    Saved: {output_path}")
 
-def plot_age_stratified_or_comparison(stats, stats_sig, args):
-    """
-    Plot age-stratified analysis (disease/aging) or aging-perturbation comparison.
-    This function handles disease, aging, and perturbation cases.
-    """
-    print(f"Generating {'age-stratified analysis' if (args.analysis_type == 'disease' or args.analysis_type == 'aging') else 'aging vs perturbation comparison'}...")
-    
-    dataset = args.dataset
-    analysis_type = args.analysis_type
-    target_cell_types = args.cell_types
-    top_aging_tfs = args.top_aging_tfs
-    output_dir = args.output_dir
-    feature_type = args.feature_type
-
-    palette_all = {**palette_trend, **palette_disease_effect, **palette_treatment}
-    
-    aging_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=feature_type).drop_duplicates(subset=['cell_type', 'gene'])
-
-    aging_stats_sig = aging_stats_sig[['gene', 'cell_type', 'slope']]
-    
-    if analysis_type == 'disease' or analysis_type == 'aging':
-        _plot_age_stratified_disease(stats, dataset, target_cell_types, top_aging_tfs, aging_stats_sig, palette_all, output_dir)
-    else:
-        _plot_perturbation_comparison(stats, dataset, target_cell_types, top_aging_tfs, aging_stats_sig, palette_all, output_dir)
-
-def _plot_age_stratified_disease(stats, disease_name, target_cell_types, top_aging_tfs, aging_stats_sig, palette_all, output_dir):
+def plot_central_tf_act_disease(stats, args):
     """Plot age-stratified analysis for disease data."""
+    aging_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=args.feature_type).drop_duplicates(subset=['cell_type', 'gene'])
     
     # Check if we have cmv_young and cmv_old configs
-    has_cmv_configs = 'config_label' in stats.columns and set(stats['config_label'].unique())
     if 'age_group' not in stats.columns:
         print("  Error: 'age_group' column not found in stats for age-stratified analysis")
         return
@@ -702,13 +677,8 @@ def _plot_age_stratified_disease(stats, disease_name, target_cell_types, top_agi
     
     stats['dataset'] = stats['dataset'].apply(lambda name: surrogate_names.get(name, name))
     
-    age_group_display_map = {
-        'Both age groups': 'Condition'
-    }
-    
-    for cell_type in target_cell_types:
+    for cell_type in args.cell_types:
         print(f"  Processing cell type: {cell_type}")
-        
         # --- Aging genes ---
         aging_df = aging_stats_sig[aging_stats_sig['cell_type'] == cell_type]
         net = retrieve_net_consensus(cell_type=cell_type)
@@ -731,27 +701,20 @@ def _plot_age_stratified_disease(stats, disease_name, target_cell_types, top_agi
             # display_name = age_group_display_map.get(age_group, age_group)
             stats_d['analysis'] = age_group
             # For soundlife aging or CMV analysis, use aging trend labels; otherwise use disease labels
-            if disease_name == 'soundlife' or has_cmv_configs:
-                stats_d['trend'] = ['Increase in aging' if x > 0 else 'Decrease in aging' for x in stats_d['slope']]
-            else:
-                stats_d['trend'] = ['Increase in disease' if x > 0 else 'Decrease in disease' for x in stats_d['slope']]
+            stats_d['trend'] = ['Increase in disease' if x > 0 else 'Decrease in disease' for x in stats_d['slope']]
             # stats_d['age_group'] = age_group
             stats_store.append(stats_d)
         
         stats_condition = pd.concat(stats_store)
-        
-        # Use display names for categorical ordering
-
-
         stats_condition['analysis'] = stats_condition['analysis'].astype(
             pd.CategoricalDtype(categories=age_groups, ordered=True)
         )
-        
         # --- Restrict to overlapping genes ---
         common_tfs = set(aging_df['gene']) & set(stats_condition['gene'])
         aging_df = aging_df[aging_df['gene'].isin(common_tfs)]
         
         # Order genes by degree
+        top_aging_tfs = args.top_aging_tfs
         top_tfs = aging_df.sort_values('degree', ascending=False).head(top_aging_tfs)['gene'].unique()
         tf_order = list(top_tfs)
         
@@ -762,8 +725,8 @@ def _plot_age_stratified_disease(stats, disease_name, target_cell_types, top_agi
         
         # Set TF categorical order
         df['gene'] = pd.Categorical(df['gene'], categories=tf_order, ordered=True)
-        
-        plot_analysis_and_centrality(
+        palette_all = {**palette_trend, **palette_disease_effect}
+        plot_tf_act_central_tfs(
             df, 
             all_groups=age_groups,  # Use display names instead of original age_groups
             figsize=(2.1, 4), 
@@ -774,21 +737,22 @@ def _plot_age_stratified_disease(stats, disease_name, target_cell_types, top_agi
         
         plt.tight_layout()
         
-        output_path = os.path.join(output_dir, f'central_aging_tfs_overlap_{cell_type}.png')
+        output_path = os.path.join(args.output_dir, f'central_tfs_{cell_type}.png')
         plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
         print(f"    Saved: {output_path}")
 
-def _plot_perturbation_comparison(stats, dataset, target_cell_types, top_aging_tfs, aging_stats_sig, palette_all, output_dir):
+def plot_central_tf_act_perturbation(stats, args):
     """Plot aging vs perturbation comparison."""
     stats_df = stats.copy()
+    aging_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=args.feature_type).drop_duplicates(subset=['cell_type', 'gene'])
     
-    cfg = get_config(dataset)
+    cfg = get_config(args.dataset)
     
     # Use comparison column if available, otherwise fall back to condition
-    comparisons = stats_df[stats_df['cell_type'].isin(target_cell_types)]['comparison'].unique()
+    comparisons = stats_df[stats_df['cell_type'].isin(args.cell_types)]['comparison'].unique()
     
-    for cell_type in target_cell_types:
+    for cell_type in args.cell_types:
         print(f"  Processing cell type: {cell_type}")
         
         # Aging genes
@@ -844,18 +808,14 @@ def _plot_perturbation_comparison(stats, dataset, target_cell_types, top_aging_t
         
         top_tfs = df.drop_duplicates(subset=['cell_type', 'gene']).sort_values(
             'degree', ascending=False
-        ).head(top_aging_tfs)['gene'].unique()
+        ).head(args.top_aging_tfs)['gene'].unique()
         df = df[df['gene'].isin(top_tfs)].sort_values('degree', ascending=False)
         df['degree'] = df['degree'].div(df['degree'].max())  # Normalize degree
-        
-        # Filter palette to only include trends that exist in the data
-        available_trends = df['trend'].unique() if 'trend' in df.columns else []
-        filtered_palette = {k: v for k, v in palette_all.items() if k in available_trends}
-        
-        plot_analysis_and_centrality(
+        palette_all = {**palette_trend, **palette_treatment}
+        plot_tf_act_central_tfs(
             df, 
             all_groups=comparisons, 
-            palette_all=filtered_palette if filtered_palette else palette_all, 
+            palette_all=palette_all, 
             figsize=(2.5, 4), 
             ax2_margins={'x': 0.2, 'y': 0.02}, 
             hide_ylabels=False, 
@@ -866,13 +826,13 @@ def _plot_perturbation_comparison(stats, dataset, target_cell_types, top_aging_t
         plt.tight_layout()
         plt.title('')
         
-        output_path = os.path.join(output_dir, f'aging_condition_trend_{cell_type}_{dataset}.png')
+        output_path = os.path.join(args.output_dir, f'central_tfs_{cell_type}_{args.dataset}.png')
         output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
         plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
         print(f"    Saved: {output_path}")
 
-def _plot_disease_case_tfs(args):
+def plot_disease_case_tfs(args):
     """Plot healthy vs disease trends for specific genes."""
     # Determine condition column based on dataset
     condition_col = 'condition'
@@ -898,13 +858,13 @@ def _plot_disease_case_tfs(args):
         plt.close()
         print(f"  Saved: {output_path}")
 
-def _plot_ctr_condition_donor_level(args):
+def plot_ctr_condition_donor_level(args):
     """Plot donor-level perturbation effects for case genes."""    
     stats = retrieve_features_stats(
         dataset=args.dataset, data_type=args.data_type, feature_type=args.feature_type, multi_cohort=False)
     comparisons = stats['comparison'].unique()
 
-    bbox_to_anchor = (1.05, 1)
+    bbox_to_anchor = (1.01, 1)
     case_tfs = args.case_tfs
     
     for cell_type in args.cell_types:
@@ -913,45 +873,100 @@ def _plot_ctr_condition_donor_level(args):
         adata_df[['donor_id', 'condition']] = adata.obs[['donor_id', 'condition']].values
 
         for comparison in comparisons:
-            fig, axes = plt.subplots(1, 2, figsize=(2.5, 1.2), sharex=False, sharey=False)
+            fig, axes = plt.subplots(1, len(case_tfs), figsize=(1.5 * len(case_tfs), 1.2), sharex=False, sharey=False)
             for i, case_tf in enumerate(case_tfs):
+                ax = axes[i] if len(case_tfs) > 1 else axes
                 print(f"    Plotting {case_tf} in {cell_type} for {comparison}...")
                 
                 stats_case = stats[
-                    # (stats['condition'] == comparison) & 
-                    # (stats['gene'] == case_tf) & 
+                    (stats['comparison'] == comparison) & 
+                    (stats['gene'] == case_tf) & 
                     (stats['cell_type'] == cell_type)
                 ].copy()
-                print(stats_case.head())
-                aa
                 
                 if len(stats_case) == 0:
                     print(f"    Warning: No data for {case_tf} in {cell_type}")
                     continue
                 
-                ax = axes[i]
-                
                 ctr = stats_case['ctrl'].unique()
                 assert len(ctr) == 1, "Multiple control groups found"
                 ctr = ctr[0]
-                treatment = stats_case['treatment'].unique()
+                treatment = stats_case['condition'].unique()
                 assert len(treatment) == 1, "Multiple treatment groups found"
                 treatment = treatment[0]
                 p_value_adj = stats_case['p_value_adj'].values[0]
-                #TODO: strip plot between ctr and treatment colored for donors and add p-value annotation
-                sns.stripplot(
-                    data=feature values for ctr and treatment,
-                    color-donor
+                
+                # Filter data for control and treatment groups
+                plot_data = adata_df[
+                    (adata_df['condition'].isin([ctr, treatment])) & 
+                    (adata_df[case_tf].notna())
+                ][['donor_id', 'condition', case_tf]].copy()
+
+                # Create strip plot colored by donor
+                plot_data['condition'] = plot_data['condition'].astype(
+                    pd.CategoricalDtype(categories=[ctr, treatment], ordered=True)
                 )
-                if i == 0:
-                    ax.get_legend().remove()
+                plot_data['condition'] = plot_data['condition'].apply(lambda x: surrogate_names.get(x, x))
+                
+                donors = plot_data['donor_id'].unique()
+                donor_map = {donor: f'Donor {i+1}' for i, donor in enumerate(donors)}
+                plot_data['donor_id'] = plot_data['donor_id'].map(donor_map)
+                
+                sns.stripplot(
+                    data=plot_data,
+                    x='condition',
+                    y=case_tf,
+                    hue='donor_id',
+                    ax=ax,
+                    dodge=False,
+                    jitter=True,
+                    alpha=0.7,
+                    size=4,
+                    palette='tab10'
+                )
+
+                # rotate x-axis labels
+                ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+                ax.margins(x=0.3, y=0.3)
+                # Add p-value annotation
+                y_max = plot_data[case_tf].max()
+                y_min = plot_data[case_tf].min()
+                y_range = y_max - y_min
+                y_pos = y_max + 0.1 * y_range
+                
+                # if p_value_adj < 0.001:
+                #     sig_text = '***'
+                # elif p_value_adj < 0.01:
+                #     sig_text = '**'
+                # elif p_value_adj < 0.05:
+                #     sig_text = '*'
+                # else:
+                #     sig_text = 'ns'
+                sig_text = f'p={p_value_adj:.3f}'
+                ax.text(0.5, y_pos, sig_text, ha='center', va='bottom', fontsize=7)
+                ax.plot([0, 1], [y_pos - 0.02 * y_range, y_pos - 0.02 * y_range], 'k-', linewidth=1)
+                
+                ax.set_xlabel('')
+                ax.set_ylabel(case_tf if i == 0 else '', fontsize=10)
+                ax.set_title(case_tf, fontsize=10, pad=5)
+                if i == len(case_tfs) - 1:
+                    ax.legend(bbox_to_anchor=bbox_to_anchor, loc='upper left', fontsize=7, title_fontsize=8, frameon=False, 
+                            labelspacing=0.2,
+                            handletextpad=0.4,
+                            borderpad=0.3,
+                            columnspacing=0.6
+                            )
                 else:
-                    ax.set_ylabel('', fontsize=10)
-                    ax.spines[['left']].set_visible(False)
-            
+                    ax.get_legend().remove()
+
+                if i != 0:
+                    ax.set_ylabel('')
+                    ax.set_yticklabels([])
+               
+
             output_path = os.path.join(
                 args.output_dir, 
-                f'donor_level_perturbation_effect_{comparison}_{cell_type}.png'
+                f'{comparison}_{cell_type}.png'
             )
             output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
             plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
@@ -1251,7 +1266,7 @@ def main():
     print(f"Feature type: {args.feature_type}")
     print("="*60)
 
-    args.case_tfs = ['LEF1', 'ZEB2']
+    args.case_tfs = ['KLF6', 'PRDM1' ,'LEF1', 'ZEB2']
     
     # Load statistics
     stats = retrieve_features_stats(
@@ -1273,21 +1288,18 @@ def main():
         )
     if args.dataset == 'perez_sle':
         plot_aging_disease_overlap_heatmap(stats_sig, args)
-        plot_age_stratified_or_comparison(
-                stats,
-                stats_sig, 
-                args
-            )
-        
-        _plot_disease_case_tfs(args)
+        plot_central_tf_act_disease(stats, args)
+        plot_disease_case_tfs(args)
+
     if args.dataset == 'op':
         if not args.skip_overview:
                 plot_overview_heatmap(stats_sig, args)
-        plot_aging_overlap(
-            stats_sig, 
-            args
-        )     
-        _plot_ctr_condition_donor_level(args) 
+        # plot_aging_overlap(
+        #     stats_sig, 
+        #     args
+        # )     
+        plot_central_tf_act_perturbation(stats, args)
+        plot_ctr_condition_donor_level(args) 
     if args.dataset == 'CXCL9':
         # if not args.skip_overview:
         #         plot_overview_heatmap(stats_sig, args)
@@ -1295,7 +1307,9 @@ def main():
         #     stats_sig, 
         #     args
         # )     
-        _plot_ctr_condition_donor_level(args) 
+        
+        plot_central_tf_act_perturbation(stats, args)
+        # plot_ctr_condition_donor_level(args) 
   
     
 if __name__ == '__main__':
