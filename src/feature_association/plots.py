@@ -422,7 +422,7 @@ def plot_trend_sle_case(adata, tf='LEF1', cell_type='CD8T'):
     plt.suptitle(f'{tf}', fontsize=10, fontweight='bold', y=.9)
     plt.tight_layout()
 
-def plot_analysis_and_centrality(df, all_groups, palette_all, feature_col='gene', figsize=(3.5, 5), plot_centrality=True,
+def plot_tf_act_central_tfs(df, all_groups, palette_all, feature_col='gene', figsize=(3.5, 5), plot_centrality=True,
                                 ax2_margins={'y': 0.1, 'x': 0.1}, hide_ylabels=False, show_legend=True):
     
     # stats_d_sig = stats_d[stats_d['p_value_adj'] < 0.05]

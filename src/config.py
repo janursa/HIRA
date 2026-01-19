@@ -65,7 +65,13 @@ surrogate_names = {
                     'parsebioscience': 'Parse Bioscience', 
                     'soundlife': 'SoundLife',
                     'CXCL9': 'CXCL9',
-                    'healthy': 'Healthy'
+                    'healthy': 'Healthy',
+                    
+                    '24 h RPMI + ruxolitinib': 'RPMI + Ruxolitinib',
+                    '24 h LPS + ruxolitinib': 'LPS + Ruxolitinib',
+                    '24 h LPS': 'LPS',
+                    '24 h RPMI': 'RPMI',
+                    'Dimethyl Sulfoxide': 'DMSO'
                     }
 # - datasets
 ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife', 'zhang']
