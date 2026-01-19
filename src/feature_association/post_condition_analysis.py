@@ -938,53 +938,15 @@ def _plot_ctr_condition_donor_level(args):
                 assert len(treatment) == 1, "Multiple treatment groups found"
                 treatment = treatment[0]
                 p_value_adj = stats_case['p_value_adj'].values[0]
-                
-                # Filter data for control and treatment groups
-                plot_data = adata_df[
-                    (adata_df['condition'].isin([ctr, treatment])) & 
-                    (adata_df[case_tf].notna())
-                ][['donor_id', 'condition', case_tf]].copy()
-                print(plot_data)
-                aaa
-                # Create strip plot colored by donor
+                #TODO: strip plot between ctr and treatment colored for donors and add p-value annotation
                 sns.stripplot(
-                    data=plot_data,
-                    x='condition',
-                    y=case_tf,
-                    hue='donor_id',
-                    ax=ax,
-                    dodge=False,
-                    alpha=0.7,
-                    size=4,
-                    palette='tab10'
+                    data=feature values for ctr and treatment,
+                    color-donor
                 )
-                
-                # Add p-value annotation
-                y_max = plot_data[case_tf].max()
-                y_min = plot_data[case_tf].min()
-                y_range = y_max - y_min
-                y_pos = y_max + 0.1 * y_range
-                
-                if p_value_adj < 0.001:
-                    sig_text = '***'
-                elif p_value_adj < 0.01:
-                    sig_text = '**'
-                elif p_value_adj < 0.05:
-                    sig_text = '*'
-                else:
-                    sig_text = 'ns'
-                
-                ax.text(0.5, y_pos, sig_text, ha='center', va='bottom', fontsize=10)
-                ax.plot([0, 1], [y_pos - 0.02 * y_range, y_pos - 0.02 * y_range], 'k-', linewidth=1)
-                
-                ax.set_xlabel('')
-                ax.set_ylabel(case_tf if i == 0 else '', fontsize=10)
-                ax.set_title(case_tf, fontsize=10, pad=5)
-                
                 if i == 0:
-                    ax.legend(title='Donor', bbox_to_anchor=bbox_to_anchor, loc='upper left', fontsize=8, title_fontsize=8)
-                else:
                     ax.get_legend().remove()
+                else:
+                    ax.set_ylabel('', fontsize=10)
                     ax.spines[['left']].set_visible(False)
             
             output_path = os.path.join(

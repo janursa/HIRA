@@ -38,12 +38,11 @@ def format_data(adata, dataset_name):
         gene_name = 'feature_name'
     elif 'features' in adata.var.columns:
         gene_name = 'features'
-    elif dataset_name == 'abf300':
+    elif dataset_name in ['abf300', 'op']:
         gene_name = 'gene_name'
         adata.var.index.name = gene_name
         adata.var = adata.var.reset_index()
     else:
-        
         print('\n',adata.var)
         raise ValueError("No gene name column found in adata.var")
     adata.var.rename(columns={gene_name: 'gene_name'}, inplace=True)
@@ -53,6 +52,7 @@ def format_data(adata, dataset_name):
     adata.obs.rename(columns={'orig.ident': 'dataset'}, inplace=True)
     adata.obs = adata.obs.astype('str')
     adata.obs['donor_age'] = adata.obs['age'].astype(str) + '_' + adata.obs['donor_id'].astype(str)
+    print(adata.obs.head(), flush=True)
     return adata
 
 ### QC Check

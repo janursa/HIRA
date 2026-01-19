@@ -65,14 +65,14 @@ def main(par):
         print(f'Kept {adata.shape[0]} cells from 2 groups', flush=True)
 
     else:
+        del adata.uns
+        del adata.raw
+        del adata.layers
+        del adata.obsm
+        del adata.varm
+        del adata.varp
         print('Reading to memory...', flush=True)
         adata = adata.to_memory()
-    del adata.uns
-    del adata.raw
-    del adata.layers
-    del adata.obsm
-    del adata.varm
-    del adata.varp
 
     # if dataset == 'CXCL9':
     #     adata = adata[adata.obs['treatment'].isin(['24 h RPMI', '24 h RPMI + ruxolitinib', '24 h LPS + ruxolitinib', '24 h LPS'])] 

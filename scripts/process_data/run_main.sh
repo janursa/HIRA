@@ -34,15 +34,16 @@ set -e
 RUN_TEST=false
 RUN_PROCESS_DATASET=true
 RUN_PSEUDOBULK=true
-MAIN_DIR='/vol/projects/jnourisa/'
+MAIN_DIR='/vol/projects/jnourisa/hiara/'
+
 
 # datasets to include -> preprocessing 
-datasets="  CXCL9" # data12 data7_allTPs_jalil data1 SLE 
+datasets="  op" # data12 data7_allTPs_jalil data1 SLE 
 
 for dataset in $datasets; do
         
         if [ "$dataset" = "op" ]; then
-                input_file="/home/jnourisa/projs/ongoing/task_grn_inference/resources/datasets_raw/op_perturbation_sc_counts.h5ad"
+                input_file="/vol/projects/jnourisa/genernbi/resources/datasets_raw/op_perturbation_sc_counts.h5ad"
         elif [ "$dataset" = "CXCL9" ]; then
                 input_file="/vol/projects/CIIM/Healthy_Single_Cell_Data/count_matrix/CXCL9_TI.h5ad"
         else
