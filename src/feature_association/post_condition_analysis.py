@@ -841,8 +841,8 @@ def plot_disease_case_tfs(args):
         fig, ax = plt.subplots(1, 1, figsize=(2, .6), sharey=False, sharex=False)
         
         plot_healthy_disease_trend(
-            dataset=dataset, 
-            data_type=data_type, 
+            dataset=args.dataset, 
+            data_type=args.data_type, 
             cell_type=cell_type, 
             case_tf=case_tf, 
             condition_col=condition_col, 

@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 from grnimmuneclock import train_aging_clock
-from hiara import CELL_TYPES, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, clock_version
+from hiara import CELL_TYPES, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, clock_version, CLOCK_CV_SCORING
     
 
 # def wrapper_build_model_all(par):
@@ -35,7 +35,7 @@ if __name__ == "__main__":
             output_dir=CLOCKS_DIR,
             version=version,
             verbose=True,
-            scoring='spearman'
+            scoring=CLOCK_CV_SCORING
         )
         # model_dir = Path(temp_dir) / cell_type
         # model_dir.mkdir(parents=True, exist_ok=True)

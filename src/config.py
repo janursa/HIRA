@@ -80,7 +80,7 @@ DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
 CLOCK_TRAINING_COHORTS = [
                 'onek1k',
                 'abf300',
-                'soundlife'
+                # 'soundlife'
                 ]
 CLOCK_TEST_COHORTS = [
                 'aida',
@@ -89,6 +89,8 @@ CLOCK_TEST_COHORTS = [
                 # 'onek1k',
                 # 'abf300'
                 ]
+NET_WEIGHT_THRESHOLD = None 
+CLOCK_CV_SCORING = 'spearman'  # 'r2' or 'spearman'
 # - palettes  
 colors_blind = [
           '#E69F00',  # Orange
@@ -120,8 +122,8 @@ palette_treatment = OrderedDict([
     ('Increase after treatment', '#FF7F0E'),   # bright orange (stays on warm side, but clearly distinct)
     ('Decrease after treatment', '#1E8449'),   # forest green (darker and more neutral)
 ])
-# CELL_TYPES = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
-CELL_TYPES = ['CD4T', 'CD8T']
+CELL_TYPES = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
+# CELL_TYPES = ['CD4T', 'CD8T']
 palette_cell_types = {name: color for name, color in zip(CELL_TYPES, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}
 # - mapping
 mapping_major_2_minor = {

@@ -6,7 +6,7 @@ from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
 import scanpy as sc
 from pathlib import Path
-from hiara.src.config import DISCOVERY_COHORTS, mapping_minor_2_major, grn_consensus_min_degree, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR
+from hiara.src.config import DISCOVERY_COHORTS, mapping_minor_2_major, grn_consensus_min_degree, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR, NET_WEIGHT_THRESHOLD
 
 # increase width of output display
 pd.set_option('display.max_columns', None)
@@ -96,8 +96,8 @@ def retrieve_net(dataset, cell_type, promotor_only=False, top_n=100_000, data_ty
     if promotor_only:
         net = net[net['promotor_based']]
     net = net.sort_values(by='weight', ascending=False, key=abs).head(top_n)
-    if True:
-        net = net[net['weight'] > 0.05]
+    if NET_WEIGHT_THRESHOLD is not None:
+        net = net[net['weight'] > NET_WEIGHT_THRESHOLD]
     return net[['source', 'target', 'weight', 'cell_type']]
 
 # def retrieve_nets(datasets, cell_type, promotor_only=False):
@@ -113,8 +113,8 @@ def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=grn
     save_name = f"{GRNS_DIR}/consensus_net_{cell_type}_minDegree{min_degree}{'_promotorOnly' if promotor_only else ''}.csv"
     if Path(save_name).exists() and not force:
         # print('Loading existing consensus GRN for', cell_type, 'with min degree', min_degree)
-        net_mean_z = pd.read_csv(save_name)
-        return net_mean_z
+        net_mean = pd.read_csv(save_name)
+        return net_mean
     print('Retrieving consensus GRN for', cell_type, 'with min degree', min_degree)
     from scipy.stats import zscore
     net_store = []
