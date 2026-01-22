@@ -4,7 +4,7 @@ set -e
 
 # echo "---------------------------------------------------------- Aging -----------------------------------------------------------------"
 # python src/feature_association/run_analysis.py --feature-type tf_activity --data-type bulk --analysis-mode multi-cohort  --association-type continous
-python src/feature_association/post_aging_analysis.py --feature-type tf_activity
+# python src/feature_association/post_aging_analysis.py --feature-type tf_activity
 
 # echo "---------------------------------------------------------- Soundlife -----------------------------------------------------------------"
 # python src/feature_association/run_analysis.py --analysis-mode single-cohort --datasets soundlife --cell-types all --data-type bulk --feature-type tf_activity --association-type continous 

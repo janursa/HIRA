@@ -16,6 +16,11 @@ def plot_scatter_age_vs_predictedAge(df, dataset='', ax=None, hue='sex', palette
         fig, ax = plt.subplots(figsize=(4, 4))
     sns.scatterplot(data=df, x='age', y='predicted_age', s=s, alpha=alpha, ax=ax, palette=palette, hue=hue)
     
+    # Add ideal fit line (y=x)
+    min_age = df['age'].min()
+    max_age = df['age'].max()
+    ax.plot([min_age, max_age], [min_age, max_age], 'k--', linewidth=1.5, alpha=0.5, label='Ideal fit')
+    
     # Move legend to the right side
     if ax.get_legend():
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), frameon=False)
