@@ -7,11 +7,336 @@ from pandas.api.types import CategoricalDtype
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
+import os
 
 
-from hiara.src.config import CELL_TYPES, OUTPUT_DIR, colors_blind, DISCOVERY_COHORTS ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
+from hiara.src.config import CELL_TYPES, OUTPUT_DIR, get_config, colors_blind, DISCOVERY_COHORTS ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
 from hiara.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data
 from hiara.src.utils.util import retrieve_net, retrieve_adata
+from hiara import retrieve_sig_stats, PLOTS_DIR
+
+
+
+
+
+## Sig TFs counts
+def plot_sig_tf_counts(args):
+    aging_stats_sig = retrieve_sig_stats(data_type=args.data_type).drop_duplicates(subset=['cell_type', 'gene'])
+    aging_stats_sig['cell_type'] = pd.Categorical(aging_stats_sig['cell_type'], categories=CELL_TYPES, ordered=True)
+    plot_sig_tfs_stats(aging_stats_sig, figsize=(2, 1.5), palette=palette_trend_2)
+    file_name = f"{PLOTS_DIR}/aging_tfs_count.png"
+    print(f"Saving figure to {file_name}")
+    plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+
+
+## Identify sig networks
+def plot_sig_networks(data_type = 'bulk'):
+    from hiara.src.feature_association.helper import determine_sig_network
+    
+    
+
+    if False:
+        if True:
+            determine_sig_network(data_type, min_degree=3)
+        sig_net = retrieve_sig_net()
+        sig_net_size = sig_net.groupby('cell_type').size()
+        sig_net_size = sig_net_size.reindex(CELL_TYPES, fill_value=0).reset_index()
+        sig_net_size.columns = ['cell_type', 'edge_count']
+
+        # Ensure categorical order for plotting
+        sig_net_size['cell_type'] = pd.Categorical(sig_net_size['cell_type'], categories=CELL_TYPES, ordered=True)
+        sig_net_size = sig_net_size.sort_values('cell_type')
+
+        # Plot
+        fig, ax = plt.subplots(figsize=(1.5, 2))
+        ax.barh(sig_net_size['cell_type'], sig_net_size['edge_count'], color=colors_blind[5], alpha=.5)
+
+        # Aesthetics
+        ax.invert_yaxis()
+        ax.set_xlabel('TF-target pair')
+        ax.set_ylabel('')
+        ax.spines[['top', 'right']].set_visible(False)
+        ax.margins(y=0.1, x=0.1)
+        # ax.set_xscale('log')
+        ax.set_title('Aging GRNs size', weight='bold', fontsize=10, pad=15)
+
+
+    if False:
+        sig_net = retrieve_sig_net()
+        n_top = 20
+        cell_type = 'CD8T'
+        df = sig_net[sig_net['cell_type'] == cell_type]
+
+        # Compute top source and target degrees
+        source_counts = df['source'].value_counts().head(n_top).reset_index()
+        source_counts.columns = ['source', 'degree']
+        source_info = df[['source', 'trend_source']].drop_duplicates(subset='source')
+        source_df = source_counts.merge(source_info, on='source', how='left')
+
+        target_counts = df['target'].value_counts().head(n_top).reset_index()
+        target_counts.columns = ['target', 'degree']
+        target_info = df[['target', 'trend_target']].drop_duplicates(subset='target')
+        target_df = target_counts.merge(target_info, on='target', how='left')
+
+        # Setup plot
+        fig, axes = plt.subplots(1, 2, figsize=(3, 4), sharey=False)
+
+        # Plot sources
+        source_colors = source_df['trend_source'].map(palette_trend).values
+        target_colors = target_df['trend_target'].map(palette_trend).values[::-1]
+        axes[0].barh(source_df['source'], source_df['degree'], color=source_colors)
+        axes[0].set_title('TFs', fontsize=10)
+        axes[0].invert_yaxis()
+        axes[0].set_xlabel('Out-degree')
+        axes[0].spines[['top', 'right']].set_visible(False)
+
+        # Plot targets
+        axes[1].barh(target_df['target'][::-1], target_df['degree'][::-1], color=target_colors)
+        axes[1].set_title('Targets', fontsize=10)
+        axes[1].set_xlabel('In-degree')
+        axes[1].spines[['top', 'right']].set_visible(False)
+
+        # Title and layout
+        fig.suptitle(f'Aging TFs and targets: {cell_type}', fontsize=10, weight='bold', y=.95)
+        from matplotlib.patches import Patch
+
+        legend_elements = [Patch(facecolor=color, label=label) for label, color in palette_trend_2.items()]
+        # fig.legend(handles=legend_elements, bbox_to_anchor=(1.5, .8), fontsize=10, frameon=False, title='Trend', title_fontsize=10)
+        fig.tight_layout()
+
+
+
+        
+def plot_aging_overlap(stats_sig, cell_types, args):
+    """Plot overlap between condition (disease/perturbation) and aging genes."""
+    print("Generating aging overlap plot...")
+    
+    dataset = args.dataset
+    included_cell_types = cell_types
+    agreement = args.agreement
+    output_dir = args.output_dir
+    feature_type = args.feature_type
+    
+    cfg = get_config(dataset)
+    aging_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=feature_type).drop_duplicates(subset=['cell_type', 'gene'])
+    aging_stats_sig = aging_stats_sig[['gene', 'cell_type', 'slope']].copy()
+
+    comparisons = stats_sig['comparison'].unique()
+    
+    print('Stats of comparison:', stats_sig.groupby(['cell_type', 'comparison'])['gene'].nunique())
+    # fig, axes = plt.subplots(1, len)
+    for comparison in comparisons:
+        fig, axes = plt.subplots(1, len(included_cell_types), figsize=(1.5*len(included_cell_types)+1, 2))
+        for i, cell_type in enumerate(included_cell_types):
+            ax = axes[i] if len(included_cell_types) > 1 else axes  
+            # Filter stats
+            stats_sig_sub = stats_sig[(stats_sig['comparison'] == comparison) & (stats_sig['cell_type'] == cell_type)].reset_index(drop=True)
+            
+            if len(stats_sig_sub) == 0:
+                print(f"    Warning: No data for {'comparison ' + comparison + ' -- ' + cell_type}")
+                continue
+            
+            # Rename slope to slope_condition to avoid conflicts when merging
+            stats_sig_sub_renamed = stats_sig_sub[['gene', 'slope']].rename(columns={'slope': 'slope_condition'})
+            
+            # Get aging data for this cell type (keep cell_type column for plot_overlap)
+            aging_stats_sig_ct = aging_stats_sig[aging_stats_sig['cell_type'] == cell_type][['gene', 'cell_type', 'slope']].copy()
+            
+            # Merge aging slopes with condition slopes
+            merged = aging_stats_sig_ct[['gene', 'slope']].merge(
+                stats_sig_sub_renamed, 
+                on='gene', 
+                how='inner'
+            )
+              
+            if len(merged) > 0:
+                same_direction = (np.sign(merged['slope']) == np.sign(merged['slope_condition'])).sum()
+                opposite_direction = (np.sign(merged['slope']) != np.sign(merged['slope_condition'])).sum()
+                total_overlap = len(merged)
+                
+                print(f"{comparison} Aging genes {len(aging_stats_sig_ct)}, Condition sig genes {len(stats_sig_sub)}, Overlap {total_overlap}")
+                print(f"      Same direction: {same_direction} ({same_direction/total_overlap*100:.1f}%)")
+                print(f"      Opposite direction: {opposite_direction} ({opposite_direction/total_overlap*100:.1f}%)")
+
+            # Prepare data for plot_overlap (rename slope to slope_condition for consistency with plot function)
+            stats_sig_sub_for_plot = stats_sig_sub[['gene', 'cell_type', 'slope']].reset_index(drop=True).rename(columns={'slope': 'slope_condition'})
+
+            plot_overlap(
+                stats_sig_sub_for_plot,  # RIGHT side (Sound Life sig genes)
+                aging_stats_sig_ct.reset_index(drop=True),  # LEFT side (Reference aging genes - baseline)
+                col='cell_type', 
+                how='left', 
+                agreement=agreement, 
+                legend=True, 
+                figsize=(1.5, 2), 
+                legend_loc=(1, 0.5),
+                ax=ax
+            )
+            
+            if i != len(included_cell_types) - 1:
+                ax.legend_.remove()
+            if i != 0:
+                ax.set_ylabel('')
+        comparison = comparison.replace('(', '_').replace(')', '_').replace(':', '_').replace(' ', '_')
+        name_suffix = f'{dataset}_{comparison}'
+        plt.tight_layout()
+        output_path = os.path.join(output_dir, f'ref_overlap_{name_suffix}.png')
+        output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
+        plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+        plt.close()
+        print(f"    Saved: {output_path}")
+
+def plot_directional_consistency_scatter(stats, cell_types, args):
+    feature_type = args.feature_type
+    dataset = args.dataset
+    included_cell_types = cell_types
+    output_dir = args.output_dir
+    agreement = args.agreement
+
+    if agreement == 'same':
+        opposing_color = 'indianred'
+        consistent_color = 'darkseagreen' 
+    elif agreement == 'opposite':
+        opposing_color = 'darkseagreen'
+        consistent_color = 'indianred'
+
+    else:
+        raise ValueError(f"Unsupported agreement type: {agreement}")
+    
+    if dataset == 'soundlife':
+        x_label = 'Validation analysis \n(significance)'
+        y_label = 'Discovery analysis \n(significance)'
+        association_col = '-log10_p_adj'
+        label_consistent = 'Consistent \n ({} TFs)'
+        label_opposing = 'Opposing \n ({} TFs)'
+        
+    elif dataset == 'parsebioscience':
+        x_label = 'IL10 treatment \n (significance)'
+        y_label = 'Natural aging \n (significance)'
+        association_col = '-log10_p_adj'
+        label_consistent = 'Acceleration \n ({} TFs)'
+        label_opposing = 'Rejuvenation \n ({} TFs)'
+
+    else:
+        x_label = 'Age association \n(condition analysis)'
+        y_label = 'Age association \n(Natural aging)'
+        association_col = '-log10_p_adj'
+    # Load reference aging genes (only significant)
+    ref_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=feature_type)
+    ref_stats_sig = ref_stats_sig.groupby(['cell_type', 'gene']).agg({'slope': 'mean', 'meta_p_adj': 'min'}).reset_index()
+    all_cell_data = []
+    for cell_type in included_cell_types:
+        if cell_type not in stats['cell_type'].unique():
+            print(f"  Warning: No data for {cell_type}")
+            continue
+        sl_ct = stats[stats['cell_type'] == cell_type].copy()
+        ref_ct = ref_stats_sig[ref_stats_sig['cell_type'] == cell_type].copy()
+        # Merge: keep only TFs that are significant in reference aging
+        merged = ref_ct.merge(
+            sl_ct[['gene', 'slope', 'p_value_adj']],
+            on='gene',
+            how='left',
+            suffixes=('_ref', '_sl')
+        )
+        missing_merged = merged[merged['slope_sl'].isna()]
+        assert len(missing_merged) == 0, f"  Error: Missing data for {cell_type} in validation analysis: {missing_merged['gene'].tolist()}. Probably different conseensus was used for aging and condition analysis"
+        merged['consistent'] = np.sign(merged['slope_ref']) == np.sign(merged['slope_sl'])
+        merged['cell_type'] = cell_type
+
+        merged['-log10_p_adj_sl'] = -np.log10(merged['p_value_adj'] + 1e-300) * np.sign(merged['slope_sl'])
+        merged['-log10_p_adj_ref'] = -np.log10(merged['meta_p_adj'] + 1e-300) * np.sign(merged['slope_ref'])
+        
+        all_cell_data.append(merged)
+        
+        # print(f"  {cell_type}: {len(merged)} TFs")
+        # print(f"    Consistent: {merged['consistent'].sum()} ({merged['consistent'].sum()/len(merged)*100:.1f}%)")
+        # print(f"    Inconsistent: {(~merged['consistent']).sum()} ({(~merged['consistent']).sum()/len(merged)*100:.1f}%)")
+    
+    if not all_cell_data:
+        print("  Warning: No data to plot")
+        return
+    
+    # Combine all cell types
+    combined_data = pd.concat(all_cell_data, ignore_index=True)
+    
+    # Create grouped plot
+    fig, axes = plt.subplots(1, len(included_cell_types), figsize=(1.8 * len(included_cell_types) + 1, 2.7), sharey=True)
+    
+    if len(included_cell_types) == 1:
+        axes = [axes]
+    
+    for idx, cell_type in enumerate(included_cell_types):
+        ax = axes[idx]
+        cell_data = combined_data[combined_data['cell_type'] == cell_type]
+        if len(cell_data) == 0:
+            continue
+        consistent = cell_data[cell_data['consistent']]
+        inconsistent = cell_data[~cell_data['consistent']]
+        
+        # Plot inconsistent 
+        s=10
+        linewidths=0.1
+        if len(inconsistent) > 0:
+            ax.scatter(
+                inconsistent[f'{association_col}_sl'],
+                inconsistent[f'{association_col}_ref'],
+                c=opposing_color,
+                s=s,
+                alpha=0.6,
+                label=label_opposing.format(len(inconsistent)),
+                edgecolors='darkred',
+                linewidths=linewidths
+            )
+        
+        # Plot consistent 
+        if len(consistent) > 0:
+            ax.scatter(
+                consistent[f'{association_col}_sl'],
+                consistent[f'{association_col}_ref'],
+                c=consistent_color,
+                s=s,
+                alpha=0.6,
+                label=label_consistent.format(len(consistent)),
+                edgecolors='darkgreen',
+                linewidths=linewidths
+            )
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.axhline(y=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
+        ax.axvline(x=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
+        
+        ax.set_xlabel(x_label, fontsize=10)
+        if idx == 0:
+            ax.set_ylabel(y_label, fontsize=10)
+        ax.set_title(f'{cell_type}', fontsize=12, pad=30)
+        ax.grid(False)
+
+        from matplotlib.lines import Line2D
+        legend_elements = []
+        markersize=5
+        if len(inconsistent) > 0:
+            legend_elements.append(
+                Line2D([0], [0], marker='o', color='w', 
+                       markerfacecolor=opposing_color, markersize=markersize,
+                       markeredgecolor='darkred', markeredgewidth=0.5,
+                       label=label_opposing.format(len(inconsistent)))
+            )
+        if len(consistent) > 0:
+            legend_elements.append(
+                Line2D([0], [0], marker='o', color='w', 
+                       markerfacecolor=consistent_color, markersize=markersize,
+                       markeredgecolor='darkgreen', markeredgewidth=0.5,
+                       label=label_consistent.format(len(consistent)))
+            )
+        ax.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 1.35), 
+                 frameon=False, fontsize=8, ncol=2, columnspacing=-.2)
+    
+    plt.tight_layout()
+    output_path = os.path.join(output_dir, f'consistency_scatter_{dataset}.png')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"  Saved: {output_path}")
+
 
 
 def plot_sig_tfs_stats(df, figsize=(3.5, 2), palette=None, ax=None):
@@ -31,6 +356,7 @@ def plot_sig_tfs_stats(df, figsize=(3.5, 2), palette=None, ax=None):
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
     # plt.suptitle('TFs significantly associated with age', fontsize=12)
     # plt.tight_layout()
+
 class ModularizedNetPlot:
     @staticmethod
     def prepare_net_only_tfs(cell_type, race, data_type, min_degree=3):
@@ -264,7 +590,7 @@ def dotplot_category_color(df, ax,
         else:
             raise ValueError(f"Unsupported palette type: {palette}")
 
-        
+        ax.spines[['top', 'right']].set_visible(False)
         ax.add_artist(size_legend_handle)
 
 def plot_feature_values_per_datasets(cell_type, features, data_type, datasets, feature_type='gene_expression', age_limit=[20, 75], cluster=False, figsize=None):
@@ -593,9 +919,9 @@ def plot_overlap(
     # Custom legend
     handles, labels = ax.get_legend_handles_labels()
     if agreement == 'opposite':
-        label = 'Rejuvination effect'
+        label = 'Opposing effect'
     elif agreement == 'same':
-        label = 'Age acceleration effect'
+        label = 'Supporting effect'
     
     hatch_patch = mpatches.Patch(facecolor='white', edgecolor='black', hatch='///', label=label)
     handles.append(hatch_patch)
@@ -610,7 +936,7 @@ def plot_gene_score_association_with_age(cell_type, datasets, data_type, feature
     from hiara.src.utils.plots import dotplot
     from matplotlib.colors import TwoSlopeNorm
     from hiara.src.config import cmap_trend, palette_trend_2, surrogate_names
-    from hiara.src.feature_association.helper import retrieve_features_stats, retrieve_sig_stats
+    from hiara.src.feature_association.helper import retrieve_stats, retrieve_sig_stats
     import matplotlib.gridspec as gridspec
     import pandas as pd
     import numpy as np
@@ -627,7 +953,7 @@ def plot_gene_score_association_with_age(cell_type, datasets, data_type, feature
         raise ValueError(f"Unknown feature type: {feature_type}")
 
     # - format the data
-    stats_t = retrieve_features_stats(data_type=data_type, feature_type=feature_type, cell_type=cell_type, datasets=datasets, condition='healthy')
+    stats_t = retrieve_stats(data_type=data_type, feature_type=feature_type, cell_type=cell_type, datasets=datasets, condition='healthy')
     
     if 'gene' in stats_t.columns:
         stats_t = stats_t.rename(columns={'gene': 'source'})
@@ -768,7 +1094,7 @@ def plot_features_vs_datasets(cell_type, datasets, data_type, features=None, fea
 
     from hiara.src.utils.plots import dotplot
     from hiara.src.config import cmap_trend, surrogate_names
-    from hiara.src.feature_association.helper import retrieve_features_stats, retrieve_sig_stats
+    from hiara.src.feature_association.helper import retrieve_stats, retrieve_sig_stats
     from hiara.src.utils.util import retrieve_net
     import matplotlib.gridspec as gridspec
     import pandas as pd
@@ -793,7 +1119,7 @@ def plot_features_vs_datasets(cell_type, datasets, data_type, features=None, fea
         raise ValueError(f"Unknown feature type: {feature_type}")
 
     # - format the data
-    stats_t = retrieve_features_stats(data_type, feature_type, cell_type=cell_type)
+    stats_t = retrieve_stats(data_type, feature_type, cell_type=cell_type)
     stats_t = stats_t[stats_t['dataset'].isin(datasets)]
     # print(stats_t)
     
@@ -1215,7 +1541,7 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
 
 
 def wrapper_flesh_out_tf_interactions(datasets, cell_type, tf, data_type='bulk', n_top=10, keep_sig_only=False, sizes=(20, 100), ax=None, show_legend=True):
-    from hiara.src.feature_association.helper import retrieve_features_stats
+    from hiara.src.feature_association.helper import retrieve_stats
     from hiara.src.feature_association.plots import plot_tf_interactions_plus_target_stats
     # - get the net for different datasets
     top_targets = []
@@ -1230,7 +1556,7 @@ def wrapper_flesh_out_tf_interactions(datasets, cell_type, tf, data_type='bulk',
     top_targets = np.unique(np.concatenate(top_targets))
         
     # - get the stats of targets per dataset 
-    stats_targets = retrieve_features_stats(data_type, feature_type='gene_expression', cell_type=cell_type, condition='healthy')
+    stats_targets = retrieve_stats(data_type, feature_type='gene_expression', cell_type=cell_type, condition='healthy')
     stats_targets = stats_targets[stats_targets['dataset'].isin(datasets)]
     net_stats = net.merge(stats_targets[['dataset', 'target', 'p_value_adj', 'slope']], on=['dataset', 'target'], how='left')
     net_stats = net_stats[~net_stats['p_value_adj'].isna()]
@@ -1971,27 +2297,25 @@ def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", 
     ax.set_xlabel("Age")
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
 
-def heamap_plot_minor_cell_types(stats_all, palette, 
-                                            map_names, 
+def heamap_overview_cell_types(stats_all, palette, 
+                                            map_names={}, 
                                             slope_col='slope',
-                                            main_col='major_cell_type', 
-                                            minor_col='cell_type' ,figsize=(6, 8), sig_dots_y_offset = 0.5, 
+                                            main_col='cell_type', 
+                                            figsize=(6, 8), sig_dots_y_offset = 0.5, 
                                             annotate_x_ticks=True, dendrogram_visible=True,
-                                            show_legend=True):
+                                            show_legend=True,
+                                            show_dots=False):
 
     from hiara.src.config import palette_cell_types, surrogate_names
     from matplotlib.colors import ListedColormap, BoundaryNorm
     from scipy.cluster.hierarchy import linkage
     from matplotlib.patches import Patch
 
+    cell_types = stats_all[main_col].cat.categories
 
-    major_cell_types = stats_all[main_col].cat.categories
-    cell_types = stats_all[minor_col].cat.categories
-
-    stats_all=stats_all[stats_all[minor_col].isin(cell_types)]
     
     stats_all['trend_int'] = stats_all[slope_col].map(lambda value: 1 if value > 0 else (-1 if value < 0 else 0))
-    pivot_df = stats_all.pivot(index='gene', columns=minor_col, values='trend_int').fillna(0)
+    pivot_df = stats_all.pivot(index='gene', columns=main_col, values='trend_int').fillna(0)
     
     pivot_df = pivot_df.reindex(columns=cell_types).fillna(0)
 
@@ -2000,6 +2324,10 @@ def heamap_plot_minor_cell_types(stats_all, palette,
     cols_names = pivot_df.columns.map(lambda name: mapping_minor_2_major.get(name, name))
     col_colors = [palette_cell_types[name] for name in cols_names]
 
+    if 'trend' not in stats_all.columns:
+        raise ValueError("The 'trend' column is missing in stats_all DataFrame.")
+    trends = stats_all['trend'].unique()
+    palette = {key: palette[key] for key in trends}
     palette_values = list(palette.values())
     cmap = ListedColormap([palette_values[0], 'white', palette_values[1]])
     bounds = [-1.5, -0.5, 0.5, 1.5]
@@ -2038,30 +2366,22 @@ def heamap_plot_minor_cell_types(stats_all, palette,
         sig_df = sig_df.reindex(columns=cell_types)
     else:
         sig_df = None
-    if sig_df is not None:
-            row_order = g.dendrogram_row.reordered_ind
-            col_order = list(cell_types)  # Column order stays the same since col_cluster=False
-
-            cell_height = g.ax_heatmap.get_position().height / len(row_order)
-            cell_width = g.ax_heatmap.get_position().width / len(col_order)
-            # Loop through and add asterisks for significant values
-            for i, row_idx in enumerate(row_order):
-                for j, col in enumerate(col_order):
-                    # Extract cell_type and gender from col (tuple format)
-                    is_significant = sig_df.loc[sig_df.index[row_idx], col]
-                    
-                    # Check if the value is significant
-                    if is_significant:
-                        y_coord = i - sig_dots_y_offset
-                        x_coord = (j + 0.5) 
-                        
-                        g.ax_heatmap.text(
-                            x_coord, y_coord,
-                            '.',
-                            color='black', ha='center', va='center', fontsize=8, fontweight='bold'
-                        )
+    if show_dots:
+        row_order = g.dendrogram_row.reordered_ind
+        col_order = list(cell_types)  # Column order stays the same since col_cluster=False
+        for i, row_idx in enumerate(row_order):
+            for j, col in enumerate(col_order):
+                is_significant = sig_df.loc[sig_df.index[row_idx], col]
+                if is_significant:
+                    y_coord = i - sig_dots_y_offset
+                    x_coord = (j + 0.5) 
+                    g.ax_heatmap.text(
+                        x_coord, y_coord,
+                        '.',
+                        color='black', ha='center', va='center', fontsize=8, fontweight='bold'
+                    )
     if show_legend:
-        celltype_legend = [Patch(color=palette_cell_types[label], label=map_names.get(label, label)) for label in major_cell_types]
+        celltype_legend = [Patch(color=palette_cell_types[label], label=map_names.get(label, label)) for label in cell_types]
         trend_legend = [Patch(color=color, label=label, alpha=.8) for label, color in palette.items()]
 
         legend_celltypes = g.ax_heatmap.legend(

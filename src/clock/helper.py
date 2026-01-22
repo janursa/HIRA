@@ -9,141 +9,15 @@ from anndata import AnnData
 from hiara.src.utils.util import retrieve_adata
 from hiara.src.config import (
     CLOCKS_DIR,
-    use_local_clocks, 
-    clock_version
+    USE_LOCAL_CLOCK, 
+    CLOCK_V
 )
 
-
-# def evaluate_groupwise_median(obs):
-#     import pandas as pd
-#     from scipy.stats import spearmanr
-#     from sklearn.metrics import r2_score
-#     import numpy as np
-#     df = obs.copy()
-#     df['age'] = df['age'].astype(float)
-#     df['donor_age'] = df['donor_age'].astype(str)
-#     grouping_cols = ['donor_age', 'age']
-#     predicted_age = df.groupby(grouping_cols)['predicted_age'].median().values
-#     actual_age = df.groupby(grouping_cols)['age'].median().values
-
-#     # print(np.isnan(actual_age).sum(), np.isnan(predicted_age).sum())
-#     sp = spearmanr(actual_age, predicted_age)[0]
-#     r2 = r2_score(actual_age, predicted_age)
-    
-#     scores = {
-#         'Spearman': sp,
-#         'R2': r2
-#     }
-#     return scores
-
-# def _df_to_adata(df):
-#     import anndata as ad
-#     import pandas as pd
-#     adata = ad.AnnData(
-#         X=df.values,
-#         obs=pd.DataFrame(index=df.index).reset_index(),
-#         var=pd.DataFrame(index=df.columns)
-#     )
-#     return adata
-
-
-# def format_data(datasets, cell_type=None, data_type='bulk', only_ctr=False, only_targets=False):
-#     from hiara.src.utils.util import retrieve_adata, retrieve_net_consensus
-#     import anndata as ad
-    
-#     adata_store = []
-#     for d in datasets:
-#         adata = retrieve_adata(dataset=d, type=data_type)
-#         adata_store.append(adata)
-
-#     # adata_train = ad.concat(adata_store, join='inner', axis=0)
-#     adata_train = ad.concat(
-#         adata_store,
-#         axis=0,          # concatenate cells
-#         join='outer',    # keep all obs columns (outer join on .obs)
-#         merge='first'    # if duplicated obs keys, take the first
-#     )
-
-#     # Now restrict to common genes
-#     common_genes = set.intersection(*(set(a.var_names) for a in adata_store))
-#     adata_train = adata_train[:, list(common_genes)]
-#     if cell_type is not None:
-#         # net = retrieve_net_consensus(cell_type=cell_type)
-#         # adata_train = adata_train[adata_train.obs['cell_type'] == cell_type, adata_train.var_names.isin(net['target'].unique())].copy()
-#         adata_train = adata_train[adata_train.obs['cell_type'] == cell_type, :].copy()
-
-#     adata_train.obs_names_make_unique()
-
-#     if only_ctr:
-#         adata_train = adata_train[adata_train.obs['is_control']]
-    
-#     print('Datasets in merged adata:', adata_train.obs['dataset'].unique())
-#     # print('Conditions in merged adata:', adata_train.obs['condition'].unique())
-#     print('Cell types in merged adata:', adata_train.obs['cell_type'].unique())
-
-#     for col in adata_train.obs.columns:
-#         if adata_train.obs[col].dtype == "object":
-#             adata_train.obs[col] = adata_train.obs[col].astype(str)
-
-#     if only_targets:
-#         assert False, 'Fix me'
-#         from hiara.src.config import DISCOVERY_COHORTS
-#         assert cell_type is not None, "cell_type must be specified to filter for target genes"
-#         # min_degree = min(len(aging_clock_train_datasets), 4)
-#         net = retrieve_net_consensus(DISCOVERY_COHORTS, cell_type, min_degree=3)
-#         target_genes = net['target'].unique()
-#         adata_train = adata_train[:, adata_train.var_names.isin(target_genes)].copy()
-
-#     return adata_train
-# def align_feature_space(adata, gene_names):
-
-#     var_names = np.array(adata.var.index.tolist())
-#     var_index = {gene: i for i, gene in enumerate(var_names)}
-
-#     # Collect indices or mark as -1 for missing
-#     idxs = np.array([var_index.get(gene, -1) for gene in gene_names])
-
-#     # Create a matrix with correct shape
-#     rows = adata.obs.shape[0]
-#     cols = len(gene_names)
-#     X_aligned = sparse.lil_matrix((rows, cols))
-
-#     # Fill in available gene columns
-#     present = idxs != -1
-#     if present.sum() > 0:
-#         X_aligned[:, present] = adata[:].X[:, idxs[present]]
-
-#     # Convert to CSR for efficiency
-#     X_aligned = X_aligned.tocsr()
-
-#     # Create new AnnData object
-#     new_adata = AnnData(
-#         X=X_aligned,
-#         obs=adata.obs.copy(),
-#         var={"gene_symbols": gene_names},
-#     )
-#     new_adata.var_names = gene_names
-
-#     return new_adata
-
-# def merge_adata(datasets, feature_type, cell_type, data_type, age_limit=0):
-#     from hiara.src.config import OUTPUT_DIR
-#     adata_store = []
-#     for dataset in datasets:
-#         # adata = prepare_input(dataset, cell_type, feature_type=feature_type, data_type=data_type)
-#         adata = ad.read_h5ad(f"{OUTPUT_DIR}/{feature_type}_smoothed/{dataset}_{cell_type}_{data_type}.h5ad")
-#         adata = adata[(adata.obs['age']>=age_limit)].copy()
-
-#         adata = adata[adata.obs['is_control']]
-#         adata_store.append(adata)
-#     adata_all = ad.concat(adata_store, join='inner', axis=0)
-#     print(adata_all.obs['dataset'].value_counts())
-#     return adata_all
-def wrapper_predict_age(adata, cell_type, use_local_clocks=use_local_clocks):
+def wrapper_predict_age(adata, cell_type, USE_LOCAL_CLOCK=USE_LOCAL_CLOCK):
     import sys
     sys.path.insert(0, '../GRNimmuneClock')
     from grnimmuneclock import predict_age
-    adata = predict_age(adata, cell_type=cell_type, use_local_clocks=use_local_clocks)
+    adata = predict_age(adata, cell_type=cell_type, use_local_clocks=USE_LOCAL_CLOCK)
     return adata
 def wrapper_clock_predictions(cell_types, evaluate_datasets, data_type='bulk', condition=None):
     obs_store = []

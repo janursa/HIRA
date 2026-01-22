@@ -1,2 +1,2 @@
-use_local_clocks = False
+USE_LOCAL_CLOCK = False
 clock_version = 'v1'

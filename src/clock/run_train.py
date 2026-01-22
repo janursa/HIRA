@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 from grnimmuneclock import train_aging_clock
-from hiara import CELL_TYPES, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, clock_version, CLOCK_CV_SCORING
+from hiara import CELL_TYPES, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK
     
 
 # def wrapper_build_model_all(par):
@@ -18,8 +18,8 @@ if __name__ == "__main__":
     train_datasets = CLOCK_TRAINING_COHORTS
     data_type = 'bulk'
     reg_type = 'ridge'
-    tune_model = True
-    version = clock_version
+    tune_model = TUNE_CLOCK
+    version = CLOCK_V
 
     for cell_type in cell_types:
         print(f"\n{'='*60}")

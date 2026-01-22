@@ -24,7 +24,7 @@ import numpy as np
 from collections import defaultdict
 import matplotlib.pyplot as plt
 from hiara.src.config import surrogate_names
-from hiara import retrieve_feature_data, retrieve_sig_stats, retrieve_features_stats
+from hiara import retrieve_feature_data, retrieve_sig_stats, retrieve_stats
 from hiara.src.feature_association.plots import heatplot_age_trend
 # Import common utilities and configuration
 from hiara.src.config import (
@@ -39,9 +39,10 @@ from hiara.src.config import (
 )
 from hiara.src.config import get_config
 from hiara.src.feature_association.plots import (
-    heamap_plot_minor_cell_types,
-    plot_overlap,
+    heamap_overview_cell_types,
     plot_tf_act_central_tfs,
+    plot_aging_overlap,
+    plot_directional_consistency_scatter
 )
 from hiara.src.utils.util import retrieve_net_consensus
 from hiara.src.pathway_analysis.util import pathway_kde_func
@@ -174,11 +175,16 @@ def plot_healthy_disease_trend(dataset, data_type, cell_type, case_tf, condition
 def get_condition_palette(analysis_type):
     """Get appropriate color palette based on analysis type."""
     if analysis_type == 'disease':
-        return palette_disease_effect
+        palette = palette_disease_effect
     elif analysis_type == 'perturbation':
-        return palette_treatment
+        palette = palette_treatment
+    elif analysis_type == 'aging':
+        palette = palette_trend
     else:
-        return palette_disease_effect  # Default
+        raise ValueError(f"Unknown analysis type: {analysis_type}")
+    palette_all = {**palette_trend, **palette}
+    return palette_all
+    
 
 def plot_overview_heatmap(stats, args):
     """Generate overview heatmap of minor cell types."""
@@ -187,634 +193,71 @@ def plot_overview_heatmap(stats, args):
     dataset = args.dataset
     analysis_type = args.analysis_type
     output_dir = args.output_dir
-    config_label = args.config_label
-    slope_col = 'slope'  # Could be parameterized if needed
-    
-    palette = get_condition_palette(analysis_type)
-    
-    if analysis_type == 'disease' or analysis_type == 'aging':
-        # Special handling for combined CMV (has young and old separately)
-        
-        if 'age_group' in stats.columns:
-            unique_age_groups = stats['age_group'].unique()
-            if 'Both age groups' in unique_age_groups:
-                stats_filtered = stats[stats['age_group'] == 'Both age groups'].copy()
-            else:
-                # Data already filtered by config (e.g., cmv_young has age_group='young')
-                stats_filtered = stats.copy()
-        else:
-            # No age_group column (e.g., SLE_European), use data as-is
-            stats_filtered = stats.copy()
-        _plot_single_heatmap(stats_filtered, palette, output_dir, 
-                            suffix=dataset if (analysis_type == 'disease' or analysis_type == 'aging') else None, slope_col=slope_col)
-    else:
-        # For perturbations, process each condition separately
-        cfg = get_config(dataset)
-        target_treatments = cfg.target_treatments
-        
-        if target_treatments is None:
-            print("  Warning: No target treatments configured, using all conditions")
-            target_treatments = stats['condition'].unique()
-        
-        for condition in target_treatments:
-            stats_filtered = stats[stats['condition'] == condition].copy()
-            _plot_single_heatmap(stats_filtered, palette, output_dir, suffix=condition, slope_col=slope_col)
-        return
 
-def _plot_single_heatmap(stats, palette, output_dir, suffix=None, slope_col='slope'):
-    """Helper function to plot a single heatmap."""
+    if 'comparision' in stats.columns:
+        if len(stats['comparison'].unique()) > 1:
+            raise ValueError("Overview heatmap only supports single comparison at a time.")
+    if 'age_group' in stats.columns:
+        if len(stats['age_group'].unique()) > 1:
+            raise ValueError("Overview heatmap only supports single age group at a time.")
+
+    slope_col = 'slope'  
     stats['cell_type'] = pd.Categorical(stats['cell_type'], categories=CELL_TYPES, ordered=True)
-    stats['major_cell_type'] = stats['cell_type'].astype(
-        CategoricalDtype(categories=['CD4T', 'CD8T', 'NK', 'MONO', 'B'], ordered=True)
-    )
-    
-    heamap_plot_minor_cell_types(
-        stats, 
-        slope_col=slope_col, 
-        palette=palette, 
-        figsize=(2, 3), 
-        sig_dots_y_offset=3, 
-        annotate_x_ticks=False, 
-        map_names={'cell_type': 'Sub type', 'major_cell_type': 'Cell type'},
-        dendrogram_visible=False, 
-        show_legend=False
-    )
-    
-    suffix_str = f"_{suffix.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')}" if suffix else ""
-    output_path = os.path.join(output_dir, f'overview{suffix_str}.png')
+    palette = get_condition_palette(analysis_type)
+
+    heamap_overview_cell_types(
+            stats, 
+            slope_col=slope_col, 
+            palette=palette, 
+            figsize=(2, 3), 
+            sig_dots_y_offset=3, 
+            annotate_x_ticks=False, 
+            # map_names={'cell_type': 'Sub type', 'major_cell_type': 'Cell type'},
+            dendrogram_visible=False, 
+            show_legend=False
+        )    
+    output_path = os.path.join(output_dir, f'overview_{dataset}.png')
     plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
     plt.close()
     print(f"  Saved: {output_path}")
 
-def plot_aging_overlap(stats_sig, args):
-    """Plot overlap between condition (disease/perturbation) and aging genes."""
-    print("Generating aging overlap plot...")
-    
-    dataset = args.dataset
-    included_cell_types = args.cell_types
-    analysis_type = args.analysis_type
-    agreement = args.agreement
-    output_dir = args.output_dir
-    feature_type = args.feature_type
-    
-    cfg = get_config(dataset)
-    aging_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=feature_type).drop_duplicates(subset=['cell_type', 'gene'])
-    aging_stats_sig = aging_stats_sig[['gene', 'cell_type', 'slope']].copy()
 
-    comparisons = stats_sig['comparison'].unique()
-    
-    print('Stats of comparison:', stats_sig.groupby(['cell_type', 'comparison'])['gene'].nunique())
-    for cell_type in included_cell_types:
-        print(f"  Processing cell type: {cell_type}")
-        for comparison in comparisons:
-            # Filter stats
-            stats_sig_sub = stats_sig[(stats_sig['comparison'] == comparison) & (stats_sig['cell_type'] == cell_type)].reset_index(drop=True)
-            
-            if len(stats_sig_sub) == 0:
-                print(f"    Warning: No data for {'comparison ' + comparison + ' -- ' + cell_type}")
-                continue
-            
-            # Rename slope to slope_condition to avoid conflicts when merging
-            stats_sig_sub_renamed = stats_sig_sub[['gene', 'slope']].rename(columns={'slope': 'slope_condition'})
-            
-            # Get aging data for this cell type (keep cell_type column for plot_overlap)
-            aging_stats_sig_ct = aging_stats_sig[aging_stats_sig['cell_type'] == cell_type][['gene', 'cell_type', 'slope']].copy()
-            
-            # Merge aging slopes with condition slopes
-            merged = aging_stats_sig_ct[['gene', 'slope']].merge(
-                stats_sig_sub_renamed, 
-                on='gene', 
-                how='inner'
-            )
-              
-            if len(merged) > 0:
-                same_direction = (np.sign(merged['slope']) == np.sign(merged['slope_condition'])).sum()
-                opposite_direction = (np.sign(merged['slope']) != np.sign(merged['slope_condition'])).sum()
-                total_overlap = len(merged)
-                
-                print(f"{comparison} Aging genes {len(aging_stats_sig_ct)}, Condition sig genes {len(stats_sig_sub)}, Overlap {total_overlap}")
-                print(f"      Same direction: {same_direction} ({same_direction/total_overlap*100:.1f}%)")
-                print(f"      Opposite direction: {opposite_direction} ({opposite_direction/total_overlap*100:.1f}%)")
 
-            # Prepare data for plot_overlap (rename slope to slope_condition for consistency with plot function)
-            stats_sig_sub_for_plot = stats_sig_sub[['gene', 'cell_type', 'slope']].reset_index(drop=True).rename(columns={'slope': 'slope_condition'})
-
-            plot_overlap(
-                stats_sig_sub_for_plot,  # RIGHT side (Sound Life sig genes)
-                aging_stats_sig_ct.reset_index(drop=True),  # LEFT side (Reference aging genes - baseline)
-                col='cell_type', 
-                how='left', 
-                agreement=agreement, 
-                legend=True, 
-                figsize=(1.5, 2), 
-                legend_loc=(1, 0.5)
-            )
-            
-            if analysis_type == 'perturbation':
-                plt.title('')
-                plt.legend().remove()
-            comparison = comparison.replace('(', '_').replace(')', '_').replace(':', '_').replace(' ', '_')
-            name_suffix = f'{dataset}_{comparison}_{cell_type}'
-            output_path = os.path.join(output_dir, f'condition_aging_overlap_{name_suffix}.png')
-            output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
-            plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
-            plt.close()
-            print(f"    Saved: {output_path}")
-
-def plot_directional_consistency_scatter(stats_sig, args):
-    """
-    Generate directional consistency scatter plots comparing Sound Life vs Reference aging genes.
-    Shows signed -log10(p-values) with direction concordance.
-    """
-    print("Generating directional consistency scatter plots...")
-    
-    feature_type = args.feature_type
-    dataset = args.dataset
-    included_cell_types = args.cell_types
-    output_dir = args.output_dir
-    
-    import seaborn as sns
-    
-    # Load reference aging genes
-    aging_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=feature_type, filter_inconsistent=True)
-    aging_stats_sig = aging_stats_sig.drop_duplicates(subset=['cell_type', 'gene'])
-    
-    # Prepare data
-    sl_sig = (
-        stats_sig[stats_sig['p_value_adj'] < 0.05]
-        .sort_values("p_value_adj")
-        .drop_duplicates(["cell_type", 'gene'], keep="first")
-    )
-    
-    ref_aging_unique = (
-        aging_stats_sig
-        .sort_values("p_value_adj")
-        .drop_duplicates(["cell_type", 'gene'], keep="first")
-    )
-    
-    sns.set_style('whitegrid')
-    plt.rcParams['font.size'] = 11
-    plt.rcParams['axes.labelsize'] = 12
-    plt.rcParams['axes.titlesize'] = 13
-    
-    for cell_type in included_cell_types:
-        if cell_type not in sl_sig['cell_type'].unique():
-            print(f"  Warning: No significant genes for {cell_type}")
-            continue
-            
-        print(f"  Processing {cell_type}")
-        
-        sl_ct = sl_sig[sl_sig['cell_type'] == cell_type].copy()
-        ref_ct = ref_aging_unique[ref_aging_unique['cell_type'] == cell_type].copy()
-        
-        print(f"    Sound Life significant genes: {len(sl_ct)}")
-        print(f"    Reference aging genes: {len(ref_ct)}")
-        
-        # Rename slope to slope_condition in sl_ct to avoid conflicts
-        sl_ct_renamed = sl_ct[['gene', 'slope', 'p_value_adj']].rename(columns={'slope': 'slope_condition'})
-        
-        # Inner merge to get overlap
-        merged = sl_ct_renamed.merge(
-            ref_ct[['gene', 'slope', 'meta_p_adj']],
-            on='gene',
-            how='inner'
-        )
-        
-        if len(merged) < 10:
-            print(f"    Overlap too small (n={len(merged)}), skipping")
-            continue
-        
-        print(f"    Overlap genes: {len(merged)}")
-        
-        # Calculate directional metrics
-        merged['same_direction'] = (
-            np.sign(merged['slope_condition']) == np.sign(merged['slope'])
-        )
-        
-        merged['neg_log_p_sl'] = -np.log10(merged['p_value_adj']) * np.sign(merged['slope_condition'])
-        merged['neg_log_p_ref'] = -np.log10(merged['meta_p_adj']) * np.sign(merged['slope'])
-        
-        same_dir = merged[merged['same_direction']]
-        opp_dir = merged[~merged['same_direction']]
-        
-        print(f"    Same direction: {len(same_dir)} ({len(same_dir)/len(merged)*100:.1f}%)")
-        print(f"    Opposite direction: {len(opp_dir)} ({len(opp_dir)/len(merged)*100:.1f}%)")
-        
-        # Create scatter plot
-        fig = plt.figure(figsize=(3, 3))
-        ax_main = plt.subplot(1, 1, 1)
-        s = 20
-        
-        if len(opp_dir) > 0:
-            ax_main.scatter(
-                opp_dir['neg_log_p_sl'],
-                opp_dir['neg_log_p_ref'],
-                c='red',
-                s=s,
-                alpha=0.6,
-                label=f'Opposite direction (n={len(opp_dir)})',
-                edgecolors='darkred',
-                linewidths=.1
-            )
-        
-        if len(same_dir) > 0:
-            ax_main.scatter(
-                same_dir['neg_log_p_sl'],
-                same_dir['neg_log_p_ref'],
-                c='green',
-                s=s,
-                alpha=0.6,
-                label=f'Same direction (n={len(same_dir)})',
-                edgecolors='darkred',
-                linewidths=.1
-            )
-        
-        ax_main.axhline(y=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
-        ax_main.axvline(x=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
-        
-        ax_main.set_xlabel('Sound Life aging\n-log10(p)', fontsize=10)
-        ax_main.set_ylabel('Reference aging\n-log10(p)', fontsize=10)
-        
-        ax_main.legend(loc=(1.01, 0.5), framealpha=0.9, fontsize=10, frameon=False)
-        
-        output_path = os.path.join(output_dir, f'directional_consistency_{dataset}_{cell_type}.png')
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"    Saved: {output_path}")
-
-def plot_aging_disease_overlap_heatmap(stats_sig, args):
-    """
-    Plot heatmap comparing TF activity/directions between aging and disease/aging condition.
-    (Disease/Aging-specific visualization showing side-by-side slopes)
-    Creates separate heatmaps for each cell type with genes on y-axis.
-    """
-    print("Generating aging vs condition overlap heatmap...")
-    
-    dataset = args.dataset
-    cell_types = args.cell_types
-    output_dir = args.output_dir
-    feature_type = args.feature_type
-    
-    import seaborn as sns
-    from matplotlib.patches import Rectangle
-        
-    # Load aging stats
-    aging_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=feature_type).drop_duplicates(subset=["cell_type", 'gene'])
-    
-    # Process each cell type separately
-    for cell_type in cell_types:
-        if cell_type not in stats_sig['cell_type'].unique():
-            print(f"  Warning: No data for {cell_type}")
-            continue
-            
-        print(f"  Processing cell type: {cell_type}")
-        
-        # Get condition data for this cell type (rename slope to slope_condition)
-        condition_df = stats_sig[
-            stats_sig['cell_type'] == cell_type
-        ][['gene', 'slope']].copy().rename(columns={'slope': 'slope_condition'})
-        
-        # Get aging data for same cell type
-        aging_df = aging_stats_sig[
-            aging_stats_sig['cell_type'] == cell_type
-        ][['gene', 'slope']].copy()
-        
-        # Get union of genes from both condition and aging
-        all_tfs = sorted(list(set(condition_df['gene'].tolist() + aging_df['gene'].tolist())))
-        
-        # Create a dataframe with all genes
-        merged = pd.DataFrame({'gene': all_tfs})
-        merged = merged.merge(condition_df, on='gene', how='left')
-        merged = merged.merge(aging_df, on='gene', how='left')
-        
-        if len(merged) == 0:
-            print(f"    Warning: No genes found for {cell_type}")
-            continue
-        
-        # Sort by aging slope (Age-associated genes column), put NaNs at the end
-        merged['sort_key'] = merged['slope'].fillna(999)  # NaNs go to bottom
-        merged = merged.sort_values('sort_key', ascending=False).drop(columns=['sort_key'])
-        
-        n_tfs = len(merged)
-        print(f"    Total genes (union): {n_tfs}")
-        print(f"      Condition genes: {condition_df['gene'].nunique()}")
-        print(f"      Aging genes: {aging_df['gene'].nunique()}")
-        
-        # Prepare data matrix: rows are genes, columns are [Condition, Aging]
-        data_matrix = merged[['slope_condition', 'slope']].values
-        
-        # Convert to binary: +1 for positive slope, -1 for negative slope
-        binary_matrix = np.sign(data_matrix)
-        
-        # Create heatmap with genes on y-axis
-        figsize = (2.5, max(6, n_tfs * 0.05))
-        
-        fig, ax = plt.subplots(figsize=figsize)
-        
-        # Plot heatmap with binary colormap using palette_trend colors
-        from matplotlib.colors import ListedColormap
-        # Decrease in aging: '#B0BF1A' (greenish), Increase in aging: '#E52B50' (red)
-        colors = [palette_trend['Decrease in aging'], '#f7f7f7', palette_trend['Increase in aging']]  # decrease, white (for NaN), increase
-        cmap = ListedColormap(colors)
-        
-        im = ax.imshow(
-            binary_matrix,
-            aspect='auto',
-            cmap=cmap,
-            vmin=-1,
-            vmax=1,
-            interpolation='nearest'
-        )
-        
-        # Add vertical line to separate aging from condition
-        ax.axvline(0.5, color='black', linewidth=2)
-        
-        # Set column labels
-        ax.set_xticks([0, 1])
-        ax.set_xticklabels(['Age-associated\ngenes', 'SoundLife'], fontsize=9, rotation=45, ha='right')
-        ax.set_xlabel('')
-        
-        # Hide y-axis labels (TF names) but show count
-        ax.set_yticks([])
-        ax.set_ylabel(f'genes (n={n_tfs})', fontsize=9)
-        
-        # Add colorbar
-        cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, ticks=[-1, 1])
-        cbar.ax.set_yticklabels(['Decrease', 'Increase'], fontsize=8)
-        cbar.set_label('Direction', rotation=270, labelpad=15, fontsize=9)
-        cbar.ax.tick_params(labelsize=8)
-        
-        # Title
-        ax.set_title(f'{cell_type}', fontsize=10, weight='bold', pad=10)
-        
-        # Save (removed agreement statistics annotation)
-        output_path = os.path.join(output_dir, f'aging_condition_overlap_heatmap_{dataset}_{cell_type}.png')
-        output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
-        plt.tight_layout()
-        plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
-        plt.close()
-        print(f"    Saved: {output_path}")
-
-def plot_aging_experiment_heatmap(stats_sig, args):
-    """
-    Plot heatmap comparing TF activity/directions between aging and experimental conditions.
-    (Perturbation-specific visualization)
-    """
-    print("Generating aging vs experiment heatmap...")
-    
-    dataset = args.dataset
-    output_dir = args.output_dir
-    feature_type = args.feature_type
-    
-    import seaborn as sns
-    from matplotlib.patches import Rectangle
-        
-    # Load aging stats
-    aging_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=feature_type).drop_duplicates(subset=["cell_type", 'gene'])
-    
-    cfg = get_config(dataset)
-    target_treatments = cfg.target_treatments
-    
-    if target_treatments is None:
-        print("  Warning: No target treatments configured")
-        return
-    
-    for cell_type in stats_sig['cell_type'].unique():
-        print(f"  Processing cell type: {cell_type}")
-        
-        for treatment in target_treatments:
-            # Get experiment data (rename slope to slope_condition)
-            exp_df = stats_sig[
-                (stats_sig['condition'] == treatment) & 
-                (stats_sig['cell_type'] == cell_type)
-            ][['gene', 'slope']].copy().rename(columns={'slope': 'slope_condition'})
-            
-            # Get aging data for same cell type
-            aging_df = aging_stats_sig[
-                aging_stats_sig['cell_type'] == cell_type
-            ][['gene', 'slope']].copy()
-            
-            # Merge on genes that are in the experiment (left join)
-            merged = exp_df.merge(aging_df, on='gene', how='left')
-            
-            if len(merged) == 0:
-                print(f"    Warning: No data for {treatment} in {cell_type}")
-                continue
-            
-            # Sort by experiment slope for better visualization
-            merged = merged.sort_values('slope_condition', ascending=False)
-            
-            # Prepare data matrix
-            data_matrix = merged[['slope_condition', 'slope']].values
-            
-            # Create heatmap
-            n_tfs = len(merged)
-            figsize = (2.5, max(6, n_tfs * 0.03))  
-            
-            fig, ax = plt.subplots(figsize=figsize)
-            
-            # Plot heatmap with diverging colormap
-            im = ax.imshow(
-                data_matrix,
-                aspect='auto',
-                vmin=-max(abs(data_matrix.min()), abs(data_matrix.max())),
-                vmax=max(abs(data_matrix.min()), abs(data_matrix.max())),
-                interpolation='nearest'
-            )
-            
-            # Add vertical line to separate aging from experiment
-            ax.axvline(0.5, color='black', linewidth=2)
-            
-            # Set column labels
-            ax.set_xticks([0, 1])
-            ax.set_xlabel('')
-            
-            # Remove y-axis labels (too many genes)
-            ax.set_yticks([])
-            ax.set_ylabel(f'genes (n={n_tfs})', fontsize=9)
-            
-            # Add colorbar
-            cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-            cbar.set_label('Slope (effect size)', rotation=270, labelpad=15, fontsize=9)
-            cbar.ax.tick_params(labelsize=8)
-            
-            # Title
-            ax.set_title(f'{cell_type}', fontsize=10, weight='bold', pad=10)
-            
-            # Add agreement statistics as text
-            same_direction = (np.sign(merged['slope_condition']) == np.sign(merged['slope'])).sum()
-            total_with_aging = merged['slope'].notna().sum()
-            if total_with_aging > 0:
-                agreement_pct = (same_direction / total_with_aging) * 100
-                ax.text(
-                    0.02, 0.98, 
-                    f'Same direction:\n{same_direction}/{total_with_aging} ({agreement_pct:.0f}%)',
-                    transform=ax.transAxes,
-                    fontsize=8,
-                    verticalalignment='top',
-                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-                )
-            
-            # Save
-            name = f'{dataset}_{treatment}_{cell_type}'
-            output_path = os.path.join(output_dir, f'aging_experiment_heatmap_{name}.png')
-            output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
-            plt.tight_layout()
-            plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
-            plt.close()
-            print(f"    Saved: {output_path}")
-
-def plot_central_tf_act_disease(stats, args):
-    """Plot age-stratified analysis for disease data."""
-    aging_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=args.feature_type).drop_duplicates(subset=['cell_type', 'gene'])
-    
-    # Check if we have cmv_young and cmv_old configs
-    if 'age_group' not in stats.columns:
-        print("  Error: 'age_group' column not found in stats for age-stratified analysis")
-        return
-    age_groups = stats['age_group'].unique()
-    group_col = 'age_group'
-    
-    stats['dataset'] = stats['dataset'].apply(lambda name: surrogate_names.get(name, name))
-    
-    for cell_type in args.cell_types:
-        print(f"  Processing cell type: {cell_type}")
-        # --- Aging genes ---
-        aging_df = aging_stats_sig[aging_stats_sig['cell_type'] == cell_type]
-        net = retrieve_net_consensus(cell_type=cell_type)
-        c_df = net.groupby('source').size().reset_index(name='degree')
-        aging_df = aging_df.merge(c_df, left_on='gene', right_on='source', how='left')[['gene', 'slope', 'degree']]
-        aging_df['degree'] = aging_df['degree'].div(aging_df['degree'].max())  # Normalize degree
-        aging_df['trend'] = ['Increase in aging' if x > 0 else 'Decrease in aging' for x in aging_df['slope']]
-        aging_df['analysis'] = 'Age-associated'
-        
-        # --- Disease/Aging Condition genes ---
-        stats_store = []
-        for age_group in age_groups:
-            stats_d = stats[
-                (stats[group_col] == age_group) &
-                (stats['cell_type'] == cell_type) &
-                (~stats['slope'].isna())
-            ].copy()
-            stats_d = stats_d[['gene', 'cell_type', 'slope', 'p_value_adj']].drop_duplicates()
-            # Map age group name for display
-            # display_name = age_group_display_map.get(age_group, age_group)
-            stats_d['analysis'] = age_group
-            # For soundlife aging or CMV analysis, use aging trend labels; otherwise use disease labels
-            stats_d['trend'] = ['Increase in disease' if x > 0 else 'Decrease in disease' for x in stats_d['slope']]
-            # stats_d['age_group'] = age_group
-            stats_store.append(stats_d)
-        
-        stats_condition = pd.concat(stats_store)
-        stats_condition['analysis'] = stats_condition['analysis'].astype(
-            pd.CategoricalDtype(categories=age_groups, ordered=True)
-        )
-        # --- Restrict to overlapping genes ---
-        common_tfs = set(aging_df['gene']) & set(stats_condition['gene'])
-        aging_df = aging_df[aging_df['gene'].isin(common_tfs)]
-        
-        # Order genes by degree
-        top_aging_tfs = args.top_aging_tfs
-        top_tfs = aging_df.sort_values('degree', ascending=False).head(top_aging_tfs)['gene'].unique()
-        tf_order = list(top_tfs)
-        
-        # --- Combine and filter ---
-        aging_df = aging_df[aging_df['gene'].isin(top_tfs)]
-        stats_combined = pd.concat([aging_df, stats_condition])
-        df = stats_combined[stats_combined['gene'].isin(top_tfs)].copy()
-        
-        # Set TF categorical order
-        df['gene'] = pd.Categorical(df['gene'], categories=tf_order, ordered=True)
-        palette_all = {**palette_trend, **palette_disease_effect}
-        plot_tf_act_central_tfs(
-            df, 
-            all_groups=age_groups,  # Use display names instead of original age_groups
-            figsize=(2.1, 4), 
-            palette_all=palette_all, 
-            plot_centrality=False, 
-            show_legend=False
-        )
-        
-        plt.tight_layout()
-        
-        output_path = os.path.join(args.output_dir, f'central_tfs_{cell_type}.png')
-        plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
-        plt.close()
-        print(f"    Saved: {output_path}")
-
-def plot_central_tf_act_perturbation(stats, args):
+def wrapper_plot_central_tfs_condition(stats, cell_types, group_col, args):
     """Plot aging vs perturbation comparison."""
-    stats_df = stats.copy()
     aging_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=args.feature_type).drop_duplicates(subset=['cell_type', 'gene'])
-    
-    cfg = get_config(args.dataset)
-    
-    # Use comparison column if available, otherwise fall back to condition
-    comparisons = stats_df[stats_df['cell_type'].isin(args.cell_types)]['comparison'].unique()
-    
-    for cell_type in args.cell_types:
-        print(f"  Processing cell type: {cell_type}")
-        
-        # Aging genes
-        stats_aging = aging_stats_sig[aging_stats_sig['cell_type'] == cell_type].copy()
-        stats_aging['analysis'] = 'Age-associated'
-        stats_aging['trend'] = ['Increase in aging' if x > 0 else 'Decrease in aging' for x in stats_aging['slope']]
-        
-        # Perturbation genes - use comparison column if available
-        stats_store = []
-        for comparison in comparisons:
-            stats_d = stats_df[
-                (stats_df['comparison'] == comparison) & 
-                (stats_df['cell_type'] == cell_type)
-            ].copy()
-           
-            stats_d['is_significant'] = stats_d['p_value_adj'] < 0.05
-            stats_d['analysis'] = comparison
-            stats_d['trend'] = [
-                'Increase after treatment' if x > 0 else 'Decrease after treatment' 
-                for x in stats_d['slope']
-            ]
-            stats_store.append(stats_d)
-        
-        if not stats_store:
-            print(f"    Warning: No data for {cell_type}")
-            continue
-            
-        stats_condition = pd.concat(stats_store)
-        
-        # Subset to overlapping genes
-        drug_tfs = stats_condition['gene'].unique()
-        aging_tfs = stats_aging['gene'].unique()
-        common_tfs = np.intersect1d(drug_tfs, aging_tfs)
-        
-        if len(common_tfs) == 0:
-            print(f"    Warning: No common genes for {cell_type}")
-            continue
-        
+    aging_stats_sig['analysis'] = 'Age-associated'
+    stats['analysis'] = stats[group_col]    
+    groups = stats[group_col].unique()
+    palette_all = get_condition_palette(args.analysis_type)
+    for cell_type in cell_types:
+        stats_aging_t = aging_stats_sig[aging_stats_sig['cell_type'] == cell_type].copy()
+        aging_tfs = stats_aging_t['gene'].unique()
+        stats_t = stats[stats['cell_type'] == cell_type].copy()
+        stats_t = stats_t[stats_t['gene'].isin(aging_tfs)]
         # Merge
-        df = pd.concat([stats_aging, stats_condition])
-        df = df[df['gene'].isin(common_tfs)]
-        
-        df['analysis'] = pd.Categorical(
-            df['analysis'], 
-            categories=['Age-associated'] + list(comparisons), 
+        stats_all = pd.concat([stats_aging_t, stats_t])        
+        stats_all['analysis'] = pd.Categorical(
+            stats_all['analysis'], 
+            categories=['Age-associated'] + list(groups), 
             ordered=True
         )
-        
         # Add centrality information
         net = retrieve_net_consensus(cell_type=cell_type)
         c_df = net.groupby('source').size().reset_index(name='degree')
-        df = df.merge(c_df, left_on='gene', right_on='source', how='left')
+        stats_all = stats_all.merge(c_df, left_on='gene', right_on='source', how='left')
         
-        top_tfs = df.drop_duplicates(subset=['cell_type', 'gene']).sort_values(
+        top_tfs = stats_all.drop_duplicates(subset=['cell_type', 'gene']).sort_values(
             'degree', ascending=False
         ).head(args.top_aging_tfs)['gene'].unique()
-        df = df[df['gene'].isin(top_tfs)].sort_values('degree', ascending=False)
-        df['degree'] = df['degree'].div(df['degree'].max())  # Normalize degree
-        palette_all = {**palette_trend, **palette_treatment}
+
+        stats_all = stats_all[stats_all['gene'].isin(top_tfs)].sort_values('degree', ascending=False)
+        
+        stats_all['degree'] = stats_all['degree'].div(stats_all['degree'].max())  # Normalize degree
+        
         plot_tf_act_central_tfs(
-            df, 
-            all_groups=comparisons, 
+            stats_all, 
+            all_groups=groups, 
             palette_all=palette_all, 
             figsize=(2.5, 4), 
             ax2_margins={'x': 0.2, 'y': 0.02}, 
@@ -835,6 +278,9 @@ def plot_central_tf_act_perturbation(stats, args):
 def plot_disease_case_tfs(args):
     """Plot healthy vs disease trends for specific genes."""
     # Determine condition column based on dataset
+    if not args.cell_type:
+        print(" This function only supports single cell type at a time.")
+        raise ValueError("Please specify a single cell type using --cell_type.")
     condition_col = 'condition'
    
     for i, case_tf in enumerate(args.case_tfs):
@@ -843,7 +289,7 @@ def plot_disease_case_tfs(args):
         plot_healthy_disease_trend(
             dataset=args.dataset, 
             data_type=args.data_type, 
-            cell_type=cell_type, 
+            cell_type=args.cell_type, 
             case_tf=case_tf, 
             condition_col=condition_col, 
             ax=ax
@@ -853,18 +299,17 @@ def plot_disease_case_tfs(args):
         if i == 0:
             ax.set_xlabel('')
         
-        output_path = os.path.join(output_dir, f'healthy_disease_trend_{case_tf}_{cell_type}.png')
+        output_path = os.path.join(args.output_dir, f'healthy_disease_trend_{case_tf}_{args.cell_type}.png')
         plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
         print(f"  Saved: {output_path}")
 
 def plot_ctr_condition_donor_level(args):
     """Plot donor-level perturbation effects for case genes."""    
-    stats = retrieve_features_stats(
-        dataset=args.dataset, data_type=args.data_type, feature_type=args.feature_type, multi_cohort=False)
+    stats = retrieve_stats(
+        dataset=args.dataset, data_type=args.data_type, feature_type=args.feature_type)
     comparisons = stats['comparison'].unique()
-
-    bbox_to_anchor = (1.01, 1)
+    aggregate_per_donor = args.aggregate_per_donor if hasattr(args, 'aggregate_per_donor') else False
     case_tfs = args.case_tfs
     
     for cell_type in args.cell_types:
@@ -908,10 +353,20 @@ def plot_ctr_condition_donor_level(args):
                 )
                 plot_data['condition'] = plot_data['condition'].apply(lambda x: surrogate_names.get(x, x))
                 
-                donors = plot_data['donor_id'].unique()
+                donors = sorted(plot_data['donor_id'].unique())
                 donor_map = {donor: f'Donor {i+1}' for i, donor in enumerate(donors)}
                 plot_data['donor_id'] = plot_data['donor_id'].map(donor_map)
                 
+                # Set categorical order for donor_id to ensure proper legend sorting
+                donor_order = [f'Donor {i+1}' for i in range(len(donors))]
+                plot_data['donor_id'] = pd.Categorical(plot_data['donor_id'], categories=donor_order, ordered=True)
+                
+                if aggregate_per_donor:
+                    plot_data = plot_data.groupby(['donor_id', 'condition'])[case_tf].mean().reset_index()
+                    # Reapply categorical after groupby
+                    plot_data['donor_id'] = pd.Categorical(plot_data['donor_id'], categories=donor_order, ordered=True)
+
+                # Plot points
                 sns.stripplot(
                     data=plot_data,
                     x='condition',
@@ -919,20 +374,46 @@ def plot_ctr_condition_donor_level(args):
                     hue='donor_id',
                     ax=ax,
                     dodge=False,
-                    jitter=True,
+                    jitter=False if aggregate_per_donor else True,
                     alpha=0.7,
                     size=4,
                     palette='tab10'
                 )
+                
+                # Add lines connecting donors if aggregated
+                if aggregate_per_donor:
+                    # Extract colors from the legend handles (seaborn's actual color mapping)
+                    handles, labels = ax.get_legend_handles_labels()
+                    donor_colors = {}
+                    for label, handle in zip(labels, handles):
+                        if hasattr(handle, 'get_facecolor'):
+                            donor_colors[label] = handle.get_facecolor()[0]
+                        elif hasattr(handle, 'get_color'):
+                            donor_colors[label] = handle.get_color()
+                        else:
+                            donor_colors[label] = handle.get_markerfacecolor()
+                    
+                    conditions_list = plot_data['condition'].cat.categories.tolist()
+                    if len(conditions_list) == 2:
+                        ctr_name, treatment_name = conditions_list[0], conditions_list[1]
+                        for donor in plot_data['donor_id'].unique():
+                            donor_data = plot_data[plot_data['donor_id'] == donor]
+                            if len(donor_data) == 2:
+                                ctr_val = donor_data[donor_data['condition'] == ctr_name][case_tf].values
+                                treat_val = donor_data[donor_data['condition'] == treatment_name][case_tf].values
+                                if len(ctr_val) > 0 and len(treat_val) > 0:
+                                    ax.plot([0, 1], [ctr_val[0], treat_val[0]], 
+                                           color=donor_colors[donor], alpha=0.5, linewidth=1, zorder=0)
 
                 # rotate x-axis labels
                 ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
                 ax.margins(x=0.3, y=0.3)
-                # Add p-value annotation
+                # Add p-value annotation with bracket
                 y_max = plot_data[case_tf].max()
                 y_min = plot_data[case_tf].min()
                 y_range = y_max - y_min
-                y_pos = y_max + 0.1 * y_range
+                y_pos = y_max + 0.4 * y_range
+                bracket_height = 0.02 * y_range
                 
                 # if p_value_adj < 0.001:
                 #     sig_text = '***'
@@ -944,12 +425,19 @@ def plot_ctr_condition_donor_level(args):
                 #     sig_text = 'ns'
                 sig_text = f'p={p_value_adj:.3f}'
                 ax.text(0.5, y_pos, sig_text, ha='center', va='bottom', fontsize=7)
-                ax.plot([0, 1], [y_pos - 0.02 * y_range, y_pos - 0.02 * y_range], 'k-', linewidth=1)
+                
+                # Draw bracket: left vertical line, horizontal line, right vertical line
+                bracket_y = y_pos - bracket_height
+                ax.plot([0, 0], [bracket_y - bracket_height, bracket_y], 'k-', linewidth=1)  # Left bracket
+                ax.plot([0, 1], [bracket_y, bracket_y], 'k-', linewidth=1)  # Horizontal line
+                ax.plot([1, 1], [bracket_y - bracket_height, bracket_y], 'k-', linewidth=1)  # Right bracket
+                ax.spines[['top', 'right']] .set_visible(False)
                 
                 ax.set_xlabel('')
                 ax.set_ylabel(case_tf if i == 0 else '', fontsize=10)
                 ax.set_title(case_tf, fontsize=10, pad=5)
                 if i == len(case_tfs) - 1:
+                    bbox_to_anchor = [1.05, 1 if len(donors) <= 8 else 1.2]
                     ax.legend(bbox_to_anchor=bbox_to_anchor, loc='upper left', fontsize=7, title_fontsize=8, frameon=False, 
                             labelspacing=0.2,
                             handletextpad=0.4,
@@ -966,89 +454,19 @@ def plot_ctr_condition_donor_level(args):
 
             output_path = os.path.join(
                 args.output_dir, 
-                f'{comparison}_{cell_type}.png'
+                f'case_donors_{comparison}_{cell_type}.png'
             )
             output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
             plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
             plt.close()
             print(f"    Saved: {output_path}")
 
-def plot_pathway_analysis(stats, args):
-    """Perform pathway analysis comparing aging and condition (disease or perturbation)."""
-    print("Generating pathway analysis...")
+def plot_pathway_analysis(stats_sig, args):
     
     dataset = args.dataset
-    data_type = args.data_type
-    feature_type = args.feature_type
-    analysis_type = args.analysis_type
-    pathway_cell_types = args.cell_types
     output_dir = args.output_dir
     
-    cfg = get_config(dataset)
-    
-    # Determine feature column based on feature type
-    feature_col = 'target' if feature_type == 'gene_expression' else 'gene'
-    
-    # Get aging stats with the same feature type
-    # Note: Aging stats are always 'bulk' type regardless of condition data type
-    aging_stats_sig = retrieve_sig_stats(
-        feature_type=feature_type
-    ).drop_duplicates(subset=["cell_type", feature_col])
-    aging_stats_sig = aging_stats_sig[[feature_col, "cell_type", "slope", 'p_value_adj']]
-    
-    # Filter significant condition stats
-    stats_sig = stats[(stats['p_value_adj'] < 0.05)].copy()
-    
-    stats_sig = stats_sig[~stats_sig['slope'].isna()]
-    
-    if len(stats_sig) == 0:
-        print("  Warning: No significant data for pathway analysis")
-        return
-    
     # Choose pathway analysis method based on analysis type
-    if analysis_type == 'disease' or analysis_type == 'aging':
-        # Use GSEA for disease/aging analysis
-        _plot_disease_pathway_gsea(stats_sig, dataset, output_dir, feature_col, pathway_cell_types)
-    else:
-        # Use KDE for perturbation analysis (original behavior)
-        # Pathway enrichment with appropriate feature column
-        res_aging = pathway_kde_func(aging_stats_sig, min_genes=10, feature_col=feature_col)
-        res_aging_sig = res_aging[res_aging['p_adj'] < 0.05]
-        
-        stats_sig['slope'] = stats_sig['slope']
-        res_condition = pathway_kde_func(stats_sig, min_genes=10, feature_col=feature_col)
-        res_condition_sig = res_condition[res_condition['p_adj'] < 0.05]
-        
-        sets = np.concatenate([res_aging_sig['gene_set'].unique(), res_condition_sig['gene_set'].unique()])
-        
-        if len(sets) == 0:
-            print("  No significant pathways found")
-            return
-        
-        plot_pathway_kde(
-            df_aging=aging_stats_sig,
-            res_aging=res_aging,
-            df_condition=stats_sig,
-            res_cond=res_condition,
-            cell_types=pathway_cell_types,
-            sets=sets,
-            min_genes=10,
-            max_height=0.1,
-            row_spacing=0.4,
-            cell_spacing=1.5,
-            feature_col=feature_col,
-        )
-        
-        output_path = os.path.join(output_dir, f'{dataset}_aging_pathway.png')
-        plt.savefig(output_path, bbox_inches="tight", dpi=300, transparent=True)
-        plt.close()
-        print(f"  Saved: {output_path}")
-        
-        # Additional GSEA for perturbations
-        _plot_perturbation_pathway_gsea(stats_sig, dataset, output_dir, feature_col)
-
-def _plot_disease_pathway_gsea(stats_sig, dataset, output_dir, feature_col, pathway_cell_types):
-    """Generate GSEA pathway analysis for disease/aging."""
     from hiara.src.pathway_analysis.util import gsea_func
     from hiara.src.pathway_analysis.plots import plot_pathway_gsea
     
@@ -1065,7 +483,7 @@ def _plot_disease_pathway_gsea(stats_sig, dataset, output_dir, feature_col, path
         stats_sig,
         pvalue_col='p_value_adj',
         gene_sets=['MSigDB_Hallmark_2020'],
-        feature_col=feature_col
+        feature_col='gene'
     )
     
     if pathway_scores is not None and len(pathway_scores) > 0:
@@ -1080,69 +498,9 @@ def _plot_disease_pathway_gsea(stats_sig, dataset, output_dir, feature_col, path
         print(f"  Saved GSEA plot: {output_path}")
     else:
         print("  No significant pathways found")
+    
 
-def _plot_perturbation_pathway_gsea(stats_sig, dataset, output_dir, feature_col):
-    """Generate GSEA pathway analysis for perturbations."""
-    from hiara.src.pathway_analysis.util import gsea_func
-    from hiara.src.feature_association.plots import dotplot_category_color
-    
-    print("\n  Running GSEA enrichment analysis...")
-    try:
-        pathway_scores = gsea_func(
-            stats_sig,
-            pvalue_col='p_value_adj',
-            gene_sets=['MSigDB_Hallmark_2020'],
-            feature_col=feature_col
-        )
-        
-        if pathway_scores is not None and len(pathway_scores) > 0:
-            print(f"    Found {len(pathway_scores)} significant pathway enrichments")
-            
-            # Plot GSEA dotplot
-            n_terms = pathway_scores['Term'].nunique()
-            cell_types = pathway_scores['cell_type'].unique()
-            
-            fig, ax = plt.subplots(
-                1, 1, 
-                figsize=(len(cell_types) * 0.12 + 1, 1 + 0.15 * n_terms), 
-                sharey=True, 
-                sharex=True
-            )
-            
-            pathway_scores['cell_type'] = pd.Categorical(
-                pathway_scores['cell_type'], 
-                categories=cell_types, 
-                ordered=True
-            )
-            
-            dotplot_category_color(
-                pathway_scores,
-                ax,
-                color_col='trend',
-                size_col='neg_log10_adj_pval',
-                x='cell_type',
-                y='Term',
-                palette=palette_treatment,
-                sizes=(50, 250),
-                show_color_legend=True,
-                show_size_legend=True,
-                size_legend_title='Significance',
-                color_legend_title='Pathway activity',
-                size_legend_loc=(1.2, 0.35),
-                color_legend_loc=(1.02, 0.75),
-                y_label='',
-                alpha=0.5
-            )
-            
-            output_path = os.path.join(output_dir, f'{dataset}_pathway_gsea.png')
-            plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
-            plt.close()
-            print(f"    Saved GSEA plot: {output_path}")
-        else:
-            print("    No significant pathway enrichments found")
-    
-    except Exception as e:
-        print(f"    Warning: GSEA analysis failed: {e}")
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -1169,12 +527,6 @@ def parse_args():
         type=str,
         default='tf_activity',
         help='Feature type: tf_activity or gene_expression (default: tf_activity)'
-    )
-    parser.add_argument(
-        '--config-label',
-        type=str,
-        default=None,
-        help='Configuration label for datasets with multiple configs (e.g., aging_cmv_neg, cmv for soundlife). Use "cmv" to combine cmv_young and cmv_old.'
     )
     
     parser.add_argument(
@@ -1257,49 +609,74 @@ def main():
     args = parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
     
-    print("="*60)
-    print(f"Dataset: {args.dataset}")
-    if args.config_label:
-        print(f"Config label: {args.config_label}")
-    print(f"Analysis type: {args.analysis_type}")
-    print(f"Data type: {args.data_type}")
-    print(f"Feature type: {args.feature_type}")
-    print("="*60)
+    if False:
+        print("="*60)
+        print(f"Dataset: {args.dataset}")
+
+        print(f"Analysis type: {args.analysis_type}")
+        print(f"Data type: {args.data_type}")
+        print(f"Feature type: {args.feature_type}")
+        print("="*60)
 
     args.case_tfs = ['KLF6', 'PRDM1' ,'LEF1', 'ZEB2']
+    stats = retrieve_stats(
+        dataset=args.dataset,
+        data_type=args.data_type,
+        feature_type=args.feature_type,
+        multi_cohort=False
+    )
+
+    stats_sig = stats[stats['is_significant']]
+
+    args.cell_types = CELL_TYPES if args.cell_types == ['all'] else args.cell_types
     
-    # Load statistics
-    stats = retrieve_features_stats(
-        multi_cohort=False,
-        dataset=args.dataset,
-        data_type=args.data_type,
-        feature_type=args.feature_type
-    )
-    stats_sig = retrieve_sig_stats(
-        multi_cohort=False, 
-        dataset=args.dataset,
-        data_type=args.data_type,
-        feature_type=args.feature_type
-    )
+
     if args.dataset == 'soundlife':
-        plot_directional_consistency_scatter(
-            stats_sig,
-            args
-        )
+        plot_overview_heatmap(stats_sig, args)
+        plot_aging_overlap(stats_sig, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'] ,args=args)
+        plot_directional_consistency_scatter(stats, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'], args=args)
+
     if args.dataset == 'perez_sle':
-        plot_aging_disease_overlap_heatmap(stats_sig, args)
-        plot_central_tf_act_disease(stats, args)
+        if not args.skip_overview:
+            groups = stats['age_group'].unique()
+            stats_sub = stats[stats['age_group'].isin(groups[0:1])]
+            plot_overview_heatmap(stats_sub, args)
+        plot_aging_overlap(
+            stats_sig, 
+            cell_types=['CD4T', 'CD8T'],
+            args=args
+        )
+        wrapper_plot_central_tfs_condition(stats, group_col='age_group' ,cell_types=['CD4T', 'CD8T'], args=args)
+        args.cell_type = 'CD8T'
+        args.case_tfs = ['LEF1']
         plot_disease_case_tfs(args)
+
+    if args.dataset == 'parsebioscience':
+        if not args.skip_overview:
+            plot_overview_heatmap(stats_sig, args)
+        args.case_tfs = ['LEF1', 'TCF7']
+        args.cell_type = 'CD8T'
+        args.aggregate_per_donor = True
+        plot_ctr_condition_donor_level(args)
+        plot_overview_heatmap(stats_sig, args)
+        selected_cell_types = ['CD4T', 'CD8T']
+        args.cell_types = [ct for ct in args.cell_types if ct in selected_cell_types]
+        plot_directional_consistency_scatter(stats, cell_types=selected_cell_types, args=args)
+        wrapper_plot_central_tfs_condition(stats, group_col='comparison', cell_types=selected_cell_types, args=args)
+        
+        plot_pathway_analysis(stats_sig, args)
 
     if args.dataset == 'op':
         if not args.skip_overview:
-                plot_overview_heatmap(stats_sig, args)
-        # plot_aging_overlap(
-        #     stats_sig, 
-        #     args
-        # )     
-        plot_central_tf_act_perturbation(stats, args)
+            plot_overview_heatmap(stats_sig, args)
+        args.case_tfs = ['KLF6', 'PRDM1' ,'LEF1', 'ZEB2']
+        args.cell_type = 'CD4T'
+        args.aggregate_per_donor = True   
+        args.cell_types = ['CD4T', 'CD8T']
+        wrapper_plot_central_tfs_condition(stats, group_col='comparison', cell_types=['CD4T', 'CD8T'], args=args)
         plot_ctr_condition_donor_level(args) 
+        plot_pathway_analysis(stats_sig, args)
+
     if args.dataset == 'CXCL9':
         # if not args.skip_overview:
         #         plot_overview_heatmap(stats_sig, args)
@@ -1309,6 +686,7 @@ def main():
         # )     
         
         plot_central_tf_act_perturbation(stats, args)
+        plot_pathway_analysis(stats_sig, args)
         # plot_ctr_condition_donor_level(args) 
   
     

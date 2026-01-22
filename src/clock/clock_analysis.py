@@ -599,7 +599,7 @@ def analyze_perturbation(obs_pert, dataset, output_dir, experiments, pval_map,
     print("="*60)
     
     # Get plot config
-    plot_config = config.clock_plot_config if config.clock_plot_config else {}
+    # plot_config = config.clock_plot_config if config.clock_plot_config else {}
     
     for cell_type in obs_pert['cell_type'].unique():
         df_all, rejuvenating, aging = prepare_plot_inputs(
@@ -611,32 +611,33 @@ def analyze_perturbation(obs_pert, dataset, output_dir, experiments, pval_map,
         print(f"  Aging: {len(aging)}")
         
         # Get plot parameters from config or use defaults
-        if cell_type in plot_config:
-            cell_plot_config = plot_config[cell_type]
-        elif 'default' in plot_config:
-            cell_plot_config = plot_config['default']
-        else:
-            cell_plot_config = {
-                'rejuvenating': {'figsize': (7, 3), 'margins': (0.1, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
-                'aging': {'figsize': (7, 3), 'margins': (0.1, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
-            }
+        # if cell_type in plot_config:
+        #     cell_plot_config = plot_config[cell_type]
+        # elif 'default' in plot_config:
+        #     cell_plot_config = plot_config['default']
+        # else:
+        # cell_plot_config = {
+        #     'rejuvenating': {'figsize': (7, 3), 'margins': (0.1, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
+        #     'aging': {'figsize': (7, 3), 'margins': (0.1, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
+        # }
         
-        rej_config = cell_plot_config.get('rejuvenating', {})
-        age_config = cell_plot_config.get('aging', {})
+        # rej_config = cell_plot_config.get('rejuvenating', {})
+        # age_config = cell_plot_config.get('aging', {})
         
-        rej_figsize = rej_config.get('figsize', (7, 3))
-        rej_margins = rej_config.get('margins', (0.1, 0.2))
-        rej_ha = rej_config.get('ha', 'right')
-        rej_bbox = rej_config.get('bbox_to_anchor', (1, 1))
+        # rej_figsize = rej_config.get('figsize', (7, 3))
+        # rej_margins = rej_config.get('margins', (0.1, 0.2))
+        # rej_ha = rej_config.get('ha', 'right')
+        # rej_bbox = rej_config.get('bbox_to_anchor', (1, 1))
         
-        age_figsize = age_config.get('figsize', (7, 3))
-        age_margins = age_config.get('margins', (0.1, 0.2))
-        age_ha = age_config.get('ha', 'right')
-        age_bbox = age_config.get('bbox_to_anchor', (1, 1))
+        # age_figsize = age_config.get('figsize', (7, 3))
+        # age_margins = age_config.get('margins', (0.1, 0.2))
+        # age_ha = age_config.get('ha', 'right')
+        # age_bbox = age_config.get('bbox_to_anchor', (1, 1))
         
         # Plot rejuvenating effects
         if len(rejuvenating) > 0:
             name_mapping = pretty_names if pretty_names else {}
+            highlight_treatments = []  # Track which treatments to highlight
             
             # Handle mock names for OP dataset
             if mock_names:
@@ -645,17 +646,25 @@ def analyze_perturbation(obs_pert, dataset, output_dir, experiments, pval_map,
                     key=lambda x: pval_map.get((cell_type, x[0], x[1]), (1.0, 0))[1]
                 )
                 name_mapping = {}
+                # Get target treatments from config
+                target_treatments = config.treatment_groups if hasattr(config, 'treatment_groups') and config.treatment_groups != 'all' else []
+                
+                compound_counter = 1
                 for rank, (ctr, treatment) in enumerate(rejuvenating_sorted, start=1):
-                    if rank == 1:
+                    # Show real name if in target_treatments, otherwise mock it
+                    if treatment in target_treatments:
                         name_mapping[treatment] = treatment
+                        highlight_treatments.append(treatment)  # Mark for red highlighting
                     else:
-                        name_mapping[treatment] = f"Compound {rank}"
+                        name_mapping[treatment] = f"Compound {compound_counter}"
+                        compound_counter += 1
                 rejuvenating = rejuvenating_sorted
             
             plot_group_strip(
-                df_all, rejuvenating, "Rejuvenating", cell_type, pval_map,
-                figsize=rej_figsize, ha=rej_ha, bbox_to_anchor=rej_bbox,
-                margins=rej_margins, name_mapping=name_mapping
+                df_all, rejuvenating, "Rejuvenating", cell_type, 
+                pval_map,
+                name_mapping=name_mapping,
+                highlight_treatments=highlight_treatments if mock_names else None
             )
             plt.title('')
             
@@ -670,16 +679,19 @@ def analyze_perturbation(obs_pert, dataset, output_dir, experiments, pval_map,
         
         # Plot aging/acceleration effects
         if len(aging) > 0:
+            name_mapping_aging = pretty_names if pretty_names else {}
+            highlight_treatments_aging = []  # Track which treatments to highlight
             plot_group_strip(
-                df_all, aging, "Acceleration", cell_type, pval_map,
-                figsize=age_figsize, margins=age_margins, ha=age_ha, 
-                bbox_to_anchor=age_bbox, name_mapping=pretty_names if pretty_names else {}
+                df_all, aging, "Acceleration", cell_type, pval_map, 
+                name_mapping=name_mapping_aging,
+                highlight_treatments=None
             )
-            plt.title(cell_type, pad=15)
+            # plt.title(cell_type, pad=15)
             output_path = os.path.join(
                 output_dir, 
                 f'clock_{dataset}_{cell_type}_acceleration.png'
             )
+            plt.title('')
             plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
             plt.close()
             print(f"  Saved acceleration plot: {output_path}")
@@ -723,9 +735,9 @@ def plot_specific_perturbations(obs_pert, dataset, cell_types, pval_map,
             ]
             plot_group_strip(
                 df_all, exp, "Rejuvenating", cell_type, pval_map, 
-                figsize=(3, 3), margins=(0.3, 0.3),
-                name_mapping=pretty_names, bbox_to_anchor=(1, 1), 
-                max_len=25, ha='center'
+                figsize=(3, 3), 
+                name_mapping=pretty_names, 
+                max_len=25
             )
             plt.title('')
             output_path = os.path.join(
@@ -740,9 +752,9 @@ def plot_specific_perturbations(obs_pert, dataset, cell_types, pval_map,
             exp = [('24 h RPMI', '24 h LPS')]
             plot_group_strip(
                 df_all, exp, "Acceleration", cell_type, pval_map, 
-                figsize=(2.5, 3), margins=(0.3, 0.3),
-                name_mapping=pretty_names, bbox_to_anchor=(1, 1), 
-                max_len=25, ha='center'
+                figsize=(2.5, 3), 
+                name_mapping=pretty_names, 
+                max_len=25
             )
             plt.title('')
             output_path = os.path.join(
@@ -901,16 +913,16 @@ Examples:
     
     # Override config with command-line arguments if provided
     p_value_threshold = args.p_value_threshold if args.p_value_threshold else config.clock_pvalue_threshold
-    
-    print("="*60)
-    print(f"Aging Clock Analysis - {args.analysis_type.capitalize()}")
-    print("="*60)
-    print(f"Dataset: {args.dataset}")
-    print(f"Model version: {args.version}")
-    print(f"Cell types: {', '.join(args.cell_types)}")
-    print(f"P-value threshold: {p_value_threshold}")
-    print(f"Output directory: {output_dir}")
-    print("="*60)
+    if False:
+        print("="*60)
+        print(f"Aging Clock Analysis - {args.analysis_type.capitalize()}")
+        print("="*60)
+        print(f"Dataset: {args.dataset}")
+        print(f"Model version: {args.version}")
+        print(f"Cell types: {', '.join(args.cell_types)}")
+        print(f"P-value threshold: {p_value_threshold}")
+        print(f"Output directory: {output_dir}")
+        print("="*60)
     
     # Get predictions
     print("\nLoading predictions...")
@@ -957,12 +969,12 @@ Examples:
         experiments, pvalue_show_type, pretty_names, test_type, group_key, mock_names, plot_config = get_experiment_setup(
             obs_pert, config
         )
-        
-        print(f"Number of experiments: {len(experiments)}")
-        print(f"P-value correction: {pvalue_show_type}")
-        print(f"Test type: {test_type}")
-        print(f"Group key: {group_key}")
-        print(f"Mock names: {mock_names}")
+        if False:
+            print(f"Number of experiments: {len(experiments)}")
+            print(f"P-value correction: {pvalue_show_type}")
+            print(f"Test type: {test_type}")
+            print(f"Group key: {group_key}")
+            print(f"Mock names: {mock_names}")
         
         # Perform statistical tests
         print("\nPerforming statistical tests...")

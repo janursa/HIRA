@@ -6,7 +6,7 @@ from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
 import scanpy as sc
 from pathlib import Path
-from hiara.src.config import DISCOVERY_COHORTS, mapping_minor_2_major, grn_consensus_min_degree, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR, NET_WEIGHT_THRESHOLD
+from hiara.src.config import DISCOVERY_COHORTS, mapping_minor_2_major, CONSENSUS_MIN_DEGREE, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR, NET_WEIGHT_THRESHOLD
 
 # increase width of output display
 pd.set_option('display.max_columns', None)
@@ -30,22 +30,48 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
     gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
     assert data_type in ['sc', 'bulk', 'metacell'], f'Unknown type {data_type}'
     adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/{dataset}.h5ad", backed='r')
+    obs = adata.obs.copy()
+    if dataset not in ['ibd']:
+        obs.rename({'perturbation': 'condition', 'disease': 'condition', 'treatment': 'condition', 'Max_WHO_Group': 'condition'}, axis=1, inplace=True)
+    
+    mask_genes = adata.var_names.isin(gene_names)
     
     if cell_type is not None:
-        if cell_type not in adata.obs['cell_type'].unique():
-            raise ValueError(f'Given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
-        adata = adata[adata.obs['cell_type'] == cell_type]
-        adata = adata.to_memory()
-    else:
-        adata = adata.to_memory()
-    # if 'age' not in adata.obs.columns:
-    #     print('Warning: "age" column not found in adata.obs. Setting to default age of 20.')
-    #     adata.obs['age'] = 20
+        if cell_type not in obs['cell_type'].unique():
+            raise ValueError(f'Given cell type "{cell_type}" not in {obs["cell_type"].unique()}')
+        cell_type_mask = obs['cell_type'] == cell_type
+        
+    if 'condition' in obs.columns:
+        config = get_config(dataset)
+        name_mapping = config.name_mapping
+        if name_mapping is not None:
+                obs['condition'] = obs['condition'].map(lambda x: name_mapping.get(x, x))
+    if 'condition' not in obs.columns:
+        obs['condition'] = 'healthy'
+    if condition is not None:
+        if isinstance(condition, str):
+            condition = [condition]
+        for c in condition:
+            if c not in obs['condition'].unique():
+                raise ValueError(f'Given condition "{c}" not in {obs["condition"].unique()}')
+        mask_condition = obs['condition'].isin(condition)
+    mask = np.ones(adata.n_obs, dtype=bool)
+    if cell_type is not None:
+        mask &= cell_type_mask.values
+    if condition is not None:
+        mask &= mask_condition.values
+    adata = adata[mask, mask_genes].to_memory()
+    for c in obs.columns:
+        adata.obs[c] = obs[c]
+    if 'age' not in adata.obs.columns:
+        print('Warning: "age" column not found in adata.obs. Setting to default age of 20.')
+        adata.obs['age'] = 20
+    
     if ('lognorm' in adata.layers) | ('X_norm' in adata.layers):
         print(f'Using layer {("lognorm" if "lognorm" in adata.layers else "X_norm")}')
         adata.X = adata.layers['lognorm'] if 'lognorm' in adata.layers else adata.layers['X_norm']
     adata.obs['dataset'] = dataset
-    adata = adata[:, adata.var_names.isin(gene_names)]
+
     if 'age' in adata.obs.columns:
         adata = adata[~adata.obs['age'].isna()].copy()
         adata.obs['age'] = adata.obs['age'].astype(float).astype(int)
@@ -58,20 +84,7 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
     #     adata.obs['age_group'] = adata.obs['subject.ageGroup'].apply(
     #         lambda x: 'young' if 'Young' in str(x) else ('old' if 'Older' in str(x) else None)
     #     )
-    if dataset not in ['ibd']:
-        adata.obs.rename({'perturbation': 'condition', 'disease': 'condition', 'treatment': 'condition', 'Max_WHO_Group': 'condition'}, axis=1, inplace=True)
     
-    if 'condition' in adata.obs.columns:
-        config = get_config(dataset)
-        name_mapping = config.name_mapping
-        if name_mapping is not None:
-                adata.obs['condition'] = adata.obs['condition'].map(lambda x: name_mapping.get(x, x))
-    if 'condition' not in adata.obs.columns:
-        adata.obs['condition'] = 'healthy'
-    if condition is not None:
-        if condition not in adata.obs['condition'].unique():
-                raise ValueError(f'Given condition "{condition}" not in {adata.obs["condition"].unique()}')
-        adata = adata[adata.obs['condition'] == condition]
     
     adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + adata.obs['age'].astype(str)
 
@@ -79,8 +92,6 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         net = retrieve_net_consensus(cell_type=cell_type)
         adata = adata[:, adata.var_names.isin(net['target'].unique())].copy()
     
-    if dataset == 'CXCL9':
-        adata = adata[adata.obs['condition'].isin(['24 h LPS + ruxolitinib', '24 h RPMI + ruxolitinib', '24 h LPS', '24 h RPMI'])]  # remove this condition due to low sample size
     return adata
 
 def retrieve_net(dataset, cell_type, promotor_only=False, top_n=100_000, data_type='sc'):      
@@ -109,7 +120,7 @@ def retrieve_net(dataset, cell_type, promotor_only=False, top_n=100_000, data_ty
 #     nets = pd.concat(net_store, ignore_index=True)
 #     return nets
 
-def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=grn_consensus_min_degree, promotor_only=False, force=False):
+def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CONSENSUS_MIN_DEGREE, promotor_only=False, force=False):
     save_name = f"{GRNS_DIR}/consensus_net_{cell_type}_minDegree{min_degree}{'_promotorOnly' if promotor_only else ''}.csv"
     if Path(save_name).exists() and not force:
         # print('Loading existing consensus GRN for', cell_type, 'with min degree', min_degree)

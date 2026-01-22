@@ -224,28 +224,27 @@ def gsea_func(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hallmark_2020'], f
     import gseapy as gp
     # from hiara.src.utils.util import get_genesets
     from gseapy import barplot, dotplot
-    all_genes = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
+    all_genes = np.loadtxt(f'{PRIOR_DIR}/tf_all.csv', dtype=str)
+    # all_genes = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
+
     # gene_sets =  get_genesets()
     res2d_store = []
     for cell_type in df['cell_type'].unique():
-    # for cell_type in ['CD8T']:
         for trend in df['trend'].unique():
-        # for trend in ['Decrease in aging']:
             mask = (df['cell_type'] == cell_type) & (df['trend'] == trend)
             if mask.sum() == 0:
                 continue
             stats_df = df[mask]
-            # - prepare
             stats_df = stats_df[[feature_col, pvalue_col]]
-            all_tfs = stats_df[feature_col].unique().tolist()
+            
             genes = stats_df[stats_df[pvalue_col]<0.05][feature_col].unique().tolist()
             if True:
                 rr = gp.enrichr(gene_list=list(genes),
                                 gene_sets=gene_sets, #, 'KEGG_2021_Human'
                                 organism='human', 
                                 outdir=None, 
-                                cutoff=1
-                                # background=list(tf_all),
+                                cutoff=1,
+                                background=all_genes,
                                 )
                 res2d = rr.res2d
                 res2d.rename(columns={'Adjusted P-value': 'FDR'}, inplace=True)
@@ -260,6 +259,8 @@ def gsea_func(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hallmark_2020'], f
 
             filter_col = 'FDR' #'FDR q-val'
             res2d = res2d[res2d[filter_col]<0.05]
+            res2d['n_genes'] = res2d['Genes'].apply(lambda x: len(x.split(';')))
+            res2d = res2d[res2d['n_genes']>=3]
             
             if res2d.shape[0] == 0:
                 continue
@@ -301,7 +302,6 @@ def wrapper_gsea(stats, palette=None, **kwargs):
         palette = palette_trend_2
     
     # Handle feature_type parameter (convert to feature_col for gsea_func)
-    feature_col = 'gene'  # default
     pathway_scores = gsea_func(stats, **kwargs)
     n_terms = pathway_scores['Term'].nunique()
     cell_types = pathway_scores['cell_type'].unique()

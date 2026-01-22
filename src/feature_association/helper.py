@@ -11,7 +11,7 @@ import anndata as ad
 from statsmodels.stats.multitest import multipletests
 from hiara.src.config import FEATURES_DIR, get_config,  surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
 from tqdm import tqdm
-from hiara.src.config import OUTPUT_DIR, FEATURES_DIR
+from hiara.src.config import OUTPUT_DIR, FEATURES_DIR, CORR_THRESHOLD
 from scipy.sparse import issparse
 from hiara.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net
 import warnings
@@ -28,47 +28,92 @@ def write_features_stats(stats, data_type, feature_type, multi_cohort=True, data
     stats.to_csv(file_name, index=False)
         
 
-def retrieve_features_stats(data_type, feature_type, cell_type=None, multi_cohort=True, dataset=None):
+def retrieve_stats(data_type='bulk', feature_type='tf_activity', cell_type=None, dataset=None, multi_cohort=None):
+    assert data_type in ['bulk', 'sc', 'minor_bulk', 'minor_sc'], f'Unknown data type {data_type}'
+    assert feature_type in ['tf_activity', 'gene_expression', 'gene_score'], f'Unknown feature type {feature_type}'
+    # determine whether this is multi-cohort
+    if multi_cohort is None:
+        multi_cohort = dataset is None or dataset in DISCOVERY_COHORTS
+    # load stats
     if multi_cohort:
-        stats = pd.read_csv(f'{FEATURES_DIR}/{feature_type}/stats/stats_multi_cohort_{data_type}.csv')
+        stats = pd.read_csv(
+            f"{FEATURES_DIR}/{feature_type}/stats/stats_multi_cohort_{data_type}.csv"
+        )
     else:
-        stats = pd.read_csv(f'{FEATURES_DIR}/{feature_type}/stats/stats_{dataset}_{data_type}.csv')
-        
-    # print(stats)
-    if cell_type is not None: 
-        if cell_type not in stats['cell_type'].unique():
-            raise ValueError(f'Given cell type "{cell_type}" not in {stats["cell_type"].unique()}')
-        stats = stats[stats['cell_type'] == cell_type]
-    if dataset is not None and multi_cohort==False:
+        stats = pd.read_csv(
+            f"{FEATURES_DIR}/{feature_type}/stats/stats_{dataset}_{data_type}.csv"
+        )
+    
+
+    # optional cell-type filtering
+    if cell_type is not None:
+        if cell_type not in stats["cell_type"].unique():
+            raise ValueError(
+                f'Given cell type "{cell_type}" not in {stats["cell_type"].unique()}'
+            )
+        stats = stats[stats["cell_type"] == cell_type]
+
+    # map comparison names for single-cohort analyses
+    if dataset is not None and not multi_cohort:
         config = get_config(dataset)
-        stats['comparison'] = stats['comparison'].map(lambda name: config.name_mapping.get(name, name))
+        stats["comparison"] = stats["comparison"].map(
+            lambda name: config.name_mapping.get(name, name)
+        )
+
+    # significance logic
+    if multi_cohort:
+        p_val_col = "meta_p_adj"
+
+        mask_trend = stats["trend"] != "Inconsistent"
+
+        # genes where all datasets have |slope| > threshold
+        def has_consistent_slope(group):
+            return (group["slope"].abs() > CORR_THRESHOLD).all()
+
+        valid_groups = (
+            stats.groupby(["gene", "cell_type"])
+            .filter(has_consistent_slope)
+        )
+        mask_slope = stats.index.isin(valid_groups.index)
+
+    else:
+        p_val_col = "p_value_adj"
+        
+        stats['p_value_adj'] = stats['p_value_adj'].apply(lambda x: 1E-50 if x < 1E-50 else x)
+        mask_trend = pd.Series(True, index=stats.index)
+        mask_slope = stats["slope"].abs() > CORR_THRESHOLD
+
+    mask_pvalue = stats[p_val_col] < 0.05
+
+    stats["is_significant"] = mask_pvalue & mask_trend & mask_slope
+
+    # - add trend of conditions
+    if not multi_cohort:
+        if dataset == 'perez_sle':
+            condition = 'disease'
+        elif dataset in ['parsebioscience', 'op', 'CXCL9']:
+            condition = 'treatment'
+        elif dataset == 'soundlife':
+            condition = 'aging'
+        else:
+            raise ValueError(f'Unknown dataset {dataset} for trend determination')
+        if condition == 'treatment':
+            stats['trend'] = [
+                f'Increase after {condition}' if x > 0 else f'Decrease after {condition}' 
+                for x in stats['slope']
+            ]
+        else:
+            stats['trend'] = [
+                f'Increase in {condition}' if x > 0 else f'Decrease in {condition}' 
+                for x in stats['slope']
+            ]
+
     return stats
 
-def retrieve_sig_stats(data_type='bulk', feature_type='tf_activity', filter_inconsistent=True, cell_type=None, multi_cohort=True, dataset=None):
-    stats = retrieve_features_stats(data_type=data_type, feature_type=feature_type, multi_cohort=multi_cohort, dataset=dataset)
-    slope_t = 0.1
-    if multi_cohort:  
-        p_val_col = 'meta_p_adj'
-        stats = stats[stats[p_val_col] < 0.05]
-        if filter_inconsistent:
-            stats = stats[stats['trend'] != 'Inconsistent']
-        
-    else:
-        p_val_col = 'p_value_adj'
-        stats = stats[stats[p_val_col] < 0.05]
-    if cell_type is not None:
-        if cell_type not in stats['cell_type'].unique():
-            raise ValueError(f'Given cell type "{cell_type}" not in {stats["cell_type"].unique()}')
-        stats = stats[stats['cell_type'] == cell_type]
-        
-    slope_col = 'slope'
-    
-    # Slope-based filtering: Keep only genes where ALL datasets have abs(slope) > slope_t
-    def has_consistent_slope(group):
-        return (group[slope_col].abs() > slope_t).all()
-    stats = stats.groupby(['gene', 'cell_type']).filter(has_consistent_slope)
-    
-    return stats
+def retrieve_sig_stats(data_type='bulk', feature_type='tf_activity',  cell_type=None, dataset=None):
+    stats = retrieve_stats(data_type=data_type, feature_type=feature_type, cell_type=cell_type, dataset=dataset)
+    stats_sig = stats[stats['is_significant']]
+    return stats_sig
 
 def retrieve_feature_data(dataset, cell_type, data_type='bulk', feature_type='tf_activity', condition=None, suffix=''):
     if feature_type == 'gene_expression':
@@ -125,7 +170,9 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
     stats_all = []
     def stats_condition_vs_ctr(adata, condition):  
         mask_ctr = adata.obs[condition_col] == ctr_group
+        assert mask_ctr.sum() > 0, f'No control found in {ctr_group} {dataset}'
         mask_condition = adata.obs[condition_col] == condition
+        assert mask_condition.sum() > 0, f'No condition found in {condition} {dataset}'
         
         control_group = adata.X[mask_ctr.values, :]
         case_group = adata.X[mask_condition.values, :]
@@ -332,7 +379,7 @@ def run_meta_analysis(stats_all, meta_association_type='max', min_degree=2, temp
 
 def wrapper_meta_analysis(stats_features, par):
     feature_col = 'gene'
-    min_degree = par['meta_analysis_min_cohorts']
+    min_degree = par['META_MIN_COHORT']
     def run_func(min_degree, meta_association_type):
         stats_store = []
         for cell_type in stats_features['cell_type'].unique():
@@ -550,7 +597,6 @@ def wrapper_gene_score(par):
     pathways = get_genesets()
     
     print('Calculating gene scores...')
-    stats_store = []
     for cell_type in tqdm(cell_types, desc='cell types'):
         # ----------- calculate tf activity for all datasets
         net = retrieve_net_consensus(cell_type=cell_type) #TOGO 

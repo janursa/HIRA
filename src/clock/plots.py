@@ -534,8 +534,7 @@ def plot_experiment(test_type, df_all, ctr, treatment, cell_type, pval_map, ax=N
 
 
 def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="Control", 
-            figsize=None,  margins=(0.2, 0.2), name_mapping={},
-            bbox_to_anchor=(1, 1), max_len=15, ha='left'):
+            figsize=None,  name_mapping={}, max_len=25, highlight_treatments=None):
     """
     Strip plot showing treatment-control differences for all significant treatments.
     Each dot is one donor/sample, colored by donor ID.
@@ -567,7 +566,6 @@ def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="C
                 'p_value': pval_map.get((cell_type, ctr, treatment), (1.0, 0))[0],
                 'donor': donor_map[donor]
             })
-
         # store control for later pval lookup
         treatment_to_ctr[treatment] = ctr
     if not df_plot:
@@ -582,7 +580,10 @@ def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="C
     # Plot strip
     extra_space = 1 if len(order) > 4 else 3
     if figsize is None:
-        figsize = (.4*len(order)+extra_space, 3)
+        width = .25*len(order)+extra_space+1
+        if len(order) < 3:
+            width = 2.5
+        figsize = (width, 3)
     fig, ax = plt.subplots(figsize=figsize)
     donors = sorted(df_plot['donor'].unique(), key=lambda x: int(x.split(' ')[1]))
     donor_palette = dict(zip(donors, sns.color_palette("husl", len(donors))))
@@ -600,7 +601,6 @@ def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="C
         hue_order=donors 
     )
     
-
     # Annotate above the dots
     for i, treatment in enumerate(order):
         mean_diff = df_plot[df_plot['treatment']==treatment]['diff'].mean()
@@ -611,16 +611,29 @@ def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="C
         y_loc = max_diff + .1*max_diff
         ax.text(i, y_loc, text, ha='center', va='bottom', fontsize=8, rotation=45)
 
-    # Trim x-tick labels
-    # ax.set_xticklabels([t[:25] for t in order], rotation=45, ha='right')
-    ax.set_xticklabels([name_mapping.get(t, t)[:max_len] for t in order], rotation=45, ha=ha)
-    ax.margins(x=margins[0], y=margins[1])
+    # Set x-tick labels with color highlighting
+    xticklabels = [name_mapping.get(t, t)[:max_len] for t in order]
+    ax.set_xticklabels(xticklabels, rotation=45, ha='right')
+    
+    # Color specific treatments in red if highlight_treatments is provided
+    if highlight_treatments:
+        for i, (tick_label, treatment) in enumerate(zip(ax.get_xticklabels(), order)):
+            if treatment in highlight_treatments:
+                tick_label.set_color('red')
+                # tick_label.set_weight('bold')
+    
+    x_margin = .3 - .02 * len(order)
+    if x_margin < 0.05:
+        x_margin = 0.05
+    # print(f"x_margin: {x_margin}")
+    ax.margins(x=x_margin, y=.1)
     # Update y-axis label
     ylabel = "Age rejuvenation (yrs)" if group_name=="Rejuvenating" else "Age acceleration (yrs)"
     ax.set_ylabel(ylabel)
     ax.set_xlabel('')
     ax.set_title(f"{cell_type}", fontsize=12, weight='bold', pad=40)
     ax.spines[['top', 'right']].set_visible(False)
+    bbox_to_anchor = (1.01, 1) if len(donors) <= 10 else (1.01, 1.2)
     ax.legend(title="", bbox_to_anchor=bbox_to_anchor, loc='upper left', frameon=False, labelspacing=0.2,)
     plt.tight_layout()
     return fig, ax

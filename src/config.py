@@ -4,7 +4,7 @@ Configuration for condition-based analyses (disease and perturbation).
 This module centralizes all dataset-specific configurations to eliminate
 code duplication between disease and perturbation analyses.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Literal
 from collections import OrderedDict
 import seaborn as sns
@@ -12,11 +12,37 @@ from matplotlib.colors import LinearSegmentedColormap
 from collections import OrderedDict
 import warnings
 import os
+import platform
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 
-meta_analysis_min_cohorts = 2
-grn_consensus_min_degree = 2 
+
+CLOCK_V = 'V1'
+USE_LOCAL_CLOCK = True  # If True, use clocks saved in CLOCKS_DIR;
+
+DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
+AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife']
+ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife', 'zhang']
+CLOCK_TRAINING_COHORTS = [
+                'onek1k',
+                'abf300',
+                # 'aida',
+                # 'zhang',
+                # 'soundlife'
+                ]
+CLOCK_TEST_COHORTS = [
+                'aida',
+                'perez_sle',
+                'zhang'
+                # 'onek1k',
+                # 'abf300'
+                ]
+NET_WEIGHT_THRESHOLD = None  # 0.05 # Minimum absolute weight for edges in GRN 
+CLOCK_CV_SCORING = 'spearman'  # 'r2' or 'spearman'
+TUNE_CLOCK = True
+META_MIN_COHORT = 2
+CONSENSUS_MIN_DEGREE = 2 
+CORR_THRESHOLD = 0.1 # minimum absolute correlation for feature association with age
 
 DATASET_NAME_MAPPING = {
     "data1": "onek1k",
@@ -26,7 +52,6 @@ DATASET_NAME_MAPPING = {
     "SLE": "perez_sle"
 }
 
-import platform
 if platform.system() == 'Linux':
     HIARA_DIR = '/home/jnourisa/projs/ongoing/hiara/'
     base_dir = '/vol/projects/jnourisa/hiara/'
@@ -51,10 +76,6 @@ os.makedirs(CLOCKS_DIR, exist_ok=True)
 os.makedirs(PLOTS_DIR, exist_ok=True)
 os.makedirs(PRIOR_DIR, exist_ok=True)
 os.makedirs(FEATURES_DIR, exist_ok=True)
-
-clock_version = 'V1'
-use_local_clocks = True  # If True, use clocks saved in CLOCKS_DIR;
-
 surrogate_names = {
                     'onek1k':'OneK1K',
                     'abf300': 'ABF300',
@@ -73,24 +94,6 @@ surrogate_names = {
                     '24 h RPMI': 'RPMI',
                     'Dimethyl Sulfoxide': 'DMSO'
                     }
-# - datasets
-ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife', 'zhang']
-AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife']
-DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
-CLOCK_TRAINING_COHORTS = [
-                'onek1k',
-                'abf300',
-                # 'soundlife'
-                ]
-CLOCK_TEST_COHORTS = [
-                'aida',
-                'perez_sle',
-                'zhang'
-                # 'onek1k',
-                # 'abf300'
-                ]
-NET_WEIGHT_THRESHOLD = None 
-CLOCK_CV_SCORING = 'spearman'  # 'r2' or 'spearman'
 # - palettes  
 colors_blind = [
           '#E69F00',  # Orange
@@ -151,16 +154,6 @@ mapping_minor_2_major = {
     'Memory_B': 'B',
 }
 minor_cell_types = list(mapping_minor_2_major.keys())
-# par_simulation = {
-#         'simulation_iteration': 3,
-#         'n_donors': 20,
-#         'data_type': 'bulk',
-#         'version': 'all_data',
-#         'reg_type': 'ridge',
-#         'feature_type': 'gene_expression',
-#         'perturbation_mode': 'overexpression',
-#         'tfs': None,
-#     }
 
 @dataclass
 class ConditionConfig:
@@ -174,7 +167,7 @@ class ConditionConfig:
     condition_column: Optional[str] = None # Column name in obs: 'condition', 'perturbation', 'Max_WHO_Group'
     
     # Treatments to compare (can be 'all' for auto-detection)
-    treatment_groups: List[str] | Literal['all'] = 'all'
+    treatment_groups: Optional[List[str]] = None
     
     # Statistical parameters
     test_type: str = 'unpaired'  # 'unpaired', 'mixed-effect', 'paired'
@@ -189,7 +182,7 @@ class ConditionConfig:
     
     # Special handling
     control_mapping: Optional[Dict[str, str]] = None  # For datasets with multiple controls
-    name_mapping: Optional[Dict[str, str]] = None     # Rename conditions for display
+    name_mapping: Optional[Dict[str, str]] = field(default_factory=dict)    # Rename conditions for display
     condition_mapping: Optional[Dict[str, str]] = None  # Transform actual condition values in data (applied when loading)
     
     # Display
@@ -242,7 +235,7 @@ DATASET_CONFIGS = {
         name="perez_sle",
         condition_column='condition',
         control_mapping='healthy',
-        treatment_groups=['SLE'],
+        treatment_groups=['healthy', 'SLE'],
         test_type='unpaired',
         display_name='SLE',
         # target_conditions=None,
@@ -262,8 +255,8 @@ DATASET_CONFIGS = {
     "op": ConditionConfig(
         name="op",
         condition_column='condition',  # Will auto-detect 'perturbation' if needed
-        control_mapping='Dimethyl Sulfoxide',
-        treatment_groups=['Ruxolitinib'],  # Auto-detect all drugs
+        control_mapping='DMSO',
+        treatment_groups=['DMSO', 'Ruxolitinib'],  # Auto-detect all drugs
         test_type='mixed-effect',
         mixed_effects_formula='feature_values ~ condition',
         mixed_effects_group='plate_name',
@@ -274,13 +267,14 @@ DATASET_CONFIGS = {
         clock_group_key='plate_name',
         clock_pvalue_correction='corrected',
         clock_experiments='all',  # Auto-generate from data: (control, treatment) for all treatments
-        clock_mock_names=False,  # Mock compound names (keep top 1, rename others)
+        clock_mock_names=True,  # Mock compound names (keep top 1, rename others)
         clock_plot_config={
             'rejuvenating': {'figsize': (7.5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
             'aging': {'figsize': (5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
         },
         name_mapping = {
-            'Ruxolitinib vs Dimethyl Sulfoxide': 'Ruxolitinib',
+            'Dimethyl Sulfoxide': 'DMSO',
+            'Ruxolitinib vs DMSO': 'Ruxolitinib',
         },
         pseudobulk_group=['cell_type', 'plate_name', 'condition', 'well', 'donor_id']
     ),
@@ -289,9 +283,10 @@ DATASET_CONFIGS = {
         name="CXCL9",
         condition_column='condition',
         treatment_groups=[
+            '24 h RPMI',
             '24 h RPMI + ruxolitinib',
             '24 h LPS + ruxolitinib',
-            # '24 h LPS'
+            '24 h LPS'
         ],
         test_type= 'mixed-effect',
         mixed_effects_formula='feature_values ~ condition',
@@ -335,7 +330,7 @@ DATASET_CONFIGS = {
         name="parsebioscience",
         condition_column='condition',  
         control_mapping='PBS',
-        treatment_groups=['IL-10'], 
+        treatment_groups=['PBS', 'IL-10'], 
         test_type= 'mixed-effect',#'mixed-effect',
         mixed_effects_formula='feature_values ~ condition',
         mixed_effects_group='donor_id',
@@ -348,30 +343,22 @@ DATASET_CONFIGS = {
         clock_group_key='donor_id',
         clock_pvalue_correction='corrected',
         clock_experiments='all',  # Auto-generate from data
-        clock_plot_config={
-            'CD4T': {
-                'rejuvenating': {'figsize': (4, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
-                'aging': {'figsize': (10, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
-            },
-            'default': {
-                'rejuvenating': {'figsize': (7, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
-                'aging': {'figsize': (10, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
-            },
-        },
+        # clock_plot_config={
+        #     'CD4T': {
+        #         'rejuvenating': {'figsize': (5, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
+        #         'aging': {'figsize': (10, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
+        #     },
+        #     'default': {
+        #         'rejuvenating': {'figsize': (7, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
+        #         'aging': {'figsize': (10, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
+        #     },
+        # },
     ),
     
     # ========== AGING DATASETS (Longitudinal) ==========
     "soundlife": ConditionConfig(
             name="soundlife",
             pseudobulk_group=['cell_type', 'donor_id', 'visitName'],
-            name_mapping={'healthy': 'healthy', 'CMV':'healthy'},
-            condition_column='age_group',  
-            control_mapping='young',
-            treatment_groups=['old'],
-
-            test_type='mixed-effect',
-            mixed_effects_formula='feature_values ~ age_group',
-            mixed_effects_group='donor_id',
         )
 }
 

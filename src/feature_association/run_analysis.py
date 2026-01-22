@@ -15,7 +15,7 @@ from typing import List
 import pandas as pd
 import warnings
 
-from hiara.src.config import FEATURES_DIR, CELL_TYPES, DISCOVERY_COHORTS, get_config, meta_analysis_min_cohorts
+from hiara.src.config import FEATURES_DIR, CELL_TYPES, DISCOVERY_COHORTS, get_config, META_MIN_COHORT
 from hiara.src.feature_association.helper import (
     wrapper_tf_activity,
     wrapper_aging_hallmarks,
@@ -53,11 +53,13 @@ def run_single_cohort_analysis(args):
         'data_type': data_type,
         'feature_type': feature_type,
         'datasets': [dataset],
-        'cell_types': cell_types,
+        'cell_types': cell_types if cell_types != ['all'] else CELL_TYPES,
         'association_type': args.association_type,
         'use_consensus_net': True,
         'promotor_only': args.promotor_only,
+        'condition': config.treatment_groups if hasattr(config, 'treatment_groups') else None
     }
+
     
     # Step 1: Calculate features (if needed) - only once for all configs
     if not skip_features:
@@ -112,11 +114,11 @@ def run_multi_cohort_analysis(
     par = {
         'data_type': args.data_type,
         'feature_type': args.feature_type,
-        'cell_types': args.cell_types,
+        'cell_types': args.cell_types if args.cell_types != ['all'] else CELL_TYPES,
         'datasets': args.datasets,
         'temp_dir': f'{FEATURES_DIR}/tmp/',
         'promotor_only': args.promotor_only,
-        'meta_analysis_min_cohorts': meta_analysis_min_cohorts,
+        'META_MIN_COHORT': META_MIN_COHORT,
         'condition': 'healthy',
         'use_consensus_net': True
     }
@@ -238,8 +240,7 @@ def main():
 
     stats_sig = retrieve_sig_stats(dataset=None if multi_cohort else dataset,
                                    feature_type=args.feature_type,
-                                   data_type=args.data_type,
-                                   multi_cohort=multi_cohort).drop_duplicates(subset=['gene', 'cell_type', 'condition'])
+                                   data_type=args.data_type).drop_duplicates(subset=['gene', 'cell_type', 'condition'])
     print(f"\nSignificant features (FDR < 0.05) in meta-analysis:")
     print(stats_sig.groupby(['cell_type', 'condition'])['gene'].nunique())
     
