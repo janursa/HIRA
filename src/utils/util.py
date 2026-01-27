@@ -6,7 +6,8 @@ from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
 import scanpy as sc
 from pathlib import Path
-from hiara.src.config import DISCOVERY_COHORTS, mapping_minor_2_major, CONSENSUS_MIN_DEGREE, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR, NET_WEIGHT_THRESHOLD
+from scipy import stats
+from hiara.src.config import DISCOVERY_COHORTS, mapping_minor_2_major, CONSENSUS_MIN_DEGREE, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR, NET_WEIGHT_THRESHOLD, NET_MAX_SIZE
 
 # increase width of output display
 pd.set_option('display.max_columns', None)
@@ -70,6 +71,7 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
     if ('lognorm' in adata.layers) | ('X_norm' in adata.layers):
         print(f'Using layer {("lognorm" if "lognorm" in adata.layers else "X_norm")}')
         adata.X = adata.layers['lognorm'] if 'lognorm' in adata.layers else adata.layers['X_norm']
+    
     adata.obs['dataset'] = dataset
 
     if 'age' in adata.obs.columns:
@@ -79,22 +81,22 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
     if 'sex' in adata.obs.columns:
         adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
 
-    # Map subject.ageGroup to age_group for soundlife dataset
-    # if dataset == 'soundlife' and 'subject.ageGroup' in adata.obs.columns:
-    #     adata.obs['age_group'] = adata.obs['subject.ageGroup'].apply(
-    #         lambda x: 'young' if 'Young' in str(x) else ('old' if 'Older' in str(x) else None)
-    #     )
-    
-    
-    adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + adata.obs['age'].astype(str)
-
     if only_net_genes:
         net = retrieve_net_consensus(cell_type=cell_type)
         adata = adata[:, adata.var_names.isin(net['target'].unique())].copy()
-    
+    if data_type == 'sc':
+        adata.layers['counts'] = adata.X.copy()
+        sc.pp.normalize_total(adata)
+        sc.pp.log1p(adata)
+    # make donor names pretties
+    donors_all = sorted(adata.obs['donor_id'].unique())
+    donor_map = {d: f"Donor {i+1}" for i, d in enumerate(donors_all)}  # Pretty names
+    adata.obs['donor_id'] = adata.obs['donor_id'].map(lambda x: donor_map.get(x, x))
+    adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + '- age: ' + adata.obs['age'].astype(str)
+
     return adata
 
-def retrieve_net(dataset, cell_type, promotor_only=False, top_n=100_000, data_type='sc'):      
+def retrieve_net(dataset, cell_type, promotor_only=False, data_type='sc'):      
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
     if dataset not in ['soundlife']:
@@ -106,9 +108,11 @@ def retrieve_net(dataset, cell_type, promotor_only=False, top_n=100_000, data_ty
     net = net[net['target'].isin(gene_names)]
     if promotor_only:
         net = net[net['promotor_based']]
-    net = net.sort_values(by='weight', ascending=False, key=abs).head(top_n)
+    
     if NET_WEIGHT_THRESHOLD is not None:
         net = net[net['weight'] > NET_WEIGHT_THRESHOLD]
+    if NET_MAX_SIZE is not None:
+        net = net.sort_values(by='weight', ascending=False, key=abs).head(NET_MAX_SIZE)
     return net[['source', 'target', 'weight', 'cell_type']]
 
 # def retrieve_nets(datasets, cell_type, promotor_only=False):

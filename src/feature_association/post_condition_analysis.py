@@ -304,7 +304,7 @@ def plot_disease_case_tfs(args):
         plt.close()
         print(f"  Saved: {output_path}")
 
-def plot_ctr_condition_donor_level(args):
+def plot_ctr_condition_donor_level(args, cell_types):
     """Plot donor-level perturbation effects for case genes."""    
     stats = retrieve_stats(
         dataset=args.dataset, data_type=args.data_type, feature_type=args.feature_type)
@@ -312,7 +312,7 @@ def plot_ctr_condition_donor_level(args):
     aggregate_per_donor = args.aggregate_per_donor if hasattr(args, 'aggregate_per_donor') else False
     case_tfs = args.case_tfs
     
-    for cell_type in args.cell_types:
+    for cell_type in cell_types:
         adata = retrieve_feature_data(dataset=args.dataset, data_type=args.data_type, feature_type=args.feature_type, cell_type=cell_type)
         adata_df = adata.to_df()
         adata_df[['donor_id', 'condition']] = adata.obs[['donor_id', 'condition']].values
@@ -434,7 +434,7 @@ def plot_ctr_condition_donor_level(args):
                 ax.spines[['top', 'right']] .set_visible(False)
                 
                 ax.set_xlabel('')
-                ax.set_ylabel(case_tf if i == 0 else '', fontsize=10)
+                ax.set_ylabel('TF activity' if i == 0 else '', fontsize=10)
                 ax.set_title(case_tf, fontsize=10, pad=5)
                 if i == len(case_tfs) - 1:
                     bbox_to_anchor = [1.05, 1 if len(donors) <= 8 else 1.2]
@@ -449,7 +449,7 @@ def plot_ctr_condition_donor_level(args):
 
                 if i != 0:
                     ax.set_ylabel('')
-                    ax.set_yticklabels([])
+                ax.set_yticks([])
                
 
             output_path = os.path.join(
@@ -471,13 +471,9 @@ def plot_pathway_analysis(stats_sig, args):
     from hiara.src.pathway_analysis.plots import plot_pathway_gsea
     
     print("\n  Running GSEA enrichment analysis...")
-    
-    # Prepare data for GSEA: add trend column based on slope direction
-    stats_sig = stats_sig.copy()
-    stats_sig['trend'] = stats_sig['slope'].apply(
-        lambda x: 'Increase in disease' if x > 0 else 'Decrease in disease'
-    )
-    
+    trends = stats_sig['trend'].unique()
+    palette = get_condition_palette(args.analysis_type)
+    palette = {k: v for k, v in palette.items() if k in trends}
     # Run GSEA
     pathway_scores = gsea_func(
         stats_sig,
@@ -490,7 +486,7 @@ def plot_pathway_analysis(stats_sig, args):
         print(f"  Found {len(pathway_scores)} significant pathways")
         
         # Plot combined GSEA results
-        plot_pathway_gsea(pathway_scores, palette=palette_disease_effect)
+        plot_pathway_gsea(pathway_scores, palette=palette)
         
         output_path = os.path.join(output_dir, f'{dataset}_pathway_gsea.png')
         plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
@@ -630,38 +626,61 @@ def main():
 
     args.cell_types = CELL_TYPES if args.cell_types == ['all'] else args.cell_types
     
+    config = get_config(dataset=args.dataset)
 
     if args.dataset == 'soundlife':
         plot_overview_heatmap(stats_sig, args)
         plot_aging_overlap(stats_sig, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'] ,args=args)
-        plot_directional_consistency_scatter(stats, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'], args=args)
+        plot_directional_consistency_scatter(stats, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'], 
+                                             args=args,
+                                             x_label = 'Validation analysis \n(significance)',
+                                             y_label = 'Discovery analysis \n(significance)',
+                                             agreement='same',
+                                             label_consistent = 'Consistent',
+                                             label_opposing = 'Opposing'
+                                            )
 
     if args.dataset == 'perez_sle':
+        groups = stats_sig['age_group'].unique()
+        stats_sub = stats_sig[stats_sig['age_group'].isin(groups[0:1])]
         if not args.skip_overview:
-            groups = stats['age_group'].unique()
-            stats_sub = stats[stats['age_group'].isin(groups[0:1])]
             plot_overview_heatmap(stats_sub, args)
-        plot_aging_overlap(
-            stats_sig, 
-            cell_types=['CD4T', 'CD8T'],
-            args=args
-        )
+        # plot_aging_overlap(
+        #     stats_sig, 
+        #     cell_types=['CD4T', 'CD8T'],
+        #     args=args
+        # )
+        plot_directional_consistency_scatter(stats_sub, cell_types=['CD4T', 'CD8T'], args=args,
+                                             x_label = f'SLE \n(significance)',
+                                             y_label = 'Natural aging \n(significance)',
+                                             agreement='same',
+                                             label_consistent = 'Acceleration',
+                                             label_opposing = 'Rejuvenation'
+                                             )
         wrapper_plot_central_tfs_condition(stats, group_col='age_group' ,cell_types=['CD4T', 'CD8T'], args=args)
         args.cell_type = 'CD8T'
         args.case_tfs = ['LEF1']
         plot_disease_case_tfs(args)
+        plot_pathway_analysis(stats_sig, args)
 
     if args.dataset == 'parsebioscience':
         if not args.skip_overview:
             plot_overview_heatmap(stats_sig, args)
         args.case_tfs = ['LEF1', 'TCF7']
+        selected_cell_types = ['CD4T', 'CD8T']
         args.cell_type = 'CD8T'
         args.aggregate_per_donor = True
-        plot_ctr_condition_donor_level(args)
+        plot_ctr_condition_donor_level(args, cell_types=selected_cell_types)
         plot_overview_heatmap(stats_sig, args)
-        selected_cell_types = ['CD4T', 'CD8T']
+        
         args.cell_types = [ct for ct in args.cell_types if ct in selected_cell_types]
-        plot_directional_consistency_scatter(stats, cell_types=selected_cell_types, args=args)
+        plot_directional_consistency_scatter(stats, cell_types=selected_cell_types, args=args,
+                                             x_label = f'{config.treatment_groups[1]} \n(significance)',
+                                             y_label = 'Natural aging \n(significance)',
+                                             agreement='opposite',
+                                             label_consistent = 'Acceleration',
+                                             label_opposing = 'Rejuvenation'
+                                             )
         wrapper_plot_central_tfs_condition(stats, group_col='comparison', cell_types=selected_cell_types, args=args)
         
         plot_pathway_analysis(stats_sig, args)
@@ -669,13 +688,22 @@ def main():
     if args.dataset == 'op':
         if not args.skip_overview:
             plot_overview_heatmap(stats_sig, args)
-        args.case_tfs = ['KLF6', 'PRDM1' ,'LEF1', 'ZEB2']
+        # args.case_tfs = ['KLF6', 'GATA3']
+        args.case_tfs = ['STAT1', 'BATF']
         args.cell_type = 'CD4T'
         args.aggregate_per_donor = True   
-        args.cell_types = ['CD4T', 'CD8T']
-        wrapper_plot_central_tfs_condition(stats, group_col='comparison', cell_types=['CD4T', 'CD8T'], args=args)
-        plot_ctr_condition_donor_level(args) 
-        plot_pathway_analysis(stats_sig, args)
+
+        wrapper_plot_central_tfs_condition(stats, group_col='comparison', cell_types=['CD4T'], args=args)
+        plot_ctr_condition_donor_level(args, cell_types=['CD4T']) 
+        plot_directional_consistency_scatter(stats, cell_types=['CD4T', 'CD8T'], args=args,
+                                             x_label = f'{config.treatment_groups[1]} \n(significance)',
+                                             y_label = 'Natural aging \n(significance)',
+                                             agreement='opposite',
+                                             label_consistent = 'Acceleration',
+                                             label_opposing = 'Rejuvenation'
+                                             )
+
+        # plot_pathway_analysis(stats_sig, args)
 
     if args.dataset == 'CXCL9':
         # if not args.skip_overview:
@@ -683,10 +711,25 @@ def main():
         # plot_aging_overlap(
         #     stats_sig, 
         #     args
-        # )     
-        
-        plot_central_tf_act_perturbation(stats, args)
-        plot_pathway_analysis(stats_sig, args)
+        # )    
+        args.case_tfs = ['STAT1', 'BATF'] 
+        for comparison in stats['comparison'].unique():
+            stats_sub = stats[stats['comparison']==comparison]
+            plot_directional_consistency_scatter(stats_sub, cell_types=['CD4T', 'CD8T'], args=args, 
+                                                 x_label = f'{comparison} \n(significance)',
+                                                 y_label = 'Natural aging \n(significance)',
+                                                 save_tag = f"_{comparison.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')}",
+                                                 agreement='opposite',
+                                                 label_consistent = 'Acceleration' if comparison != 'LPS \n (ctr: RPMI)' else 'Age deceleration',
+                                                 label_opposing = 'Rejuvenation' if comparison != 'LPS \n (ctr: RPMI)' else 'Age deceleration',
+                                                 )
+            plot_ctr_condition_donor_level(args, cell_types=['CD4T']) 
+
+        wrapper_plot_central_tfs_condition(stats, group_col='comparison', cell_types=['CD4T'], args=args)
+
+        # plot_aging_overlap(stats_sig, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'] ,args=args)
+
+        # plot_pathway_analysis(stats_sig, args)
         # plot_ctr_condition_donor_level(args) 
   
     

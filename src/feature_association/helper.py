@@ -207,8 +207,27 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
                     'condition': condition
                 }
             elif test_type == 'paired':
-                stat, pval = ttest_rel(values_case, values_control)
-                coef = np.median(values_case) - np.median(values_control)
+                # Create dataframes with donor_id to ensure proper pairing
+                obs_ctr = adata.obs.loc[mask_ctr, :].copy().reset_index(drop=True)
+                obs_ctr['feature_values'] = values_control
+                
+                obs_case = adata.obs.loc[mask_condition, :].copy().reset_index(drop=True)
+                obs_case['feature_values'] = values_case
+                
+                # Merge on donor_id to ensure samples are properly paired
+                df_paired = obs_ctr[['donor_id', 'feature_values']].merge(
+                    obs_case[['donor_id', 'feature_values']], 
+                    on='donor_id', 
+                    suffixes=('_ctr', '_case')
+                )
+                
+                # Check if we have valid pairs
+                if len(df_paired) < 3:
+                    return None
+                
+                stat, pval = ttest_rel(df_paired['feature_values_case'], 
+                                      df_paired['feature_values_ctr'])
+                coef = np.median(df_paired['feature_values_case'] - df_paired['feature_values_ctr'])
                 
                 return {
                     'gene': gene,

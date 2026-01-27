@@ -226,7 +226,6 @@ def gsea_func(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hallmark_2020'], f
     from gseapy import barplot, dotplot
     all_genes = np.loadtxt(f'{PRIOR_DIR}/tf_all.csv', dtype=str)
     # all_genes = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
-
     # gene_sets =  get_genesets()
     res2d_store = []
     for cell_type in df['cell_type'].unique():
@@ -237,7 +236,9 @@ def gsea_func(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hallmark_2020'], f
             stats_df = df[mask]
             stats_df = stats_df[[feature_col, pvalue_col]]
             
-            genes = stats_df[stats_df[pvalue_col]<0.05][feature_col].unique().tolist()
+            genes = stats_df[stats_df[pvalue_col]<0.001][feature_col].unique().tolist()
+            if len(genes) == 0:
+                continue
             if True:
                 rr = gp.enrichr(gene_list=list(genes),
                                 gene_sets=gene_sets, #, 'KEGG_2021_Human'
