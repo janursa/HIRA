@@ -1,4 +1,5 @@
 
+from hiara.src.trajectory_analysis.helper import process_donors
 def verify_dpt_correlation(adata_combined, dataset, cell_type, output_dir):
     """
     Verify that DPT pseudotime correlates with naive-effector marker scores.
