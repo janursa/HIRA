@@ -802,7 +802,7 @@ def plot_tf_act_central_tfs(df, all_groups, palette_all, feature_col='gene', fig
 
     ax0.set_xticklabels(ax0.get_xticklabels(), rotation=45, ha="right")
     ax0.set_xlabel('')
-    ax0.set_ylabel('TFs' if feature_col == 'gene' else 'Pathways')
+    ax0.set_ylabel('Top central TFs' if feature_col == 'gene' else 'Pathways')
     ax0.margins(x=.2, y=.05 if len(tfs) > 10 else 0.2)
     ax0.spines[['top', 'right']].set_visible(False)
     if hide_ylabels:
