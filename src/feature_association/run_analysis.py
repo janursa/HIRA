@@ -19,7 +19,7 @@ from hiara.src.config import FEATURES_DIR, CELL_TYPES, DISCOVERY_COHORTS, get_co
 from hiara.src.feature_association.helper import (
     wrapper_tf_activity,
     wrapper_aging_hallmarks,
-    wrapper_gene_score,
+    wrapper_genesets_scores,
     wrapper_association_with_age_condition,
     wrapper_meta_analysis,
     retrieve_sig_stats, 
@@ -131,7 +131,7 @@ def run_multi_cohort_analysis(
         elif args.feature_type == 'gene_expression':
             wrapper_gene_expression(par)
         elif args.feature_type == 'gene_score':
-            wrapper_gene_score(par)
+            wrapper_genesets_scores(par)
         elif args.feature_type == 'aging_hallmarks':
             wrapper_aging_hallmarks(par)
         else:

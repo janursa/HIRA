@@ -21,7 +21,7 @@ CLOCK_V = 'V1'
 USE_LOCAL_CLOCK = True  # If True, use clocks saved in CLOCKS_DIR;
 
 DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
-AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife']
+AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife', 'zhang']
 ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife', 'zhang']
 CLOCK_TRAINING_COHORTS = [
                 'onek1k',
@@ -38,6 +38,7 @@ CLOCK_TEST_COHORTS = [
                 # 'abf300'
                 ]
 NET_WEIGHT_THRESHOLD = None  # 0.05 # Minimum absolute weight for edges in GRN 
+NET_MAX_SIZE = 100_000
 CLOCK_CV_SCORING = 'spearman'  # 'r2' or 'spearman'
 TUNE_CLOCK = True
 META_MIN_COHORT = 2
@@ -88,10 +89,10 @@ surrogate_names = {
                     'CXCL9': 'CXCL9',
                     'healthy': 'Healthy',
                     
-                    '24 h RPMI + ruxolitinib': 'RPMI + Ruxolitinib',
-                    '24 h LPS + ruxolitinib': 'LPS + Ruxolitinib',
-                    '24 h LPS': 'LPS',
-                    '24 h RPMI': 'RPMI',
+                    'RPMI + ruxolitinib': 'RPMI + Ruxolitinib',
+                    'LPS + ruxolitinib': 'LPS + Ruxolitinib',
+                    'LPS': 'LPS',
+                    'RPMI': 'RPMI',
                     'Dimethyl Sulfoxide': 'DMSO'
                     }
 # - palettes  
@@ -126,7 +127,7 @@ palette_treatment = OrderedDict([
     ('Decrease after treatment', '#1E8449'),   # forest green (darker and more neutral)
 ])
 CELL_TYPES = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
-# CELL_TYPES = ['CD4T', 'CD8T']
+# CELL_TYPES = ['CD4T']
 palette_cell_types = {name: color for name, color in zip(CELL_TYPES, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}
 # - mapping
 mapping_major_2_minor = {
@@ -259,70 +260,75 @@ DATASET_CONFIGS = {
         treatment_groups=['DMSO', 'Ruxolitinib'],  # Auto-detect all drugs
         test_type='mixed-effect',
         mixed_effects_formula='feature_values ~ condition',
-        mixed_effects_group='plate_name',
+        mixed_effects_group='donor_id',
         display_name='OP Compounds',
         # target_conditions=['Ruxolitinib'],
         # Clock analysis settings
         clock_test_type='mixed-effect',
-        clock_group_key='plate_name',
+        clock_group_key='donor_id',
         clock_pvalue_correction='corrected',
         clock_experiments='all',  # Auto-generate from data: (control, treatment) for all treatments
         clock_mock_names=True,  # Mock compound names (keep top 1, rename others)
-        clock_plot_config={
-            'rejuvenating': {'figsize': (7.5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
-            'aging': {'figsize': (5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
-        },
+        # clock_plot_config={
+        #     'rejuvenating': {'figsize': (7.5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
+        #     'aging': {'figsize': (5, 3), 'margins': (0.05, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1)},
+        # },
         name_mapping = {
             'Dimethyl Sulfoxide': 'DMSO',
             'Ruxolitinib vs DMSO': 'Ruxolitinib',
         },
-        pseudobulk_group=['cell_type', 'plate_name', 'condition', 'well', 'donor_id']
+        pseudobulk_group=['cell_type', 'condition', 'donor_id']
     ),
     
     "CXCL9": ConditionConfig(
         name="CXCL9",
         condition_column='condition',
         treatment_groups=[
-            '24 h RPMI',
-            '24 h RPMI + ruxolitinib',
-            '24 h LPS + ruxolitinib',
-            '24 h LPS'
+            'RPMI',
+            'RPMI + ruxolitinib',
+            'LPS + ruxolitinib',
+            'LPS'
         ],
         test_type= 'mixed-effect',
         mixed_effects_formula='feature_values ~ condition',
         mixed_effects_group='donor_id',
         display_name='Ruxolitinib',
         control_mapping={
-            '24 h RPMI + ruxolitinib': '24 h RPMI',
-            '24 h LPS + ruxolitinib': '24 h LPS',
-            '24 h LPS': '24 h RPMI'
+            'RPMI': 'RPMI',
+            'RPMI + ruxolitinib': 'RPMI',
+            'LPS + ruxolitinib': 'LPS',
+            'LPS': 'RPMI'
         },
         name_mapping=OrderedDict({
-            '24 h RPMI + ruxolitinib vs 24 h RPMI': 'Ruxolitinib (ctr: RPMI)',
-            '24 h LPS + ruxolitinib vs 24 h LPS': 'Ruxolitinib (ctr: LPS)',
-            '24 h LPS vs 24 h RPMI': 'LPS (ctr: RPMI)'
+            '24 h RPMI': 'RPMI',
+            '24 h LPS': 'LPS',
+            '24 h RPMI + ruxolitinib': 'RPMI + ruxolitinib',
+            '24 h LPS + ruxolitinib': 'LPS + ruxolitinib',
+            'RPMI + ruxolitinib vs RPMI': 'Ruxolitinib (ctr: RPMI)',
+            'LPS + ruxolitinib vs LPS': 'Ruxolitinib (ctr: LPS)',
+            'LPS vs RPMI': 'LPS (ctr: RPMI)'
         }),
         
         # target_conditions=['Ruxolitinib (ctr: RPMI)', 'Ruxolitinib (ctr: LPS)'],
         # Clock analysis settings
         clock_test_type='mixed-effect',
-        clock_group_key='donor_id',
+        # clock_group_key='donor_id',
         clock_pvalue_correction='raw',
         clock_experiments=[
-            ('24 h RPMI', '24 h LPS'),
-            ('24 h RPMI', '24 h RPMI + ruxolitinib'),
-            ('24 h LPS', '24 h LPS + ruxolitinib'),
+            ('RPMI', 'LPS'),
+            ('RPMI', 'RPMI + ruxolitinib'),
+            ('LPS', 'LPS + ruxolitinib'),
         ],
         clock_pretty_names={
-            '24 h LPS': 'LPS \n (ctr: RPMI)',
-            '24 h LPS + ruxolitinib': 'Ruxolitinib \n (ctr: LPS)',
-            '24 h RPMI': 'RPMI',
-            '24 h RPMI + ruxolitinib': 'Ruxolitinib \n (ctr: RPMI)',
+            'LPS': 'LPS \n (ctr: RPMI)',
+            'LPS + ruxolitinib': 'Ruxolitinib \n (ctr: LPS)',
+            'RPMI': 'RPMI',
+            'RPMI + ruxolitinib': 'Ruxolitinib \n (ctr: RPMI)',
         },
-        clock_plot_config={
-            'rejuvenating': {'figsize': (4, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
-            'aging': {'figsize': (7, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
-        },
+        # clock_plot_config={
+        #     'rejuvenating': {'figsize': (4, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
+        #     'aging': {'figsize': (7, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
+        # },
         pseudobulk_group=['cell_type', 'pool_id', 'condition', 'donor_id']
     ),
     

@@ -13,13 +13,13 @@ from hiara.src.config import (
     CLOCK_V
 )
 
-def wrapper_predict_age(adata, cell_type, USE_LOCAL_CLOCK=USE_LOCAL_CLOCK):
+def wrapper_predict_age(adata, cell_type, USE_LOCAL_CLOCK=USE_LOCAL_CLOCK, version=CLOCK_V):
     import sys
     sys.path.insert(0, '../GRNimmuneClock')
     from grnimmuneclock import predict_age
-    adata = predict_age(adata, cell_type=cell_type, use_local_clocks=USE_LOCAL_CLOCK)
+    adata = predict_age(adata, cell_type=cell_type, use_local_clocks=USE_LOCAL_CLOCK, version=version)
     return adata
-def wrapper_clock_predictions(cell_types, evaluate_datasets, data_type='bulk', condition=None):
+def wrapper_clock_predictions(cell_types, evaluate_datasets, data_type='bulk', condition=None, version=CLOCK_V):
     obs_store = []
     for cell_type in cell_types:
         for dataset in evaluate_datasets:
@@ -27,7 +27,7 @@ def wrapper_clock_predictions(cell_types, evaluate_datasets, data_type='bulk', c
             conds = adata.obs['condition'].unique()
             for cond in conds:
                 adata_c = adata[adata.obs['condition'] == cond]
-                wrapper_predict_age(adata=adata_c, cell_type=cell_type)
+                wrapper_predict_age(adata=adata_c, cell_type=cell_type, version=version)
                 obs = adata_c.obs
                 obs['dataset'] = dataset
                 obs['cell_type'] = cell_type

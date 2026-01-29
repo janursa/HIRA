@@ -16,6 +16,11 @@ def plot_scatter_age_vs_predictedAge(df, dataset='', ax=None, hue='sex', palette
         fig, ax = plt.subplots(figsize=(4, 4))
     sns.scatterplot(data=df, x='age', y='predicted_age', s=s, alpha=alpha, ax=ax, palette=palette, hue=hue)
     
+    # Add ideal fit line (y=x)
+    min_age = df['age'].min()
+    max_age = df['age'].max()
+    ax.plot([min_age, max_age], [min_age, max_age], 'k--', linewidth=1.5, alpha=0.5, label='Ideal fit')
+    
     # Move legend to the right side
     if ax.get_legend():
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), frameon=False)
@@ -52,7 +57,7 @@ def plot_scatter_age_vs_predictedAge(df, dataset='', ax=None, hue='sex', palette
 
 #     obs_disease = obs[obs['dataset'] == disease_dataset].copy()
 #     obs_disease['age'] = obs_disease['age'].astype(float)
-#     # obs_disease['donor_id'] = obs_disease['donor_age'].astype(str)
+#     # obs_disease['donor_id'] = obs_disease['donor_id'].astype(str)
 #     obs_disease['cell_type'] = obs_disease['cell_type'].astype(str)
 #     obs_disease['condition'] = obs_disease['condition'].astype(str)
 
@@ -315,7 +320,7 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, ctr, cond):
 
     obs_disease = obs[obs['dataset'] == disease_dataset].copy()
     obs_disease['age'] = obs_disease['age'].astype(float)
-    obs_disease['donor_age'] = obs_disease['donor_age'].astype(str)
+    obs_disease['donor_id'] = obs_disease['donor_id'].astype(str)
     
     # Calculate signed residuals (age acceleration)
     obs_disease['age_residual'] = abs(obs_disease['predicted_age'] - obs_disease['age'])
@@ -349,8 +354,8 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, ctr, cond):
         if 'age_group' in obs_ct.columns:
             # Convert age_group from Categorical to string to avoid creating empty combinations
             obs_ct['age_group'] = obs_ct['age_group'].astype(str)
-            # Group by donor_age, age_group, and condition - take median of age_residual
-            obs_ct = obs_ct.groupby(['donor_age', 'age_group', 'condition'])['age_residual'].median().reset_index()
+            # Group by donor_id, age_group, and condition - take median of age_residual
+            obs_ct = obs_ct.groupby(['donor_id', 'age_group', 'condition'])['age_residual'].median().reset_index()
             # Use existing age_group column and map to pretty names
             age_group_name_mapping = {'young': 'Young', 'old': 'Old'}
             obs_ct['age_bin'] = obs_ct['age_group'].map(age_group_name_mapping)
@@ -358,7 +363,7 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, ctr, cond):
             age_bin_order = ['Young', 'Old']
         else:
             # Standard groupby without age_group
-            obs_ct = obs_ct.groupby(['donor_age', 'condition']).agg({
+            obs_ct = obs_ct.groupby(['donor_id', 'condition']).agg({
                 'age_residual': 'median',
                 'age': 'median'
             }).reset_index()
@@ -469,9 +474,9 @@ def plot_experiment(test_type, df_all, ctr, treatment, cell_type, pval_map, ax=N
     df_sub = df_all[df_all['condition'].isin([ctr, treatment])].copy()
 
     # map donor IDs to pretty names
-    donor_ids = df_sub['test_group'].unique()
+    donor_ids = df_sub['donor_id'].unique()
     donor_pretty = {did: f"Donor {i+1}" for i, did in enumerate(donor_ids)}
-    df_sub['test_group_pretty'] = df_sub['test_group'].map(donor_pretty)
+    df_sub['test_group_pretty'] = df_sub['donor_id'].map(donor_pretty)
 
     # create donor palette
     donors = df_sub['test_group_pretty'].unique()
@@ -543,15 +548,14 @@ def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="C
         return None
 
     df_plot = []
-    donors_all = sorted(df_all['test_group'].unique())
-    donor_map = {d: f"Donor {i+1}" for i, d in enumerate(donors_all)}  # Pretty names
-
+    # donors_all = sorted(df_all['donor_id'].unique())
+    # donor_map = {d: f"Donor {i+1}" for i, d in enumerate(donors_all)}  # Pretty names
+    donor_map = {}
     # Build mapping: treatment -> control
     treatment_to_ctr = {}
-
     for ctr, treatment in group_exps:
         df_sub = df_all[df_all['condition'].isin([ctr, treatment])].copy()
-        df_pivot = df_sub.pivot_table(index='test_group', columns='condition', values='predicted_age')
+        df_pivot = df_sub.pivot_table(index='donor_id', columns='condition', values='predicted_age')
         if df_pivot.empty:
             continue
 
@@ -564,15 +568,13 @@ def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="C
                 'treatment': treatment,
                 'diff': val,
                 'p_value': pval_map.get((cell_type, ctr, treatment), (1.0, 0))[0],
-                'donor': donor_map[donor]
+                'donor': donor_map.get(donor, donor)
             })
-        # store control for later pval lookup
         treatment_to_ctr[treatment] = ctr
     if not df_plot:
         return None
 
     df_plot = pd.DataFrame(df_plot)
-    # Sort treatments by mean difference
     order = df_plot.groupby('treatment')['p_value'].mean().sort_values(
         ascending=True
     ).index
@@ -581,11 +583,14 @@ def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="C
     extra_space = 1 if len(order) > 4 else 3
     if figsize is None:
         width = .25*len(order)+extra_space+1
-        if len(order) < 3:
+        if len(order) < 5:
+            width = 3
+        if len(order) < 2:
             width = 2.5
         figsize = (width, 3)
     fig, ax = plt.subplots(figsize=figsize)
-    donors = sorted(df_plot['donor'].unique(), key=lambda x: int(x.split(' ')[1]))
+    # donors = sorted(df_plot['donor'].unique(), key=lambda x: int(x.split(' ')[1]))
+    donors = sorted(df_plot['donor'].unique())
     donor_palette = dict(zip(donors, sns.color_palette("husl", len(donors))))
 
     sns.stripplot(

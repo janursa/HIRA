@@ -30,7 +30,7 @@ def write_features_stats(stats, data_type, feature_type, multi_cohort=True, data
 
 def retrieve_stats(data_type='bulk', feature_type='tf_activity', cell_type=None, dataset=None, multi_cohort=None):
     assert data_type in ['bulk', 'sc', 'minor_bulk', 'minor_sc'], f'Unknown data type {data_type}'
-    assert feature_type in ['tf_activity', 'gene_expression', 'gene_score'], f'Unknown feature type {feature_type}'
+    assert feature_type in ['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks'], f'Unknown feature type {feature_type}'
     # determine whether this is multi-cohort
     if multi_cohort is None:
         multi_cohort = dataset is None or dataset in DISCOVERY_COHORTS
@@ -207,8 +207,27 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
                     'condition': condition
                 }
             elif test_type == 'paired':
-                stat, pval = ttest_rel(values_case, values_control)
-                coef = np.median(values_case) - np.median(values_control)
+                # Create dataframes with donor_id to ensure proper pairing
+                obs_ctr = adata.obs.loc[mask_ctr, :].copy().reset_index(drop=True)
+                obs_ctr['feature_values'] = values_control
+                
+                obs_case = adata.obs.loc[mask_condition, :].copy().reset_index(drop=True)
+                obs_case['feature_values'] = values_case
+                
+                # Merge on donor_id to ensure samples are properly paired
+                df_paired = obs_ctr[['donor_id', 'feature_values']].merge(
+                    obs_case[['donor_id', 'feature_values']], 
+                    on='donor_id', 
+                    suffixes=('_ctr', '_case')
+                )
+                
+                # Check if we have valid pairs
+                if len(df_paired) < 3:
+                    return None
+                
+                stat, pval = ttest_rel(df_paired['feature_values_case'], 
+                                      df_paired['feature_values_ctr'])
+                coef = np.median(df_paired['feature_values_case'] - df_paired['feature_values_ctr'])
                 
                 return {
                     'gene': gene,
@@ -582,17 +601,17 @@ def wrapper_tf_activity(par):
             tf_acts = tf_acts[tf_acts.obs['age'].isna()==False] # there is a bug in the code that causes age to be NaN
             write_feature_data(tf_acts, dataset, cell_type, data_type, suffix='_promotor' if promotor_only else '')
 
-def wrapper_gene_score(par):
+def wrapper_genesets_scores(par):
     from hiara.src.utils.util import get_genesets
     # --------- load data
     cell_types = par['cell_types']
-    type = par['type']
+    data_type = par['data_type']
     datasets = par['datasets']
     feature_type = par['feature_type']
 
     # --------- load data
     print('Loading data...')
-    adata_dict = {dataset: retrieve_adata(dataset, type) for dataset in datasets}
+    adata_dict = {dataset: retrieve_adata(dataset, data_type) for dataset in datasets}
 
     pathways = get_genesets()
     
@@ -641,7 +660,7 @@ def wrapper_gene_score(par):
             var['n_matching_genes'] = pd.Series(n_matching_genes)
 
             adata_scores = sc.AnnData(X=X_df.values, obs=obs, var=var)
-            write_feature_data(adata_scores, dataset, cell_type, type, feature_type=feature_type)
+            write_feature_data(adata_scores, dataset, cell_type, data_type, feature_type=feature_type)
 
 # def wrapper_gene_expression(par):
 #     # --------- load data
@@ -666,7 +685,7 @@ def wrapper_aging_hallmarks(par):
     from hiara.src.config import PRIOR_DIR
     # --------- load data
     cell_types = par['cell_types']
-    type = par['type']
+    data_type = par['data_type']
     datasets = par['datasets']
     print('Loading data...')
     # Load aging hallmark genes
@@ -679,7 +698,7 @@ def wrapper_aging_hallmarks(par):
     
     print(f'Loaded {len(aging_hallmark_genes)} aging hallmark genes')
 
-    adata_dict = {dataset: retrieve_adata(dataset, type) for dataset in datasets}
+    adata_dict = {dataset: retrieve_adata(dataset=dataset, data_type=data_type) for dataset in datasets}
 
     print('Calculating aging hallmark gene expression...')
     
@@ -692,12 +711,12 @@ def wrapper_aging_hallmarks(par):
                 raise ValueError(f'Warning: No aging hallmark genes found in dataset {dataset}, cell type {cell_type}')
             
             adata = adata[:, available_genes].copy()
-            if type == 'sc':
+            if data_type == 'sc':
                 sc.pp.normalize_total(adata)
                 sc.pp.log1p(adata)
             
             
-            write_feature_data(adata, dataset, cell_type, type, feature_type='aging_hallmarks')
+            write_feature_data(adata, dataset, cell_type, data_type, feature_type='aging_hallmarks')
 
 def determine_std(adata):
     # Ensure .X is dense

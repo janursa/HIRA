@@ -186,12 +186,22 @@ def plot_aging_overlap(stats_sig, cell_types, args):
         plt.close()
         print(f"    Saved: {output_path}")
 
-def plot_directional_consistency_scatter(stats, cell_types, args):
+def plot_directional_consistency_scatter(stats, cell_types, args, 
+                                        x_label = 'Validation analysis \n(significance)',
+                                        y_label = 'Discovery analysis \n(significance)',
+                                        association_col = '-log10_p_adj',
+                                        save_tag='',
+                                        agreement='same',
+                                        label_consistent = 'Consistent',
+                                        label_opposing = 'Opposing'
+                                        ):
     feature_type = args.feature_type
     dataset = args.dataset
     included_cell_types = cell_types
     output_dir = args.output_dir
-    agreement = args.agreement
+
+    if stats['comparison'].nunique() != 1:
+        raise ValueError(f"should only have one comparision but has : {stats['comparison'].unique()}")
 
     if agreement == 'same':
         opposing_color = 'indianred'
@@ -202,25 +212,11 @@ def plot_directional_consistency_scatter(stats, cell_types, args):
 
     else:
         raise ValueError(f"Unsupported agreement type: {agreement}")
-    
-    if dataset == 'soundlife':
-        x_label = 'Validation analysis \n(significance)'
-        y_label = 'Discovery analysis \n(significance)'
-        association_col = '-log10_p_adj'
-        label_consistent = 'Consistent \n ({} TFs)'
-        label_opposing = 'Opposing \n ({} TFs)'
-        
-    elif dataset == 'parsebioscience':
-        x_label = 'IL10 treatment \n (significance)'
-        y_label = 'Natural aging \n (significance)'
-        association_col = '-log10_p_adj'
-        label_consistent = 'Acceleration \n ({} TFs)'
-        label_opposing = 'Rejuvenation \n ({} TFs)'
 
-    else:
-        x_label = 'Age association \n(condition analysis)'
-        y_label = 'Age association \n(Natural aging)'
-        association_col = '-log10_p_adj'
+    label_consistent = label_consistent + ' \n ({} TFs)'
+    label_opposing = label_opposing + ' \n ({} TFs)'
+    
+    
     # Load reference aging genes (only significant)
     ref_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=feature_type)
     ref_stats_sig = ref_stats_sig.groupby(['cell_type', 'gene']).agg({'slope': 'mean', 'meta_p_adj': 'min'}).reset_index()
@@ -229,8 +225,20 @@ def plot_directional_consistency_scatter(stats, cell_types, args):
         if cell_type not in stats['cell_type'].unique():
             print(f"  Warning: No data for {cell_type}")
             continue
-        sl_ct = stats[stats['cell_type'] == cell_type].copy()
         ref_ct = ref_stats_sig[ref_stats_sig['cell_type'] == cell_type].copy()
+        sl_ct = stats[(stats['cell_type'] == cell_type) & (stats['gene'].isin(ref_ct['gene']))].copy()
+
+        if True:
+            sl_ct['abs_log10_p_adj_sl'] = sl_ct['p_value_adj'].apply(lambda x: -np.log10(x + 1e-300))
+            print(f"\n  Top 5 TFs with positive slope:")
+            top_5 = sl_ct[sl_ct['slope'] > 0].nlargest(5, 'abs_log10_p_adj_sl')
+            names = ', '.join(top_5['gene'].tolist())
+            print(f"    {cell_type}: {names}")
+            print(f"\n  Top 5 TFs with negative slope:")
+            top_5 = sl_ct[sl_ct['slope'] < 0].nlargest(5, 'abs_log10_p_adj_sl')
+            names = ', '.join(top_5['gene'].tolist())
+            print(f"    {cell_type}: {names}")
+
         # Merge: keep only TFs that are significant in reference aging
         merged = ref_ct.merge(
             sl_ct[['gene', 'slope', 'p_value_adj']],
@@ -238,8 +246,14 @@ def plot_directional_consistency_scatter(stats, cell_types, args):
             how='left',
             suffixes=('_ref', '_sl')
         )
+        
         missing_merged = merged[merged['slope_sl'].isna()]
-        assert len(missing_merged) == 0, f"  Error: Missing data for {cell_type} in validation analysis: {missing_merged['gene'].tolist()}. Probably different conseensus was used for aging and condition analysis"
+        if len(missing_merged) == 0:
+            aging_genes = ref_ct['gene'].unique()
+            c_genes = sl_ct['gene'].unique()
+            overlap = set(aging_genes).intersection(set(c_genes))
+            print(f"  {cell_type}: All {len(overlap)} aging TFs found in SL data.")
+        
         merged['consistent'] = np.sign(merged['slope_ref']) == np.sign(merged['slope_sl'])
         merged['cell_type'] = cell_type
 
@@ -248,10 +262,6 @@ def plot_directional_consistency_scatter(stats, cell_types, args):
         
         all_cell_data.append(merged)
         
-        # print(f"  {cell_type}: {len(merged)} TFs")
-        # print(f"    Consistent: {merged['consistent'].sum()} ({merged['consistent'].sum()/len(merged)*100:.1f}%)")
-        # print(f"    Inconsistent: {(~merged['consistent']).sum()} ({(~merged['consistent']).sum()/len(merged)*100:.1f}%)")
-    
     if not all_cell_data:
         print("  Warning: No data to plot")
         return
@@ -260,7 +270,7 @@ def plot_directional_consistency_scatter(stats, cell_types, args):
     combined_data = pd.concat(all_cell_data, ignore_index=True)
     
     # Create grouped plot
-    fig, axes = plt.subplots(1, len(included_cell_types), figsize=(1.8 * len(included_cell_types) + 1, 2.7), sharey=True)
+    fig, axes = plt.subplots(1, len(included_cell_types), figsize=(2 * len(included_cell_types) + 1, 2.7), sharey=False)
     
     if len(included_cell_types) == 1:
         axes = [axes]
@@ -305,9 +315,24 @@ def plot_directional_consistency_scatter(stats, cell_types, args):
         ax.axhline(y=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
         ax.axvline(x=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
         
+        # Set symmetric axis limits around zero
+        x_max = max(abs(cell_data[f'{association_col}_sl'].min()), abs(cell_data[f'{association_col}_sl'].max()))
+        y_max = max(abs(cell_data[f'{association_col}_ref'].min()), abs(cell_data[f'{association_col}_ref'].max()))
+        
+        # Add some padding
+        x_max *= 1.05
+        y_max *= 1.2  # Increased from 1.05 to 1.5 for more vertical space
+        
+        ax.set_xlim(-x_max, x_max)
+        ax.set_ylim(-y_max, y_max)
+        
         ax.set_xlabel(x_label, fontsize=10)
-        if idx == 0:
-            ax.set_ylabel(y_label, fontsize=10)
+        ax.set_ylabel(y_label, fontsize=10)
+        # if idx == 0:
+        #     ax.set_ylabel(y_label, fontsize=10)
+        # else:
+        #     ax.set_ylabel('')
+        
         ax.set_title(f'{cell_type}', fontsize=12, pad=30)
         ax.grid(False)
 
@@ -332,7 +357,7 @@ def plot_directional_consistency_scatter(stats, cell_types, args):
                  frameon=False, fontsize=8, ncol=2, columnspacing=-.2)
     
     plt.tight_layout()
-    output_path = os.path.join(output_dir, f'consistency_scatter_{dataset}.png')
+    output_path = os.path.join(output_dir, f'consistency_scatter_{dataset}{save_tag}.png')
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"  Saved: {output_path}")
@@ -777,7 +802,7 @@ def plot_tf_act_central_tfs(df, all_groups, palette_all, feature_col='gene', fig
 
     ax0.set_xticklabels(ax0.get_xticklabels(), rotation=45, ha="right")
     ax0.set_xlabel('')
-    ax0.set_ylabel('TFs' if feature_col == 'gene' else 'Pathways')
+    ax0.set_ylabel('Top central TFs' if feature_col == 'gene' else 'Pathways')
     ax0.margins(x=.2, y=.05 if len(tfs) > 10 else 0.2)
     ax0.spines[['top', 'right']].set_visible(False)
     if hide_ylabels:
@@ -797,7 +822,7 @@ def plot_tf_act_central_tfs(df, all_groups, palette_all, feature_col='gene', fig
         ax1.margins(**ax2_margins)
         ax1.spines[['top', 'right']].set_visible(False)
         
-    if show_legend:
+    if False:
         # - Place legend on the outer right of both subplots
         ordered_labels = ['Decrease in aging', 'Increase in aging', 'Decrease after treatment', 'Increase after treatment', 'Decrease in disease', 'Increase in disease']
         ordered_labels = [label for label in ordered_labels if label in palette_all.keys()]
@@ -1088,7 +1113,7 @@ def plot_gene_score_association_with_age(cell_type, datasets, data_type, feature
     plt.subplots_adjust(wspace=0.1)
 
     return fig
-def plot_features_vs_datasets(cell_type, datasets, data_type, features=None, feature_type='tf_activity', sizes=(50, 100), 
+def plot_features_vs_datasets(cell_type, datasets=DISCOVERY_COHORTS, data_type='bulk', features=None, feature_type='tf_activity', sizes=(50, 100), 
                               top_features=20, min_degree=4, filter_meta_significant=False, race='european', 
                               show_size_legend=False):
 

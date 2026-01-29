@@ -48,7 +48,7 @@ def plot_sig_genes_counts_hallmarks(data_type='bulk'):
     aging_hallmark_df = pd.read_csv(aging_hallmark_path)   
     
     # Load significant stats for aging hallmarks
-    stats_sig = retrieve_sig_stats(data_type, feature_type='aging_hallmarks', filter_inconsistent=True)
+    stats_sig = retrieve_sig_stats(data_type=data_type, feature_type='aging_hallmarks')
     # Merge with gene set information
     stats_with_geneset = stats_sig.merge(
         aging_hallmark_df[[gene_col, geneset_col]],
