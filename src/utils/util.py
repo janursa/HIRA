@@ -62,6 +62,7 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
     if condition is not None:
         mask &= mask_condition.values
     adata = adata[mask, mask_genes].to_memory()
+    obs = obs[mask]
     for c in obs.columns:
         adata.obs[c] = obs[c]
     if 'age' not in adata.obs.columns:

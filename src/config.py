@@ -21,7 +21,7 @@ CLOCK_V = 'V1'
 USE_LOCAL_CLOCK = True  # If True, use clocks saved in CLOCKS_DIR;
 
 DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
-AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife']
+AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife', 'zhang']
 ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife', 'zhang']
 CLOCK_TRAINING_COHORTS = [
                 'onek1k',
