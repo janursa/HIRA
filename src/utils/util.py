@@ -34,9 +34,7 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
     obs = adata.obs.copy()
     if dataset not in ['ibd']:
         obs.rename({'perturbation': 'condition', 'disease': 'condition', 'treatment': 'condition', 'Max_WHO_Group': 'condition'}, axis=1, inplace=True)
-    
     mask_genes = adata.var_names.isin(gene_names)
-    
     if cell_type is not None:
         if cell_type not in obs['cell_type'].unique():
             raise ValueError(f'Given cell type "{cell_type}" not in {obs["cell_type"].unique()}')
@@ -72,9 +70,12 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
     if ('lognorm' in adata.layers) | ('X_norm' in adata.layers):
         print(f'Using layer {("lognorm" if "lognorm" in adata.layers else "X_norm")}')
         adata.X = adata.layers['lognorm'] if 'lognorm' in adata.layers else adata.layers['X_norm']
-    
+    else:
+        if data_type == 'sc':
+            adata.layers['counts'] = adata.X.copy()
+            sc.pp.normalize_total(adata)
+            sc.pp.log1p(adata)
     adata.obs['dataset'] = dataset
-
     if 'age' in adata.obs.columns:
         adata = adata[~adata.obs['age'].isna()].copy()
         adata.obs['age'] = adata.obs['age'].astype(float).astype(int)
@@ -85,10 +86,7 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
     if only_net_genes:
         net = retrieve_net_consensus(cell_type=cell_type)
         adata = adata[:, adata.var_names.isin(net['target'].unique())].copy()
-    if data_type == 'sc':
-        adata.layers['counts'] = adata.X.copy()
-        sc.pp.normalize_total(adata)
-        sc.pp.log1p(adata)
+    
     # make donor names pretties
     donors_all = sorted(adata.obs['donor_id'].unique())
     donor_map = {d: f"Donor {i+1}" for i, d in enumerate(donors_all)}  # Pretty names

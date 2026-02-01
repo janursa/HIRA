@@ -504,7 +504,7 @@ def wrapper_association_with_age_condition(par, association_type, features=None,
                 stats = associate_with_condition(
                     adata_sub, 
                     config, 
-                    test_type=test_type or config.test_type
+                    test_type=test_type
                 )
                 
             else:
@@ -531,7 +531,7 @@ def wrapper_association_with_age_condition(par, association_type, features=None,
     return stats_all
 
 
-def associate_with_condition(adata, config, test_type):
+def associate_with_condition(adata, config, test_type=None):
     """
     Compute condition statistics using configuration object.
     
@@ -539,6 +539,9 @@ def associate_with_condition(adata, config, test_type):
     
     # Auto-detect condition column for datasets with variants
     condition_col = config.condition_column
+    if test_type is None:
+        test_type = config.test_type
+        assert test_type is not None, 'test type should be given either in config or passed to the function'
 
     # Get treatment groups
     if config.treatment_groups == 'all':
