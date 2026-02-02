@@ -53,6 +53,12 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
     obs['group_id'] = obs[pseudobulk_group].astype(str).agg('_'.join, axis=1)
 
     mask_genes = adata.var_names.isin(gene_names)
+    if only_net_genes:
+        print('Filtering to only genes in the GRN network...')
+        net = retrieve_net_consensus(cell_type=cell_type)
+        mask_genes &= adata.var_names.isin(net['target'].unique())
+        
+    
     if cell_type is not None:
         if cell_type not in obs['cell_type'].unique():
             raise ValueError(f'Given cell type "{cell_type}" not in {obs["cell_type"].unique()}')
@@ -66,17 +72,26 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
                 raise ValueError(f'Given condition "{c}" not in {obs[mask_condition_col].unique()}')
         mask_condition = obs[mask_condition_col].isin(condition)
     mask = np.ones(adata.n_obs, dtype=bool)
+    
     if cell_type is not None:
         mask &= cell_type_mask.values
     if condition is not None:
         mask &= mask_condition.values
+    if True: #filter by donors
+        print('Get ride of meeeee')
+        # select 10 young and 10 old
+        obs['age'] = obs['age'].astype(float).astype(int)
+        old_donors = obs[obs['age']>70]['donor_age'].unique()
+        young_donors = obs[obs['age']<30]['donor_age'].unique()
+        selected_donors = list(young_donors[:10]) + list(old_donors[:10])
+        mask_donors = obs['donor_age'].isin(selected_donors)
+        mask &= mask_donors.values
+
     adata = adata[mask, mask_genes].to_memory()
     obs = obs[mask]
     for c in obs.columns:
         adata.obs[c] = obs[c]
-    if 'age' not in adata.obs.columns:
-        print('Warning: "age" column not found in adata.obs. Setting to default age of 20.')
-        adata.obs['age'] = 20
+    
     
     if ('lognorm' in adata.layers) | ('X_norm' in adata.layers):
         print(f'Using layer {("lognorm" if "lognorm" in adata.layers else "X_norm")}')
@@ -92,12 +107,12 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         adata = adata[~adata.obs['age'].isna()].copy()
         adata.obs['age'] = adata.obs['age'].astype(float).astype(int)
         adata = adata[adata.obs['age'] >= age_limit].copy()  
+    else:
+        print('Warning: "age" column not found in adata.obs. Setting to default age of 20.')
+        adata.obs['age'] = 20
     if 'sex' in adata.obs.columns:
         adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
 
-    if only_net_genes:
-        net = retrieve_net_consensus(cell_type=cell_type)
-        adata = adata[:, adata.var_names.isin(net['target'].unique())].copy()
     
     
     return adata

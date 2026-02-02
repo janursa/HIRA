@@ -702,7 +702,7 @@ def wrapper_tfa_dpt(par):
     for cell_type in tqdm(cell_types, desc='cell types'):
         for dataset in datasets:
             adata = load_sc_data(dataset=dataset, cell_type=cell_type, test_mode=test_mode, min_cells_threshold=min_cells_threshold)
-            annotate(adata)
+            # annotate(adata)
             compute_dpt(adata, leiden_resolution=leiden_resolution) # save adata for visualization and downstream analysis
             compute_tf_act(adata)
             corr_adata = compute_tfa_dpt_association(adata)

@@ -45,7 +45,7 @@ def retrieve_traj_stats(dataset, cell_type):
 def load_sc_data(dataset, cell_type, test_mode=False, min_cells_threshold=100):
     print(f"Loading data for dataset={dataset}, cell_type={cell_type}")
     print('Loading data...', flush=True)
-    adata = retrieve_adata(dataset=dataset, data_type='sc', cell_type=cell_type)
+    adata = retrieve_adata(dataset=dataset, data_type='sc', cell_type=cell_type, only_net_genes=True)
     if test_mode: # Select only 10 donors for testing
         print('TEST MODE: Selecting only 10 donors for testing...')
         adata = adata[adata.obs['donor_age'].isin(adata.obs['donor_age'].unique()[:10])].copy()
@@ -79,17 +79,25 @@ def compute_dpt(adata, leiden_resolution=10):
     
     for group in unique_groups:
         adata_sub = adata[adata.obs['group_id'] == group].copy()
-        annotate(adata_sub)
         sc.pp.neighbors(adata_sub)
         sc.tl.leiden(adata_sub, resolution=leiden_resolution, key_added='leiden')
         sc.tl.paga(adata_sub, groups='leiden')
-        cluster_naive_scores = adata_sub.obs.groupby('leiden')['naive_score'].mean()
-        root_cluster = cluster_naive_scores.idxmax()
-        print(f"Group {group}: number of clusters = {adata_sub.obs['leiden'].nunique()}, root cluster = {root_cluster} (mean naive score = {cluster_naive_scores[root_cluster]:.3f})")
-        root_cells = adata_sub.obs['leiden'] == root_cluster
-        assert root_cells.sum() > 0, f"No cells found in root cluster {root_cluster}"
-        root_idx = np.where(adata_sub.obs['leiden'] == root_cluster)[0][0]
-        adata_sub.uns['iroot'] = root_idx
+        if False:
+            raise NotImplementedError("Root selection based on naive score not implemented yet.")
+            cluster_naive_scores = adata_sub.obs.groupby('leiden')['naive_score'].mean()
+            root_cluster = cluster_naive_scores.idxmax()
+            print(f"Group {group}: number of clusters = {adata_sub.obs['leiden'].nunique()}, root cluster = {root_cluster} (mean naive score = {cluster_naive_scores[root_cluster]:.3f})")
+            root_cells = adata_sub.obs['leiden'] == root_cluster
+            assert root_cells.sum() > 0, f"No cells found in root cluster {root_cluster}"
+            root_idx = np.where(adata_sub.obs['leiden'] == root_cluster)[0][0]
+            adata_sub.uns['iroot'] = root_idx
+        else: # select based on Sub_CT population 
+            sub_cts = adata_sub.obs['Sub_CT'].unique()
+            assert 'Tcm_Naive_CD8' in sub_cts, f"No 'naive' cells found in group {group} for root selection."
+            naive_cells = adata_sub.obs['Sub_CT'] == 'Tcm_Naive_CD8'
+            assert naive_cells.sum() > 0, f"No cells found in 'Tcm_Naive_CD8' Sub_CT for group {group}"
+            root_idx = np.where(naive_cells)[0][0]
+            adata_sub.uns['iroot'] = root_idx
         sc.tl.diffmap(adata_sub)
         sc.tl.dpt(adata_sub, n_dcs=10)
         adata.obs.loc[adata_sub.obs_names, 'dpt'] = adata_sub.obs['dpt_pseudotime']
@@ -105,18 +113,46 @@ def compute_tf_act(adata):
     net = retrieve_net_consensus(cell_type=cell_type)
     dc.mt.ulm(adata, net=net, tmin=5)
 def annotate(adata):
-    """Annotate cells with marker scores."""
+    """Annotate cells with marker scores and assign ct_minor based on winning marker per cluster."""
+    # Use more specific markers with less overlap
     markers = {
-        'naive': ["CD8B", "S100B", "CCR7", "RGS10", "NOSIP", "LINC02446", "LEF1", "CRTAM", "CD8A", "OXNAD1"],
-        'proliferating': ["MKI67", "CD8B", "TYMS", "TRAC", "PCLAF", "CD3D", "CLSPN", "CD3G", "TK1", "RRM2"],
-        'central_memory': ["CD8B", "ANXA1", "CD8A", "KRT1", "LINC02446", "YBX3", "IL7R", "TRAC", "NELL2", "LDHB"],
-        'effector_memory': ["CCL5", "GZMH", "CD8A", "TRAC", "KLRD1", "NKG7", "GZMK", "CST7", "CD8B", "TRGC2"],
+        'naive': ["CCR7", "LEF1", "SELL", "TCF7", "IL7R", "CD27"],
+        'proliferating': ["MKI67", "TYMS", "PCLAF", "CLSPN", "TK1", "RRM2"],
+        'central_memory': ["IL7R", "CD27", "CD28", "EOMES", "GZMK"],
+        'effector_memory': ["CCL5", "GZMH", "GZMB", "PRF1", "KLRD1", "NKG7", "GNLY"],
     }
-    for subtype, genes in markers.items():
-        available_genes = [g for g in genes if g in adata.var_names]
-        assert len(available_genes) > 0, f"No genes from marker list found in data for subtype {subtype}"
-        sc.tl.score_genes(adata, gene_list=available_genes, score_name=f'{subtype}_score')
-
+    
+    adata.obs['ct_minor'] = 'unassigned'
+    
+    for group_id in adata.obs['group_id'].unique():
+        adata_sub = adata[adata.obs['group_id'] == group_id].copy()
+        
+        # Calculate scores with available genes
+        for subtype, genes in markers.items():
+            available_genes = [g for g in genes if g in adata_sub.var_names]
+            assert len(available_genes) > 0, f"No genes from marker list found in data for subtype {subtype}"
+            sc.tl.score_genes(adata_sub, gene_list=available_genes, score_name=f'{subtype}_score')
+        
+        # Copy scores back to main adata
+        adata.obs.loc[adata_sub.obs_names, [f'{subtype}_score' for subtype in markers.keys()]] = adata_sub.obs[[f'{subtype}_score' for subtype in markers.keys()]]
+        
+        # Reduce clustering resolution to avoid over-fragmentation
+        sc.pp.neighbors(adata_sub)
+        sc.tl.leiden(adata_sub, resolution=2, key_added='leiden_minor')
+        
+        for cluster in adata_sub.obs['leiden_minor'].unique():
+            cluster_cells = adata_sub.obs['leiden_minor'] == cluster
+            cluster_mask = adata_sub.obs_names[cluster_cells]
+            
+            # Calculate mean scores per cluster
+            marker_mean_scores = {}
+            for subtype in markers.keys():
+                marker_mean_scores[subtype] = adata_sub.obs.loc[cluster_cells, f'{subtype}_score'].mean()
+            
+            # Select winning marker
+            winning_marker = max(marker_mean_scores, key=marker_mean_scores.get)
+            
+            adata.obs.loc[cluster_mask, 'ct_minor'] = winning_marker
 
 def dpt_marker_correlation(adata):
     """

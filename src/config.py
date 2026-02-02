@@ -333,7 +333,7 @@ DATASET_CONFIGS = {
         #     'rejuvenating': {'figsize': (4, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
         #     'aging': {'figsize': (7, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
         # },
-        pseudobulk_group=['cell_type', 'pool_id', 'condition', 'donor_id']
+        pseudobulk_group=['cell_type', 'condition', 'donor_id']
     ),
     
     "parsebioscience": ConditionConfig(

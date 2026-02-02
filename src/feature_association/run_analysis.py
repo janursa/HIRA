@@ -71,6 +71,8 @@ def run_single_cohort_analysis(args):
         #     wrapper_gene_expression(par)
         elif feature_type == 'aging_hallmarks':
             wrapper_aging_hallmarks(par)
+        elif feature_type == 'tfa_dpt':
+            wrapper_tfa_dpt(par)
         else:
             raise ValueError(f"Unknown feature type: {feature_type}")
         print("✓ Features calculated")
