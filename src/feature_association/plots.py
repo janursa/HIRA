@@ -441,6 +441,101 @@ def plot_sig_genes_counts_hallmarks(data_type='bulk'):
         print(f"Saving figure to {file_name}")
         plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
+def _plot_scatter_feature_vs_age(feature_type, features, data_type, cell_type):
+    n_features = len(features)
+    n_cols = min(3, n_features)
+    n_rows = (n_features + n_cols - 1) // n_cols
+    
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 3 * n_rows))
+    if n_features == 1:
+        axes = np.array([axes])
+    axes = axes.flatten()
+    
+    for idx, feature in enumerate(features):
+        ax = axes[idx]
+        
+        # Collect data from all datasets
+        all_ages = []
+        all_values = []
+        all_datasets = []
+        
+        for dataset in DISCOVERY_COHORTS:
+            try:
+                feature_data = retrieve_feature_data(
+                    data_type=data_type,
+                    dataset=dataset,
+                    cell_type=cell_type,
+                    feature_type=feature_type
+                )
+                
+                # Get feature index
+                if feature not in feature_data.var_names:
+                    continue
+                
+                feature_idx = list(feature_data.var_names).index(feature)
+                feature_values = feature_data.X[:, feature_idx]
+                
+                if hasattr(feature_values, 'toarray'):
+                    feature_values = feature_values.toarray().flatten()
+                elif hasattr(feature_values, 'flatten'):
+                    feature_values = feature_values.flatten()
+                
+                ages = feature_data.obs['age'].values
+                
+                all_ages.extend(ages)
+                all_values.extend(feature_values)
+                all_datasets.extend([dataset] * len(ages))
+                
+            except Exception as e:
+                print(f"Could not {dataset}/{cell_type}: {e}")
+                continue
+        
+        if not all_ages:
+            ax.text(0.5, 0.5, f'No data for {feature}', 
+                    ha='center', va='center', transform=ax.transAxes)
+            continue
+        
+        # Create dataframe for plotting
+        plot_df = pd.DataFrame({
+            'age': all_ages,
+            'value': all_values,
+            'dataset': all_datasets
+        })
+        plot_df['dataset'] = plot_df['dataset'].apply(lambda x: surrogate_names.get(x, x))
+        
+        # Plot scatter points colored by dataset
+        for dataset in plot_df['dataset'].unique():
+            dataset_data = plot_df[plot_df['dataset'] == dataset]
+            color = palette_datasets_pretty.get(dataset, 'gray')
+            ax.scatter(dataset_data['age'], dataset_data['value'], 
+                        alpha=0.5, s=20, color=color, label=dataset)
+            
+            # Plot regression line using slope from stats
+            # dataset_stats = stats[(stats['gene'] == feature) & (stats['dataset'] == dataset)]
+            # if not dataset_stats.empty:
+            #     slope = dataset_stats['slope'].values[0]
+            #     ages_range = np.array([dataset_data['age'].min(), dataset_data['age'].max()])
+            #     mean_value = dataset_data['value'].mean()
+            #     mean_age = dataset_data['age'].mean()
+            #     intercept = mean_value - slope * mean_age
+                
+            #     ax.plot(ages_range, slope * ages_range + intercept, 
+            #            color=color, linestyle='--', linewidth=2, alpha=0.8)
+        
+        ax.set_xlabel('Age (years)', fontsize=10)
+        ax.set_ylabel(surrogate_names.get(args.feature_type, args.feature_type), fontsize=10)
+        ax.set_title(f'{feature}', fontsize=11, fontweight='bold')
+        ax.spines[['top', 'right']].set_visible(False)
+        
+        if idx == (n_features-1):
+            ax.legend(frameon=False, fontsize=8, loc='upper left', bbox_to_anchor=(1.05, 1))
+    
+    # Remove empty subplots
+    for idx in range(n_features, len(axes)):
+        fig.delaxes(axes[idx])
+    
+    plt.suptitle(f'{cell_type}', fontsize=13, fontweight='bold', y=1.00)
+    plt.tight_layout()
 def plot_scatter_feature_vs_age(args, cell_types=None, features=None, feature_selection_mode='top_central', top_genes=5):
     assert feature_selection_mode in ['top_central', 'top_sig']
     from hiara import retrieve_feature_data, DISCOVERY_COHORTS
@@ -467,101 +562,9 @@ def plot_scatter_feature_vs_age(args, cell_types=None, features=None, feature_se
         
         if not selected_features:
             raise ValueError(f"No features selected for {cell_type}, skipping...")
-        n_features = len(selected_features)
-        n_cols = min(3, n_features)
-        n_rows = (n_features + n_cols - 1) // n_cols
         
-        fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 3 * n_rows))
-        if n_features == 1:
-            axes = np.array([axes])
-        axes = axes.flatten()
-        
-        for idx, feature in enumerate(selected_features):
-            ax = axes[idx]
-            
-            # Collect data from all datasets
-            all_ages = []
-            all_values = []
-            all_datasets = []
-            
-            for dataset in DISCOVERY_COHORTS:
-                try:
-                    feature_data = retrieve_feature_data(
-                        data_type=data_type,
-                        dataset=dataset,
-                        cell_type=cell_type,
-                        feature_type=args.feature_type
-                    )
-                    
-                    # Get feature index
-                    if feature not in feature_data.var_names:
-                        continue
-                    
-                    feature_idx = list(feature_data.var_names).index(feature)
-                    feature_values = feature_data.X[:, feature_idx]
-                    
-                    if hasattr(feature_values, 'toarray'):
-                        feature_values = feature_values.toarray().flatten()
-                    elif hasattr(feature_values, 'flatten'):
-                        feature_values = feature_values.flatten()
-                    
-                    ages = feature_data.obs['age'].values
-                    
-                    all_ages.extend(ages)
-                    all_values.extend(feature_values)
-                    all_datasets.extend([dataset] * len(ages))
-                    
-                except Exception as e:
-                    print(f"Could not load {feature} for {dataset}/{cell_type}: {e}")
-                    continue
-            
-            if not all_ages:
-                ax.text(0.5, 0.5, f'No data for {feature}', 
-                       ha='center', va='center', transform=ax.transAxes)
-                continue
-            
-            # Create dataframe for plotting
-            plot_df = pd.DataFrame({
-                'age': all_ages,
-                'value': all_values,
-                'dataset': all_datasets
-            })
-            plot_df['dataset'] = plot_df['dataset'].apply(lambda x: surrogate_names.get(x, x))
-            
-            # Plot scatter points colored by dataset
-            for dataset in plot_df['dataset'].unique():
-                dataset_data = plot_df[plot_df['dataset'] == dataset]
-                color = palette_datasets_pretty.get(dataset, 'gray')
-                ax.scatter(dataset_data['age'], dataset_data['value'], 
-                          alpha=0.5, s=20, color=color, label=dataset)
-                
-                # Plot regression line using slope from stats
-                # dataset_stats = stats[(stats['gene'] == feature) & (stats['dataset'] == dataset)]
-                # if not dataset_stats.empty:
-                #     slope = dataset_stats['slope'].values[0]
-                #     ages_range = np.array([dataset_data['age'].min(), dataset_data['age'].max()])
-                #     mean_value = dataset_data['value'].mean()
-                #     mean_age = dataset_data['age'].mean()
-                #     intercept = mean_value - slope * mean_age
-                    
-                #     ax.plot(ages_range, slope * ages_range + intercept, 
-                #            color=color, linestyle='--', linewidth=2, alpha=0.8)
-            
-            ax.set_xlabel('Age (years)', fontsize=10)
-            ax.set_ylabel(surrogate_names.get(args.feature_type, args.feature_type), fontsize=10)
-            ax.set_title(f'{feature}', fontsize=11, fontweight='bold')
-            ax.spines[['top', 'right']].set_visible(False)
-            
-            if idx == (n_features-1):
-                ax.legend(frameon=False, fontsize=8, loc='upper left', bbox_to_anchor=(1.05, 1))
-        
-        # Remove empty subplots
-        for idx in range(n_features, len(axes)):
-            fig.delaxes(axes[idx])
-        
-        plt.suptitle(f'{cell_type}', fontsize=13, fontweight='bold', y=1.00)
-        plt.tight_layout()
-        
+        _plot_scatter_feature_vs_age(
+            feature_type=args.feature_type, features=selected_features, data_type=data_type, cell_type=cell_type)
         file_name = f"{PLOTS_DIR}/scatter_feature_vs_age_{args.feature_type}_{cell_type}.png"
         print(f"Saving figure to {file_name}")
         plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)

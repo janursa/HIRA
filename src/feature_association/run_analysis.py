@@ -18,7 +18,7 @@ import warnings
 from hiara.src.config import FEATURES_DIR, CELL_TYPES, DISCOVERY_COHORTS, get_config, META_MIN_COHORT
 from hiara.src.feature_association.helper import (
     wrapper_tf_activity,
-    wrapper_tfa_dpt,
+    wrapper_tfa_traj,
     wrapper_aging_hallmarks,
     wrapper_genesets_scores,
     wrapper_association_with_age_condition,
@@ -71,8 +71,8 @@ def run_single_cohort_analysis(args):
         #     wrapper_gene_expression(par)
         elif feature_type == 'aging_hallmarks':
             wrapper_aging_hallmarks(par)
-        elif feature_type == 'tfa_dpt':
-            wrapper_tfa_dpt(par)
+        elif feature_type == 'tfa_traj':
+            wrapper_tfa_traj(par)
         else:
             raise ValueError(f"Unknown feature type: {feature_type}")
         print("✓ Features calculated")
@@ -137,8 +137,8 @@ def run_multi_cohort_analysis(
             wrapper_genesets_scores(par)
         elif args.feature_type == 'aging_hallmarks':
             wrapper_aging_hallmarks(par)
-        elif args.feature_type == 'tfa_dpt':
-            wrapper_tfa_dpt(par)
+        elif args.feature_type == 'tfa_traj':
+            wrapper_tfa_traj(par)
         else:
             raise ValueError(f"Unknown feature type: {args.feature_type}")
     print("✓ Features calculated")
@@ -194,7 +194,7 @@ def main():
         '--feature-type',
         type=str,
         default='tf_activity',
-        choices=['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_dpt'],
+        choices=['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_traj'],
         help='Feature type to analyze (default: tf_activity)'
     )
     

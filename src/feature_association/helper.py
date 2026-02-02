@@ -30,7 +30,7 @@ def write_features_stats(stats, data_type, feature_type, multi_cohort=True, data
 
 def retrieve_stats(data_type='bulk', feature_type='tf_activity', cell_type=None, dataset=None, multi_cohort=None):
     assert data_type in ['bulk', 'sc', 'minor_bulk', 'minor_sc'], f'Unknown data type {data_type}'
-    assert feature_type in ['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_dpt'], f'Unknown feature type {feature_type}'
+    assert feature_type in ['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_traj'], f'Unknown feature type {feature_type}'
     # determine whether this is multi-cohort
     if multi_cohort is None:
         multi_cohort = dataset is None or dataset in DISCOVERY_COHORTS
@@ -686,15 +686,15 @@ def wrapper_genesets_scores(par):
 
 
 
-def wrapper_tfa_dpt(par):
-    from hiara.src.feature_association.trajectory_analysis import annotate, compute_dpt, load_sc_data, compute_tf_act, compute_tfa_dpt_association
+def wrapper_tfa_traj(par):
+    from hiara.src.feature_association.trajectory_analysis import annotate, compute_dpt, load_sc_data, compute_tf_act, compute_tfa_traj_association
 
     from hiara.src.config import PRIOR_DIR
     # --------- load data
     cell_types = par['cell_types']
     data_type = par['data_type']
     datasets = par['datasets']
-    feature_type = 'tfa_dpt'
+    feature_type = 'tfa_traj'
     test_mode = False
     leiden_resolution=10
     min_cells_threshold=100
@@ -705,7 +705,7 @@ def wrapper_tfa_dpt(par):
             # annotate(adata)
             compute_dpt(adata, leiden_resolution=leiden_resolution) # save adata for visualization and downstream analysis
             compute_tf_act(adata)
-            corr_adata = compute_tfa_dpt_association(adata)
+            corr_adata = compute_tfa_traj_association(adata)
             write_feature_data(corr_adata, dataset, cell_type, data_type, feature_type=feature_type)
 
 def wrapper_aging_hallmarks(par):

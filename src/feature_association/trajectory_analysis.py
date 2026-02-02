@@ -33,10 +33,10 @@ from task_grn_inference import normalize_func, bulkify_func
 
 
 def write_traj_stats(results, dataset, cell_type):
-    output_path = f"{OUTPUT_DIR}/tfa_dpt_stats_{dataset}_{cell_type}.csv"
+    output_path = f"{OUTPUT_DIR}/tfa_traj_stats_{dataset}_{cell_type}.csv"
     results.to_csv(output_path, index=False)
 def retrieve_traj_stats(dataset, cell_type):
-    output_path = f"{OUTPUT_DIR}/tfa_dpt_stats_{dataset}_{cell_type}.csv"
+    output_path = f"{OUTPUT_DIR}/tfa_traj_stats_{dataset}_{cell_type}.csv"
     traj_df = pd.read_csv(output_path)
     return traj_df 
 
@@ -45,10 +45,8 @@ def retrieve_traj_stats(dataset, cell_type):
 def load_sc_data(dataset, cell_type, test_mode=False, min_cells_threshold=100):
     print(f"Loading data for dataset={dataset}, cell_type={cell_type}")
     print('Loading data...', flush=True)
-    adata = retrieve_adata(dataset=dataset, data_type='sc', cell_type=cell_type, only_net_genes=True)
-    if test_mode: # Select only 10 donors for testing
-        print('TEST MODE: Selecting only 10 donors for testing...')
-        adata = adata[adata.obs['donor_age'].isin(adata.obs['donor_age'].unique()[:10])].copy()
+    adata = retrieve_adata(dataset=dataset, data_type='sc', cell_type=cell_type, only_net_genes=True, test_mode=test_mode)
+
     # Check cell counts per donor_age
     print(f"\n=== Checking donor_age samples (min threshold: {min_cells_threshold} cells) ===")
     donor_age_counts = adata.obs['donor_age'].value_counts()
@@ -270,7 +268,7 @@ def _run_association_model(adata_subset, tfs, factor_name, formula):
     return results
 
 
-def tfa_dpt_association(adata, association='continuous'):
+def tfa_traj_association(adata, association='continuous'):
     """
     Run association analysis to find TFs whose pseudotime association changes with a factor.
     
@@ -370,15 +368,24 @@ def tfa_dpt_association(adata, association='continuous'):
     
     return results_df
 
-def compute_tfa_dpt_association(adata):
+def compute_tfa_traj_association(adata, target='dpt'):
     """
     Calculate Spearman correlation between TF activity and DPT per group.
-    Stores results in adata.varm['tfa_dpt_corr'] and adata.varm['tfa_dpt_pval'].
+    Stores results in adata.varm['tfa_traj_corr'] and adata.varm['tfa_traj_pval'].
     """
     from scipy.stats import spearmanr
+    from hiara import SUB_CTS
     
     # Get TFs
     tfs = adata.obsm['score_ulm'].columns.tolist()
+    if target == 'Sub_CT':
+        # adata.obs['traj_var'] = adata.obs['Sub_CT'].astype('category').cat.codes
+        # should be coded based on SUB_CTS order
+        adata.obs['traj_var'] = adata.obs['Sub_CT'].astype('category').cat.set_categories(SUB_CTS, ordered=True).cat.codes
+    elif target == 'dpt':
+        adata.obs['traj_var'] = adata.obs['dpt']
+    else:
+        raise ValueError("target must be 'dpt' or 'Sub_CT'")
     
     # Get unique groups
     groups = adata.obs['group_id'].unique()
@@ -397,31 +404,27 @@ def compute_tfa_dpt_association(adata):
             print(f"Skipping {group}: insufficient cells ({adata_group.n_obs})")
             continue
         
-        dpt = adata_group.obs['dpt'].values
+        target_values = adata_group.obs['traj_var'].values
         
         for tf in tfs:
             tf_activity = adata_group.obsm['score_ulm'][tf].values
             
             # Calculate Spearman correlation
-            corr, pval = spearmanr(dpt, tf_activity)
+            corr, pval = spearmanr(target_values, tf_activity)
             
             corr_matrix.loc[tf, group] = corr
             pval_matrix.loc[tf, group] = pval
     
-    # Store in adata.varm (variable/feature metadata matrices)
-    # adata.uns['tfa_dpt_corr'] = corr_matrix
-    # adata.uns['tfa_dpt_pval'] = pval_matrix.values
-    
-    # print(f"Stored correlations in adata.uns['tfa_dpt_corr'] (shape: {corr_matrix.shape})")
-    # print(f"Stored p-values in adata.uns['tfa_dpt_pval']")
-
-    # we create a new AnnData to hold the correlation matrix
     corr_adata = ad.AnnData(X=corr_matrix.values.T, var=pd.DataFrame(index=corr_matrix.index), obs=pd.DataFrame(index=corr_matrix.columns))
     
     # Get unique group metadata (one row per group_id)
     group_metadata = adata.obs.drop_duplicates(subset='group_id').set_index('group_id')
     
-    # Merge .obs to include group metadata
+    # Calculate cell count per group
+    cell_counts = adata.obs.groupby('group_id').size().rename('cell_count')
+    
+    # Merge .obs to include group metadata and cell counts
     corr_adata.obs = corr_adata.obs.merge(group_metadata, left_index=True, right_index=True, how='left')
+    corr_adata.obs = corr_adata.obs.merge(cell_counts, left_index=True, right_index=True, how='left')
         
     return corr_adata

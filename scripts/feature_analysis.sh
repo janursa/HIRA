@@ -14,7 +14,7 @@ set -e
 # echo "---------------------------------------------------------- Consensus networks -----------------------------------------------------------------"
 # python src/feature_association/consensus_nets.py
 
-feature_type="tfa_dpt"
+feature_type="tfa_traj"
 cell_types="CD8T"
 data_type="sc"
 
@@ -23,8 +23,8 @@ data_type="sc"
 # cell_types="CD8T"
 # data_type="bulk"
 
-# echo "---------------------------------------------------------- Aging -----------------------------------------------------------------"
-# python src/feature_association/run_analysis.py --feature-type $feature_type --data-type $data_type --analysis-mode multi-cohort  --association-type continous --cell-types $cell_types 
+echo "---------------------------------------------------------- Aging -----------------------------------------------------------------"
+python src/feature_association/run_analysis.py --feature-type $feature_type --data-type $data_type --analysis-mode multi-cohort  --association-type continous --cell-types $cell_types 
 # python src/feature_association/post_aging_analysis.py --feature-type $feature_type --data-type $data_type 
 # echo "---------------------------------------------------------- Soundlife -----------------------------------------------------------------"
 # python src/feature_association/run_analysis.py --analysis-mode single-cohort --datasets soundlife --cell-types all --data-type $data_type --feature-type $feature_type --association-type continous 
@@ -42,8 +42,8 @@ data_type="sc"
 # python src/feature_association/run_analysis.py  --dataset op --cell-types all --data-type $data_type --feature-type $feature_type --association-type grouped 
 # python src/feature_association/post_condition_analysis.py --dataset op --analysis-type perturbation --data-type $data_type --feature-type $feature_type --cell-types all --agreement opposite
 
-echo "---------------------------------------------------------- CXCL9 -----------------------------------------------------------------"
-python src/feature_association/run_analysis.py --dataset CXCL9 --cell-types CD8T --data-type $data_type --feature-type $feature_type --association-type grouped 
+# echo "---------------------------------------------------------- CXCL9 -----------------------------------------------------------------"
+# python src/feature_association/run_analysis.py --dataset CXCL9 --cell-types CD8T --data-type $data_type --feature-type $feature_type --association-type grouped 
 # python src/feature_association/post_condition_analysis.py --dataset CXCL9 --analysis-type perturbation --data-type $data_type --feature-type $feature_type --cell-types CD4T CD8T --agreement opposite --skip-overview --skip-pathway
 
 

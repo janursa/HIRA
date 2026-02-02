@@ -97,7 +97,7 @@ surrogate_names = {
                     'Dimethyl Sulfoxide': 'DMSO',
 
                     'tf_activity': 'TF activity',
-                    'tfa_dpt': 'TF activity vs pseudotime',
+                    'tfa_traj': 'TF activity vs pseudotime',
                     }
 # - palettes  
 colors_blind = [
@@ -141,13 +141,15 @@ mapping_major_2_minor = {
     'MONO': ['NonClassic_MONO', 'Classic_MONO'],
     'NK': ['CD16_NK', 'NK']
  }
+
+
 mapping_minor_2_major = {
     'Tcm_Naive_CD4': 'CD4T',
     'Tem_Effector_CD4': 'CD4T',
     
+    'Tcm_Naive_CD8': 'CD8T',
     'Tem_Trm_CD8': 'CD8T',
     'Tem_Temra_CD8': 'CD8T',
-    'Tcm_Naive_CD8': 'CD8T',
     'MAIT': 'CD8T',
     
     'NK': 'NK',
@@ -158,7 +160,30 @@ mapping_minor_2_major = {
     'Naive_B': 'B',
     'Memory_B': 'B',
 }
-minor_cell_types = list(mapping_minor_2_major.keys())
+SUB_CTS = list(mapping_minor_2_major.keys())
+palette_sub_cts = {
+    # CD4T: naive (green) -> effector (red)
+    'Tcm_Naive_CD4': '#4CAF50',      # Green (naive)
+    'Tem_Effector_CD4': '#F44336',   # Red (effector)
+    
+    # CD8T: naive (green) -> differentiated (red)
+    'Tcm_Naive_CD8': '#4CAF50',      # Green (naive)
+    'Tem_Trm_CD8': '#FF9800',        # Orange (intermediate)
+    'Tem_Temra_CD8': '#FF5722',      # Deep Orange (more differentiated)
+    'MAIT': '#D32F2F',               # Dark Red (highly differentiated)
+    
+    # NK: less activated (green) -> more activated (red)
+    'NK': '#66BB6A',                 # Light Green
+    'CD16_NK': '#EF5350',            # Light Red
+    
+    # MONO: classical (green) -> non-classical (red)
+    'Classic_MONO': '#66BB6A',       # Light Green
+    'NonClassic_MONO': '#EF5350',    # Light Red
+    
+    # B cells: naive (green) -> memory (red)
+    'Naive_B': '#4CAF50',            # Green (naive)
+    'Memory_B': '#F44336',           # Red (memory)
+}
 
 @dataclass
 class ConditionConfig:

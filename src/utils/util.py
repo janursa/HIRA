@@ -7,7 +7,7 @@ from sklearn.preprocessing import StandardScaler
 import scanpy as sc
 from pathlib import Path
 from scipy import stats
-from hiara.src.config import DISCOVERY_COHORTS, mapping_minor_2_major, CONSENSUS_MIN_DEGREE, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR, NET_WEIGHT_THRESHOLD, NET_MAX_SIZE
+from hiara.src.config import SUB_CTS, DISCOVERY_COHORTS, mapping_minor_2_major, CONSENSUS_MIN_DEGREE, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR, NET_WEIGHT_THRESHOLD, NET_MAX_SIZE
 
 # increase width of output display
 pd.set_option('display.max_columns', None)
@@ -27,7 +27,10 @@ def read_gmt(file_path: str) -> dict[str, list[str]]:
             }
     return gene_sets
 
-def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, condition=None, only_net_genes=False, mask_condition_col='condition'): 
+def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, condition=None, only_net_genes=False, 
+                   mask_condition_col='condition', 
+                   test_mode=False):    
+
     gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
     assert data_type in ['sc', 'bulk', 'metacell'], f'Unknown type {data_type}'
     adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/{dataset}.h5ad", backed='r')
@@ -57,7 +60,6 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         print('Filtering to only genes in the GRN network...')
         net = retrieve_net_consensus(cell_type=cell_type)
         mask_genes &= adata.var_names.isin(net['target'].unique())
-        
     
     if cell_type is not None:
         if cell_type not in obs['cell_type'].unique():
@@ -77,20 +79,52 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         mask &= cell_type_mask.values
     if condition is not None:
         mask &= mask_condition.values
-    if True: #filter by donors
+    if test_mode: #filter by donors
         print('Get ride of meeeee')
         # select 10 young and 10 old
         obs['age'] = obs['age'].astype(float).astype(int)
         old_donors = obs[obs['age']>70]['donor_age'].unique()
         young_donors = obs[obs['age']<30]['donor_age'].unique()
-        selected_donors = list(young_donors[:10]) + list(old_donors[:10])
+        selected_donors = list(young_donors[:20]) + list(old_donors[:20])
         mask_donors = obs['donor_age'].isin(selected_donors)
         mask &= mask_donors.values
-
-    adata = adata[mask, mask_genes].to_memory()
-    obs = obs[mask]
-    for c in obs.columns:
-        adata.obs[c] = obs[c]
+    if True:
+        # For backed mode, we need to read the data carefully to avoid view-of-view issues
+        # Convert masks to indices
+        obs_indices = np.where(mask)[0]
+        var_indices = np.where(mask_genes)[0]
+        
+        print(f'Number of cells and genes to send to memory: {len(obs_indices)}, {len(var_indices)}')
+        
+        # Read the subset directly from backed h5ad
+        # First subset observations, then variables
+        adata_backed = adata  # Keep reference to backed version
+        X_subset = adata_backed.X[obs_indices, :][:, var_indices]
+        
+        # Prepare obs DataFrame with proper index
+        obs_subset = obs.iloc[mask].copy()
+        
+        # Prepare var DataFrame with proper index (gene names)
+        var_subset = adata_backed.var.iloc[var_indices].copy()
+        
+        # Create new AnnData with the subset
+        adata = ad.AnnData(
+            X=X_subset,
+            obs=obs_subset,
+            var=var_subset,
+            uns=adata_backed.uns.copy() if hasattr(adata_backed, 'uns') else {},
+        )
+        
+        # Copy layers if they exist
+        for layer_name in adata_backed.layers.keys():
+            adata.layers[layer_name] = adata_backed.layers[layer_name][obs_indices, :][:, var_indices]
+        
+    else:
+        adata = adata[mask, mask_genes].to_memory()    
+    
+        obs = obs[mask]
+        for c in obs.columns:
+            adata.obs[c] = obs[c]
     
     
     if ('lognorm' in adata.layers) | ('X_norm' in adata.layers):
@@ -103,17 +137,27 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
             sc.pp.log1p(adata)
     adata.obs['dataset'] = dataset
     adata.uns['dataset'] = dataset
+    
     if 'age' in adata.obs.columns:
-        adata = adata[~adata.obs['age'].isna()].copy()
+        nan_age = adata.obs['age'].isna()
+        if nan_age.sum() > 0:
+            print(f'Warning: {nan_age.sum()} cells with NaN age found. ')
+            raise ValueError('Cells with NaN age found.')
         adata.obs['age'] = adata.obs['age'].astype(float).astype(int)
         adata = adata[adata.obs['age'] >= age_limit].copy()  
     else:
         print('Warning: "age" column not found in adata.obs. Setting to default age of 20.')
         adata.obs['age'] = 20
+    
     if 'sex' in adata.obs.columns:
         adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
 
+    if True:
+        age_t = 50
+        adata.obs['age_group'] = adata.obs['age'].apply(lambda x: 'Young' if x < age_t else 'Old')
     
+    if data_type == 'sc':
+        adata = adata[adata.obs['Sub_CT'].isin(SUB_CTS)].copy()
     
     return adata
 

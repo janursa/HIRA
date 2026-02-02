@@ -75,7 +75,7 @@ if __name__ == "__main__":
         # plot_sig_networks()
     elif feature_type == 'aging_hallmarks':
         plot_sig_genes_counts_hallmarks()
-    elif feature_type in [ 'tfa_dpt']:
+    elif feature_type in [ 'tfa_traj']:
         # plot_sig_tf_counts(args)
         # plot_heatmap_overal(stats_aging)
         plot_scatter_feature_vs_age(args, cell_types=['CD8T'], features=['TCF7', 'LEF1', 'GATA3', 'KLF6'], feature_selection_mode='top_central', top_genes=5)
