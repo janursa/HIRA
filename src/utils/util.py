@@ -27,33 +27,44 @@ def read_gmt(file_path: str) -> dict[str, list[str]]:
             }
     return gene_sets
 
-def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, condition=None, only_net_genes=False): 
+def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, condition=None, only_net_genes=False, mask_condition_col='condition'): 
     gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
     assert data_type in ['sc', 'bulk', 'metacell'], f'Unknown type {data_type}'
     adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/{dataset}.h5ad", backed='r')
     obs = adata.obs.copy()
     if dataset not in ['ibd']:
         obs.rename({'perturbation': 'condition', 'disease': 'condition', 'treatment': 'condition', 'Max_WHO_Group': 'condition'}, axis=1, inplace=True)
-    mask_genes = adata.var_names.isin(gene_names)
-    if cell_type is not None:
-        if cell_type not in obs['cell_type'].unique():
-            raise ValueError(f'Given cell type "{cell_type}" not in {obs["cell_type"].unique()}')
-        cell_type_mask = obs['cell_type'] == cell_type
-        
     if 'condition' in obs.columns:
         config = get_config(dataset)
         name_mapping = config.name_mapping
         if name_mapping is not None:
                 obs['condition'] = obs['condition'].map(lambda x: name_mapping.get(x, x))
-    if 'condition' not in obs.columns:
+    else:
         obs['condition'] = 'healthy'
+    # make donor names pretties
+    donors_all = sorted(obs['donor_id'].unique())
+    donor_map = {d: f"Donor {i+1}" for i, d in enumerate(donors_all)}  # Pretty names
+    obs['donor_id_old'] = obs['donor_id'].copy()
+    obs['donor_id'] = obs['donor_id'].map(lambda x: donor_map.get(x, x))
+    obs['donor_age'] = obs['donor_id'].astype(str) + '- age: ' + obs['age'].astype(str)
+
+    cfg = get_config(dataset)
+    pseudobulk_group = cfg.pseudobulk_group
+    obs['group_id'] = obs[pseudobulk_group].astype(str).agg('_'.join, axis=1)
+
+    mask_genes = adata.var_names.isin(gene_names)
+    if cell_type is not None:
+        if cell_type not in obs['cell_type'].unique():
+            raise ValueError(f'Given cell type "{cell_type}" not in {obs["cell_type"].unique()}')
+        cell_type_mask = obs['cell_type'] == cell_type
+    
     if condition is not None:
         if isinstance(condition, str):
             condition = [condition]
         for c in condition:
-            if c not in obs['condition'].unique():
-                raise ValueError(f'Given condition "{c}" not in {obs["condition"].unique()}')
-        mask_condition = obs['condition'].isin(condition)
+            if c not in obs[mask_condition_col].unique():
+                raise ValueError(f'Given condition "{c}" not in {obs[mask_condition_col].unique()}')
+        mask_condition = obs[mask_condition_col].isin(condition)
     mask = np.ones(adata.n_obs, dtype=bool)
     if cell_type is not None:
         mask &= cell_type_mask.values
@@ -76,6 +87,7 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
             sc.pp.normalize_total(adata)
             sc.pp.log1p(adata)
     adata.obs['dataset'] = dataset
+    adata.uns['dataset'] = dataset
     if 'age' in adata.obs.columns:
         adata = adata[~adata.obs['age'].isna()].copy()
         adata.obs['age'] = adata.obs['age'].astype(float).astype(int)
@@ -87,12 +99,7 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         net = retrieve_net_consensus(cell_type=cell_type)
         adata = adata[:, adata.var_names.isin(net['target'].unique())].copy()
     
-    # make donor names pretties
-    donors_all = sorted(adata.obs['donor_id'].unique())
-    donor_map = {d: f"Donor {i+1}" for i, d in enumerate(donors_all)}  # Pretty names
-    adata.obs['donor_id'] = adata.obs['donor_id'].map(lambda x: donor_map.get(x, x))
-    adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + '- age: ' + adata.obs['age'].astype(str)
-
+    
     return adata
 
 def retrieve_net(dataset, cell_type, promotor_only=False, data_type='sc'):      
