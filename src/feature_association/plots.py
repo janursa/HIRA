@@ -10,13 +10,12 @@ import numpy as np
 import os
 
 
-from hiara.src.config import CELL_TYPES, OUTPUT_DIR, get_config, colors_blind, DISCOVERY_COHORTS ,surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, palette_trend_2
+from hiara.src.config import GRNS_DIR, PRIOR_DIR, CELL_TYPES, OUTPUT_DIR, PLOTS_DIR, get_config, colors_blind, DISCOVERY_COHORTS, \
+    surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, \
+    palette_trend_2, palette_cell_types, palette_datasets, palette_trend_2, colors_blind
 from hiara.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data
-from hiara.src.utils.util import retrieve_net, retrieve_adata
-from hiara import retrieve_sig_stats, PLOTS_DIR, retrieve_stats, retrieve_net_consensus
-from hiara import palette_cell_types, palette_datasets, palette_trend_2, colors_blind
-
-
+from hiara.src.utils.util import retrieve_net, retrieve_adata, retrieve_net_consensus
+from hiara.src.feature_association.helper import retrieve_sig_stats, retrieve_stats
 
 
 ## Sig TFs counts
@@ -648,7 +647,7 @@ def plot_central_features(stats_aging, cell_types):
         print(f"Saving figure to {file_name}")
         plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
 def plot_interaction_of_aging_TFs_between_cell_types(args):
-    from grn_benchmark.src.exp_analysis.helper import plot_interactions, create_interaction_df
+    from geneRNBI.src.exp_analysis.helper import plot_interactions, create_interaction_df
 
     stats_sig = retrieve_sig_stats(data_type=args.data_type).drop_duplicates(subset=['cell_type', 'gene'])
     df_dict = stats_sig.groupby(['cell_type'])['gene'].apply(list).to_dict()
@@ -1469,7 +1468,8 @@ def plot_gene_score_association_with_age(cell_type, datasets, data_type, feature
 
     return fig
 def plot_features_vs_datasets(cell_type, datasets=DISCOVERY_COHORTS, data_type='bulk', features=None, feature_type='tf_activity', sizes=(50, 100), 
-                              top_features=20, min_degree=4, filter_meta_significant=False, race='european', 
+                              top_features=20, min_degree=4, filter_meta_significant=False, 
+                              features_dir=None,
                               show_size_legend=False):
 
     from hiara.src.utils.plots import dotplot
@@ -1482,12 +1482,8 @@ def plot_features_vs_datasets(cell_type, datasets=DISCOVERY_COHORTS, data_type='
     import matplotlib.pyplot as plt
     import seaborn as sns
     
-    # Calculate base dimensions based on data size
     n_datasets = len(datasets)
-    # Estimate number of features for initial sizing (will be refined later)
     estimated_n_features = top_features if features is None else len(features) if features is not None else top_features
-    
-    # Base dimensions calculated from data characteristics - tighter width, looser height
     base_width = max(1.5, min(3.5, 1.0 + n_datasets * 0.2))  # Tighter width range: 1.5-3.5 instead of 1.8-4
     base_height = max(0.12, min(0.25, 0.2 - estimated_n_features * 0.002))  # Smaller height per row for many features
 
@@ -1499,7 +1495,7 @@ def plot_features_vs_datasets(cell_type, datasets=DISCOVERY_COHORTS, data_type='
         raise ValueError(f"Unknown feature type: {feature_type}")
 
     # - format the data
-    stats_t = retrieve_stats(data_type, feature_type, cell_type=cell_type)
+    stats_t = retrieve_stats(data_type=data_type, feature_type=feature_type, cell_type=cell_type, features_dir=features_dir)
     stats_t = stats_t[stats_t['dataset'].isin(datasets)]
     # print(stats_t)
     
@@ -2519,12 +2515,18 @@ def plot_net_nx(net, figsize=(6, 6), draw_evidence=True, rad_negative=-.3, rad_p
                 frameon=False, 
                 fontsize=10
             )
-def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net=True, draw_evidence=True, draw_collectri=True,figsize=(4, 4), figsize_collectri=(3,3), 
-                     offset_evidence=.11, arc_offset=.05, offset_evidence_collectri=.1, promotor_only=False):
+def draw_net_datasets(cell_type, datasets, features, min_degree=3, indivitual_net=True, 
+                     draw_evidence=True, draw_collectri=True, 
+                     figsize=(4, 4), figsize_collectri=(3,3), 
+                     offset_evidence=.11, arc_offset=.05, 
+                     offset_evidence_collectri=.1, 
+                     promotor_only=False,
+                     prior_dir=PRIOR_DIR,
+                     grns_dir=GRNS_DIR):
     net_store = []
     for dataset in datasets:
         cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-        net = retrieve_net(dataset=dataset, cell_type=cell_type_major, promotor_only=promotor_only)
+        net = retrieve_net(dataset=dataset, cell_type=cell_type_major, promotor_only=promotor_only, grns_dir=grns_dir, prior_dir=prior_dir)
         net['dataset'] = dataset
         net_store.append(net)
     net = pd.concat(net_store, ignore_index=True)
@@ -2543,13 +2545,13 @@ def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net
             plt.title(f"{surrogate_names.get(dataset, dataset)}", fontsize=16, pad=20)
     if draw_collectri:
         # - add collectri
-        collectri = pd.read_csv(f'{PRIOR_DIR}/collectri_with_source.csv')
+        collectri = pd.read_csv(f'{prior_dir}/collectri_with_source.csv')
         collectri['dataset'] = collectri['ref']
         evidence = collectri.copy()
         if False:
             # - add skeleton
             # skeleton = pd.read_csv(f'/home/jnourisa/projs/ongoing/task_grn_inference/resources/grn_benchmark/prior//skeleton.csv')
-            skeleton = pd.read_csv(f'{PRIOR_DIR}/skeleton_promotor.csv')
+            skeleton = pd.read_csv(f'{prior_dir}/skeleton_promotor.csv')
             skeleton['weight'] = 1
             skeleton['dataset'] = 'skeleton'
             evidence = pd.concat([evidence, skeleton], ignore_index=True)
@@ -2565,7 +2567,9 @@ def wrapper_draw_net(cell_type, datasets, features, min_degree=3, indivitual_net
         plt.title(f"{cell_type_major} - CollecTRI", fontsize=14, pad=20, weight='bold')
     return fig
 
-def wrapper_draw_tf_target_programs(cell_type, datasets, tfs, n_targets=10, promotor_only=False, min_consensus=3):
+def draw_net_datasets_targets(cell_type, datasets, tfs, n_targets=10, promotor_only=False, min_consensus=3,
+                             prior_dir=PRIOR_DIR,
+                             grns_dir=GRNS_DIR):
     """
     Draw network showing TF target programs - each TF with its top targets based on regulatory weights.
     
@@ -2580,7 +2584,7 @@ def wrapper_draw_tf_target_programs(cell_type, datasets, tfs, n_targets=10, prom
     net_store = []
     for dataset in datasets:
         cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-        net = retrieve_net(dataset=dataset, cell_type=cell_type_major, promotor_only=promotor_only)
+        net = retrieve_net(dataset=dataset, cell_type=cell_type_major, promotor_only=promotor_only, grns_dir=grns_dir, prior_dir=prior_dir)
         # z score for weight
         net['weight'] = (net['weight'] - net['weight'].mean()) / net['weight'].std()
         net['dataset'] = dataset

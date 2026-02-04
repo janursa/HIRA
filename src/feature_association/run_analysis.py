@@ -15,7 +15,7 @@ from typing import List
 import pandas as pd
 import warnings
 
-from hiara.src.config import FEATURES_DIR, CELL_TYPES, DISCOVERY_COHORTS, get_config, META_MIN_COHORT
+from hiara.src.config import FEATURES_DIR, CELL_TYPES, DISCOVERY_COHORTS, AGING_COHORTS, get_config, META_MIN_COHORT
 from hiara.src.feature_association.helper import (
     wrapper_tf_activity,
     wrapper_tfa_traj,

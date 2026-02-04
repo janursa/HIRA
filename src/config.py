@@ -45,6 +45,7 @@ TUNE_CLOCK = True
 META_MIN_COHORT = 2
 CONSENSUS_MIN_DEGREE = 2 
 CORR_THRESHOLD = 0.1 # minimum absolute correlation for feature association with age
+TF_MIN_TARGET = 5
 
 DATASET_NAME_MAPPING = {
     "data1": "onek1k",
@@ -99,6 +100,8 @@ surrogate_names = {
                     'tf_activity': 'TF activity',
                     'tfa_traj': 'TF activity vs pseudotime',
                     }
+surrogate_names_reverse = {v: k for k, v in surrogate_names.items()}
+
 # - palettes  
 colors_blind = [
           '#E69F00',  # Orange

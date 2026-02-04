@@ -161,15 +161,13 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
     
     return adata
 
-def retrieve_net(dataset, cell_type, promotor_only=False, data_type='sc'):      
+def retrieve_net(dataset, cell_type, promotor_only=False, data_type='sc', grns_dir=GRNS_DIR, prior_dir=PRIOR_DIR):      
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
-    if dataset not in ['soundlife']:
-        folder = f"{GRNS_DIR}/{dataset}/{data_type}/"
-    else:
-        folder = f"{GRNS_DIR}/{dataset}/bulk/"
+    folder = f"{grns_dir}/{dataset}/{data_type}/"
+    
     net = pd.read_csv(f"{folder}/net_{cell_type_major}.csv")
-    gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
+    gene_names = np.loadtxt(f'{prior_dir}/gene_names.txt', dtype=str)
     net = net[net['target'].isin(gene_names)]
     if promotor_only:
         net = net[net['promotor_based']]

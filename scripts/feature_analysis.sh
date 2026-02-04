@@ -14,14 +14,14 @@ set -e
 # echo "---------------------------------------------------------- Consensus networks -----------------------------------------------------------------"
 # python src/feature_association/consensus_nets.py
 
-feature_type="tfa_traj"
-cell_types="CD8T"
-data_type="sc"
-
-
-# feature_type="tf_activity"
+# feature_type="tfa_traj"
 # cell_types="CD8T"
-# data_type="bulk"
+# data_type="sc"
+
+
+feature_type="tf_activity"
+cell_types="CD8T CD4T MONO NK B"
+data_type="bulk"
 
 echo "---------------------------------------------------------- Aging -----------------------------------------------------------------"
 # python src/feature_association/run_analysis.py --feature-type $feature_type --data-type $data_type --analysis-mode multi-cohort  --association-type continous --cell-types $cell_types 
