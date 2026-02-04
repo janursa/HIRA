@@ -24,8 +24,8 @@ data_type="sc"
 # data_type="bulk"
 
 echo "---------------------------------------------------------- Aging -----------------------------------------------------------------"
-python src/feature_association/run_analysis.py --feature-type $feature_type --data-type $data_type --analysis-mode multi-cohort  --association-type continous --cell-types $cell_types 
-# python src/feature_association/post_aging_analysis.py --feature-type $feature_type --data-type $data_type 
+# python src/feature_association/run_analysis.py --feature-type $feature_type --data-type $data_type --analysis-mode multi-cohort  --association-type continous --cell-types $cell_types 
+python src/feature_association/post_aging_analysis.py --feature-type $feature_type --data-type $data_type 
 # echo "---------------------------------------------------------- Soundlife -----------------------------------------------------------------"
 # python src/feature_association/run_analysis.py --analysis-mode single-cohort --datasets soundlife --cell-types all --data-type $data_type --feature-type $feature_type --association-type continous 
 # python src/feature_association/post_condition_analysis.py --dataset soundlife --analysis-type aging --data-type $data_type --feature-type $feature_type --cell-types all  --skip-pathway

@@ -78,6 +78,7 @@ if __name__ == "__main__":
     elif feature_type in [ 'tfa_traj']:
         # plot_sig_tf_counts(args)
         # plot_heatmap_overal(stats_aging)
-        plot_scatter_feature_vs_age(args, cell_types=['CD8T'], features=['TCF7', 'LEF1', 'GATA3', 'KLF6'], feature_selection_mode='top_central', top_genes=5)
+        # plot_scatter_feature_vs_age(args, cell_types=['CD8T'], features=['TCF7', 'LEF1', 'GATA3', 'KLF6'], feature_selection_mode='top_central', top_genes=5)
+        plot_scatter_feature_vs_age(args, cell_types=['CD8T'], feature_selection_mode='top_sig', top_genes=10)
     else:
         raise ValueError('Unknown feature type')

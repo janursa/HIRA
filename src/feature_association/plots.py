@@ -523,7 +523,7 @@ def _plot_scatter_feature_vs_age(feature_type, features, data_type, cell_type):
             #            color=color, linestyle='--', linewidth=2, alpha=0.8)
         
         ax.set_xlabel('Age (years)', fontsize=10)
-        ax.set_ylabel(surrogate_names.get(args.feature_type, args.feature_type), fontsize=10)
+        ax.set_ylabel(surrogate_names.get(feature_type, feature_type), fontsize=10)
         ax.set_title(f'{feature}', fontsize=11, fontweight='bold')
         ax.spines[['top', 'right']].set_visible(False)
         
