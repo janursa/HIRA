@@ -28,7 +28,7 @@ from hiara import retrieve_feature_data, retrieve_sig_stats
 from hiara import OUTPUT_DIR, PRIOR_DIR, PLOTS_DIR, CLOCKS_DIR, CELL_TYPES, surrogate_names, colors_blind, palette_cell_types, palette_datasets, palette_datasets_pretty, palette_genders, AGING_COHORTS
 from hiara import retrieve_adata, retrieve_net, retrieve_net_consensus
 from hiara import get_config
-from grn_benchmark.src.helper import load_env
+from geneRNBI.src.helper import load_env
 from task_grn_inference import normalize_func, bulkify_func
 
 
@@ -103,13 +103,6 @@ def compute_dpt(adata, leiden_resolution=10):
     assert not adata.obs['dpt'].isna().any(), "Some cells were not assigned pseudotime."
     return adata
 
-def compute_tf_act(adata):
-    print('Computing TF activities using ULM...', flush=True)
-    cell_type = adata.obs['cell_type'].unique()
-    assert len(cell_type) == 1, "Multiple cell types found in adata."
-    cell_type = cell_type[0]
-    net = retrieve_net_consensus(cell_type=cell_type)
-    dc.mt.ulm(adata, net=net, tmin=5)
 def annotate(adata):
     """Annotate cells with marker scores and assign ct_minor based on winning marker per cluster."""
     # Use more specific markers with less overlap

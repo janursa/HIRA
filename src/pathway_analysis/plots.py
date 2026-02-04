@@ -43,7 +43,7 @@ def plot_pathway_kde(
     row_spacing=0.4,
     cell_spacing=1,
     min_genes=10,
-    feature_col='target'):
+    feature_col='gene'):
     import numpy as np
     import matplotlib.pyplot as plt
     from scipy.stats import gaussian_kde

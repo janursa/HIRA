@@ -11,7 +11,7 @@ import anndata as ad
 from statsmodels.stats.multitest import multipletests
 from hiara.src.config import FEATURES_DIR, get_config,  surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
 from tqdm import tqdm
-from hiara.src.config import OUTPUT_DIR, FEATURES_DIR, CORR_THRESHOLD
+from hiara.src.config import OUTPUT_DIR, FEATURES_DIR, CORR_THRESHOLD, TF_MIN_TARGET
 from scipy.sparse import issparse
 from hiara.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net
 import warnings
@@ -28,20 +28,24 @@ def write_features_stats(stats, data_type, feature_type, multi_cohort=True, data
     stats.to_csv(file_name, index=False)
         
 
-def retrieve_stats(data_type='bulk', feature_type='tf_activity', cell_type=None, dataset=None, multi_cohort=None):
+def retrieve_stats(data_type='bulk', feature_type='tf_activity', cell_type=None, dataset=None, multi_cohort=None, features_dir=None):
     assert data_type in ['bulk', 'sc', 'minor_bulk', 'minor_sc'], f'Unknown data type {data_type}'
     assert feature_type in ['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_traj'], f'Unknown feature type {feature_type}'
     # determine whether this is multi-cohort
-    if multi_cohort is None:
-        multi_cohort = dataset is None or dataset in DISCOVERY_COHORTS
+    if dataset is None:
+        multi_cohort = True
+    else:
+        multi_cohort = False
     # load stats
+    if features_dir is None:
+        features_dir = FEATURES_DIR
     if multi_cohort:
         stats = pd.read_csv(
-            f"{FEATURES_DIR}/{feature_type}/stats/stats_multi_cohort_{data_type}.csv"
+            f"{features_dir}/{feature_type}/stats/stats_multi_cohort_{data_type}.csv"
         )
     else:
         stats = pd.read_csv(
-            f"{FEATURES_DIR}/{feature_type}/stats/stats_{dataset}_{data_type}.csv"
+            f"{features_dir}/{feature_type}/stats/stats_{dataset}_{data_type}.csv"
         )
     
 
@@ -110,8 +114,8 @@ def retrieve_stats(data_type='bulk', feature_type='tf_activity', cell_type=None,
 
     return stats
 
-def retrieve_sig_stats(data_type='bulk', feature_type='tf_activity',  cell_type=None, dataset=None):
-    stats = retrieve_stats(data_type=data_type, feature_type=feature_type, cell_type=cell_type, dataset=dataset)
+def retrieve_sig_stats(**kwargs):
+    stats = retrieve_stats(**kwargs)
     stats_sig = stats[stats['is_significant']]
     return stats_sig
 
@@ -143,8 +147,6 @@ def write_feature_data(adata, dataset, cell_type, data_type, feature_type='tf_ac
     output_dir = f'{FEATURES_DIR}/{feature_type}/{data_type}'
     os.makedirs(output_dir, exist_ok=True)
     adata.write_h5ad(f'{output_dir}/{dataset}_{cell_type}{suffix}.h5ad')
-
-
 
 def bin_feature_values(adata):
     # - bin 
@@ -687,7 +689,7 @@ def wrapper_genesets_scores(par):
 
 
 def wrapper_tfa_traj(par):
-    from hiara.src.feature_association.trajectory_analysis import annotate, compute_dpt, load_sc_data, compute_tf_act, compute_tfa_traj_association
+    from hiara.src.feature_association.trajectory_analysis import annotate, compute_dpt, load_sc_data, compute_tfa_traj_association
 
     from hiara.src.config import PRIOR_DIR
     # --------- load data
@@ -704,7 +706,7 @@ def wrapper_tfa_traj(par):
             adata = load_sc_data(dataset=dataset, cell_type=cell_type, test_mode=test_mode, min_cells_threshold=min_cells_threshold)
             # annotate(adata)
             compute_dpt(adata, leiden_resolution=leiden_resolution) # save adata for visualization and downstream analysis
-            compute_tf_act(adata)
+            calculate_tf_activity(adata)
             corr_adata = compute_tfa_traj_association(adata)
             write_feature_data(corr_adata, dataset, cell_type, data_type, feature_type=feature_type)
 
@@ -920,15 +922,14 @@ def tf_activity_local(net, adata, tf_all=None):
 
     return tf_acts
 
-def calculate_tf_activity(adata, net, tf_all=None):    
+def calculate_tf_activity(adata, net, tf_all=None, tmin=TF_MIN_TARGET):    
     # - TFs
     if tf_all is not None:
         net = net[net['source'].isin(tf_all)]
-
     if True: # run decoupler
         import decoupler as dc
 
-        dc.mt.ulm(adata, net, tmin=5)
+        dc.mt.ulm(adata, net, tmin=tmin)
         tf_acts_X = adata.obsm['score_ulm']
         var = pd.DataFrame({'source': tf_acts_X.columns})
         var.index = var['source']
@@ -936,7 +937,7 @@ def calculate_tf_activity(adata, net, tf_all=None):
         tf_acts_adata = ad.AnnData(X=tf_acts_X.values, obs=adata.obs, var=var)
 
     else: # run my implementation
-        n_targets_t = 5
+        n_targets_t = tmin
         if True:
             tf_size = net.groupby('source').size()
             tfs = tf_size[tf_size > n_targets_t].index

@@ -18,7 +18,7 @@ def features_stats():
         net = retrieve_net_consensus(cell_type=cell_type)
         print(cell_type, net.shape)
         features_dict[cell_type] = net['target'].unique().tolist()
-    from grn_benchmark.src.exp_analysis.helper import plot_interactions, create_interaction_df
+    from geneRNBI.src.exp_analysis.helper import plot_interactions, create_interaction_df
 
     interaction_main_df = create_interaction_df(features_dict)
     aa = plot_interactions(interaction_main_df, min_subset_size=200, min_degree=2, color_map=palette_cell_types)

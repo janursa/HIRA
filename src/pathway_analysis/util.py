@@ -92,7 +92,7 @@ def get_gene2pathway():
     return pathway_df
 
 
-def pathway_kde_func(stats_df, pathway='hallmark', sets=None, test='wilcoxon', min_genes=10, fdr_method='fdr_bh', feature_col='target'):
+def pathway_kde_func(stats_df, pathway='hallmark', sets=None, test='wilcoxon', min_genes=10, fdr_method='fdr_bh', feature_col='gene'):
     from statsmodels.stats.multitest import multipletests
     from scipy import stats
     from hiara.src.pathway_analysis.util import get_genesets
@@ -230,6 +230,7 @@ def gsea_func(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hallmark_2020'], f
     res2d_store = []
     for cell_type in df['cell_type'].unique():
         for trend in df['trend'].unique():
+            # print(f'{cell_type}-{trend}', flush=True)
             mask = (df['cell_type'] == cell_type) & (df['trend'] == trend)
             if mask.sum() == 0:
                 continue
