@@ -132,7 +132,7 @@ def run_multi_cohort_analysis(
         if args.feature_type == 'tf_activity':
             wrapper_tf_activity(par)
         elif args.feature_type == 'gene_expression':
-            wrapper_gene_expression(par)
+            pass
         elif args.feature_type == 'gene_score':
             wrapper_genesets_scores(par)
         elif args.feature_type == 'aging_hallmarks':

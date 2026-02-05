@@ -98,7 +98,7 @@ surrogate_names = {
                     'Dimethyl Sulfoxide': 'DMSO',
 
                     'tf_activity': 'TF activity',
-                    'tfa_traj': 'TF activity vs pseudotime',
+                    'tfa_traj': 'TF activity vs trajectory',
                     }
 surrogate_names_reverse = {v: k for k, v in surrogate_names.items()}
 

@@ -10,7 +10,7 @@ import numpy as np
 import os
 
 
-from hiara.src.config import GRNS_DIR, PRIOR_DIR, CELL_TYPES, OUTPUT_DIR, PLOTS_DIR, get_config, colors_blind, DISCOVERY_COHORTS, \
+from hiara.src.config import FEATURES_DIR, GRNS_DIR, PRIOR_DIR, CELL_TYPES, OUTPUT_DIR, PLOTS_DIR, get_config, colors_blind, DISCOVERY_COHORTS, \
     surrogate_names, palette_datasets, palette_regulation, palette_trend, palette_datasets_pretty, mapping_minor_2_major, \
     palette_trend_2, palette_cell_types, palette_datasets, palette_trend_2, colors_blind
 from hiara.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data
@@ -19,14 +19,14 @@ from hiara.src.feature_association.helper import retrieve_sig_stats, retrieve_st
 
 
 ## Sig TFs counts
-def plot_sig_tf_counts(args):
+def wrapper_sig_features_counts(args):
     aging_stats_sig = retrieve_sig_stats(data_type=args.data_type, feature_type=args.feature_type).drop_duplicates(subset=['cell_type', 'gene'])
     aging_stats_sig['cell_type'] = pd.Categorical(aging_stats_sig['cell_type'], categories=CELL_TYPES, ordered=True)
-    plot_sig_tfs_stats(aging_stats_sig, figsize=(2, 1.5), palette=palette_trend_2)
+    sig_features_counts(aging_stats_sig, figsize=(2, 1.5), palette=palette_trend_2)
+    plt.ylabel('Significant TFs' if args.feature_type == 'tf_activity' else 'Significant features')
     file_name = f"{PLOTS_DIR}/aging_tfs_count_{args.feature_type}.png"
     print(f"Saving figure to {file_name}")
     plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
-
 
 ## Identify sig networks
 def plot_sig_networks(data_type = 'bulk'):
@@ -180,19 +180,20 @@ def plot_aging_overlap(stats_sig, cell_types, args):
         plt.close()
         print(f"    Saved: {output_path}")
 
-def plot_directional_consistency_scatter(stats, cell_types, args, 
+def plot_directional_consistency_scatter(stats, 
+                                        feature_type,
                                         x_label = 'Validation analysis \n(significance)',
                                         y_label = 'Discovery analysis \n(significance)',
                                         association_col = '-log10_p_adj',
                                         save_tag='',
                                         agreement='same',
                                         label_consistent = 'Consistent',
-                                        label_opposing = 'Opposing'
+                                        label_opposing = 'Opposing',
+                                        output_dir = FEATURES_DIR,
+                                        save_suffix = '',
+                                        pvalue_col='p_value_adj'
                                         ):
-    feature_type = args.feature_type
-    dataset = args.dataset
-    included_cell_types = cell_types
-    output_dir = args.output_dir
+    
 
     if stats['comparison'].nunique() != 1:
         raise ValueError(f"should only have one comparision but has : {stats['comparison'].unique()}")
@@ -214,6 +215,7 @@ def plot_directional_consistency_scatter(stats, cell_types, args,
     # Load reference aging genes (only significant)
     ref_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=feature_type)
     ref_stats_sig = ref_stats_sig.groupby(['cell_type', 'gene']).agg({'slope': 'mean', 'meta_p_adj': 'min'}).reset_index()
+    included_cell_types = stats['cell_type'].unique()
     all_cell_data = []
     for cell_type in included_cell_types:
         if cell_type not in stats['cell_type'].unique():
@@ -223,7 +225,7 @@ def plot_directional_consistency_scatter(stats, cell_types, args,
         sl_ct = stats[(stats['cell_type'] == cell_type) & (stats['gene'].isin(ref_ct['gene']))].copy()
 
         if True:
-            sl_ct['abs_log10_p_adj_sl'] = sl_ct['p_value_adj'].apply(lambda x: -np.log10(x + 1e-300))
+            sl_ct['abs_log10_p_adj_sl'] = sl_ct[pvalue_col].apply(lambda x: -np.log10(x + 1e-300))
             print(f"\n  Top 5 TFs with positive slope:")
             top_5 = sl_ct[sl_ct['slope'] > 0].nlargest(5, 'abs_log10_p_adj_sl')
             names = ', '.join(top_5['gene'].tolist())
@@ -234,8 +236,11 @@ def plot_directional_consistency_scatter(stats, cell_types, args,
             print(f"    {cell_type}: {names}")
 
         # Merge: keep only TFs that are significant in reference aging
+        if pvalue_col == 'meta_p_adj':
+            pvalue_col = f'{pvalue_col}_sl'
+            sl_ct.rename({'meta_p_adj': pvalue_col}, axis=1, inplace=True)
         merged = ref_ct.merge(
-            sl_ct[['gene', 'slope', 'p_value_adj']],
+            sl_ct[['gene', 'slope', pvalue_col]],
             on='gene',
             how='left',
             suffixes=('_ref', '_sl')
@@ -247,13 +252,14 @@ def plot_directional_consistency_scatter(stats, cell_types, args,
             c_genes = sl_ct['gene'].unique()
             overlap = set(aging_genes).intersection(set(c_genes))
             print(f"  {cell_type}: All {len(overlap)} aging TFs found in SL data.")
+        else:
+            print(missing_merged['gene'].nunique(), ' missing genes in the condition data for ', cell_type)
         
         merged['consistent'] = np.sign(merged['slope_ref']) == np.sign(merged['slope_sl'])
         merged['cell_type'] = cell_type
 
-        merged['-log10_p_adj_sl'] = -np.log10(merged['p_value_adj'] + 1e-300) * np.sign(merged['slope_sl'])
+        merged['-log10_p_adj_sl'] = -np.log10(merged[pvalue_col] + 1e-300) * np.sign(merged['slope_sl'])
         merged['-log10_p_adj_ref'] = -np.log10(merged['meta_p_adj'] + 1e-300) * np.sign(merged['slope_ref'])
-        
         all_cell_data.append(merged)
         
     if not all_cell_data:
@@ -351,7 +357,7 @@ def plot_directional_consistency_scatter(stats, cell_types, args,
                  frameon=False, fontsize=8, ncol=2, columnspacing=-.2)
     
     plt.tight_layout()
-    output_path = os.path.join(output_dir, f'consistency_scatter_{dataset}{save_tag}.png')
+    output_path = os.path.join(output_dir, f'consistency_scatter{save_suffix}.png')
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"  Saved: {output_path}")
@@ -440,7 +446,7 @@ def plot_sig_genes_counts_hallmarks(data_type='bulk'):
         print(f"Saving figure to {file_name}")
         plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
-def _plot_scatter_feature_vs_age(feature_type, features, data_type, cell_type):
+def _plot_scatter_feature_vs_age(feature_type, features, data_type, cell_type, datasets=DISCOVERY_COHORTS):
     n_features = len(features)
     n_cols = min(3, n_features)
     n_rows = (n_features + n_cols - 1) // n_cols
@@ -458,7 +464,7 @@ def _plot_scatter_feature_vs_age(feature_type, features, data_type, cell_type):
         all_values = []
         all_datasets = []
         
-        for dataset in DISCOVERY_COHORTS:
+        for dataset in datasets:
             try:
                 feature_data = retrieve_feature_data(
                     data_type=data_type,
@@ -535,9 +541,8 @@ def _plot_scatter_feature_vs_age(feature_type, features, data_type, cell_type):
     
     plt.suptitle(f'{cell_type}', fontsize=13, fontweight='bold', y=1.00)
     plt.tight_layout()
-def plot_scatter_feature_vs_age(args, cell_types=None, features=None, feature_selection_mode='top_central', top_genes=5):
+def plot_scatter_feature_vs_age(args, cell_types=None, features=None, feature_selection_mode='top_central', top_genes=5, datasets=DISCOVERY_COHORTS):
     assert feature_selection_mode in ['top_central', 'top_sig']
-    from hiara import retrieve_feature_data, DISCOVERY_COHORTS
     
     data_type = args.data_type
     if cell_types is None:
@@ -563,14 +568,15 @@ def plot_scatter_feature_vs_age(args, cell_types=None, features=None, feature_se
             raise ValueError(f"No features selected for {cell_type}, skipping...")
         
         _plot_scatter_feature_vs_age(
-            feature_type=args.feature_type, features=selected_features, data_type=data_type, cell_type=cell_type)
-        file_name = f"{PLOTS_DIR}/scatter_feature_vs_age_{args.feature_type}_{cell_type}.png"
+            feature_type=args.feature_type, features=selected_features, data_type=data_type, cell_type=cell_type, datasets=datasets)
+        tag = 'custom' if features is not None else ('top_central' if feature_selection_mode == 'top_central' else 'top_sig') 
+        file_name = f"{PLOTS_DIR}/scatter_feature_vs_age_{args.feature_type}_{cell_type}_{tag}.png"
         print(f"Saving figure to {file_name}")
         plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
 
 
-def gsea_analysis():
+def gsea_analysis(stats_sig):
     from hiara.src.pathway_analysis.util import get_genesets, pathway_kde_func, get_hallmark, gsea_func, wrapper_gsea
 
     wrapper_gsea(stats_sig)
@@ -578,7 +584,7 @@ def gsea_analysis():
     print(f"Saving figure to {file_name}")
     plt.savefig(file_name, bbox_inches='tight', dpi=200)
 ## Heatmap of sig TFs across cell types and cohorts
-def plot_heatmap_overal(stats_aging):
+def plot_heatmap_overal(stats_aging, feature_type='tf_activity'):
     from hiara.src.feature_association.plots import plot_overall_heatmap
 
     stats_aging['cell_type'] = pd.Categorical(stats_aging['cell_type'], categories=CELL_TYPES, ordered=True)
@@ -593,7 +599,7 @@ def plot_heatmap_overal(stats_aging):
                         bbox_to_anchor_col1=(1.05, 0.37),
                         figsize=(4, 6),
                         map_names={**{'cell_type':'Cell type', 'dataset': 'Dataset'}, **surrogate_names})
-    file_name = f"{PLOTS_DIR}/overall_heatmap.png"
+    file_name = f"{PLOTS_DIR}/overall_heatmap_{feature_type}.png"
     print(f"Saving figure to {file_name}")
     plt.savefig(file_name, bbox_inches='tight', dpi=300)
 def plot_central_features(stats_aging, cell_types):
@@ -646,10 +652,10 @@ def plot_central_features(stats_aging, cell_types):
         file_name = os.path.join(PLOTS_DIR, f'central_aging_{focus}.png')
         print(f"Saving figure to {file_name}")
         plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
-def plot_interaction_of_aging_TFs_between_cell_types(args):
+def plot_interaction_of_features_between_cell_types(args):
     from geneRNBI.src.exp_analysis.helper import plot_interactions, create_interaction_df
-
-    stats_sig = retrieve_sig_stats(data_type=args.data_type).drop_duplicates(subset=['cell_type', 'gene'])
+    data_type = args.data_type
+    stats_sig = retrieve_sig_stats(data_type=data_type).drop_duplicates(subset=['cell_type', 'gene'])
     df_dict = stats_sig.groupby(['cell_type'])['gene'].apply(list).to_dict()
     interaction_main_df = create_interaction_df(df_dict)
     aa = plot_interactions(interaction_main_df, min_subset_size=5, min_degree=1, color_map=palette_cell_types)
@@ -665,12 +671,8 @@ def plot_interaction_of_aging_TFs_between_cell_types(args):
     print(len(features))
     for cell_type in ttypes:
         plot_features_vs_datasets(cell_type=cell_type, data_type=data_type, datasets=DISCOVERY_COHORTS, features=features, 
-                                    feature_type='tf_activity', sizes=(90, 100), min_degree=1, race='both', 
-                                    filter_meta_significant=True,
+                                    feature_type='tf_activity', sizes=(90, 100)
                                     )
-        file_name = f"{PLOTS_DIR}/features_vs_datasets_{cell_type}.png"
-        print(f"Saving figure to {file_name}")
-        plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
     if False: ### Shared sig TFs between CD8T and CD4T
         from hiara.src.feature_association.plots import plot_joint_scatter
         ttypes = ['CD8T', 'CD4T']
@@ -687,6 +689,7 @@ def plot_interaction_of_aging_TFs_between_cell_types(args):
 def plot_case_tf(args):
     from hiara.src.feature_association.plots import plot_feature_values_all_datasets, plot_feature_values_per_datasets
     n_top_targets = 10
+    data_type = args.data_type
     selected_cell_types = ['CD8T', 'CD4T', 'NK'] # ['CD8T', 'CD4T', 'NK'] #Tcm_Naive_CD8
     n_panels = len(selected_cell_types)
     datasets = DISCOVERY_COHORTS
@@ -718,15 +721,15 @@ def plot_case_tf(args):
             print(f"Saving figure to {file_name}")
             plt.savefig(file_name, bbox_inches='tight', dpi=300)
 
-def plot_sig_tfs_stats(df, figsize=(3.5, 2), palette=None, ax=None):
+def sig_features_counts(df, figsize=(3.5, 2), palette=None, ax=None):
     df = df[['gene', 'cell_type', 'trend']]
     df['trend'] = df['trend'].astype(CategoricalDtype(categories=palette.keys(), ordered=True))
     df = df[~df.duplicated()].reset_index(drop=True)
-    df_counts = df.groupby(['cell_type', 'trend']).size().reset_index(name='Sig. TFs')
+    df_counts = df.groupby(['cell_type', 'trend']).size().reset_index(name='count')
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=figsize)
-    sns.barplot(data=df_counts, x='cell_type', y='Sig. TFs', alpha=.8, hue='trend', palette=palette, ax=ax)
-    ax.set_ylabel('TF count')
+    sns.barplot(data=df_counts, x='cell_type', y='count', alpha=.8, hue='trend', palette=palette, ax=ax)
+    # ax.set_ylabel('Gene count')
     ax.set_xlabel('')
     ax.margins(x=0.1, y=0.1)
     ax.legend(loc=(1, 0.5), title='Trend', frameon=False)
@@ -1468,9 +1471,11 @@ def plot_gene_score_association_with_age(cell_type, datasets, data_type, feature
 
     return fig
 def plot_features_vs_datasets(cell_type, datasets=DISCOVERY_COHORTS, data_type='bulk', features=None, feature_type='tf_activity', sizes=(50, 100), 
-                              top_features=20, min_degree=4, filter_meta_significant=False, 
+                              top_features=15, 
+                              filter_significant=True, 
                               features_dir=None,
-                              show_size_legend=False):
+                              show_size_legend=False,
+                              plots_dir=PLOTS_DIR):
 
     from hiara.src.utils.plots import dotplot
     from hiara.src.config import cmap_trend, surrogate_names
@@ -1481,64 +1486,40 @@ def plot_features_vs_datasets(cell_type, datasets=DISCOVERY_COHORTS, data_type='
     import numpy as np
     import matplotlib.pyplot as plt
     import seaborn as sns
+    assert feature_type in ['tf_activity', 'gene_expression', 'tfa_traj'], f"Unsupported feature type: {feature_type}"
     
     n_datasets = len(datasets)
     estimated_n_features = top_features if features is None else len(features) if features is not None else top_features
     base_width = max(1.5, min(3.5, 1.0 + n_datasets * 0.2))  # Tighter width range: 1.5-3.5 instead of 1.8-4
     base_height = max(0.12, min(0.25, 0.2 - estimated_n_features * 0.002))  # Smaller height per row for many features
 
-    if feature_type == 'tf_activity':
-        feature_col = 'source'
-    elif feature_type == 'gene_expression':
-        feature_col = 'target'
-    else:
-        raise ValueError(f"Unknown feature type: {feature_type}")
-
     # - format the data
     stats_t = retrieve_stats(data_type=data_type, feature_type=feature_type, cell_type=cell_type, features_dir=features_dir)
     stats_t = stats_t[stats_t['dataset'].isin(datasets)]
-    # print(stats_t)
-    
-    if 'gene' in stats_t.columns:
-        stats_t = stats_t.rename(columns={'gene': 'source'})
-    if filter_meta_significant:
-        stats_sig = retrieve_sig_stats(data_type=data_type, feature_type=feature_type)
-        if 'gene' in stats_sig.columns:
-            stats_sig = stats_sig.rename(columns={'gene': 'source'})
-        stats_sig = stats_sig[stats_sig['cell_type'] == cell_type]
-        sig_tfs = stats_sig[feature_col].unique()
-        stats_t = stats_t[stats_t[feature_col].isin(sig_tfs)]
+
+    if filter_significant:
+        stats_sig = retrieve_sig_stats(data_type=data_type, feature_type=feature_type, cell_type=cell_type).drop_duplicates(subset=['gene', 'cell_type'])
+        sig_genes = stats_sig['gene'].unique()
+        stats_t = stats_t[stats_t['gene'].isin(sig_genes)]
     
     # - get centrality measure
-    c_store = []
-    for dataset in datasets:
-        net = retrieve_net(dataset, cell_type)
-        c = net.groupby(feature_col).size()
-        c = c.div(c.max())
-        c = c.reset_index(name='centrality')
-        c['dataset'] = dataset
-        c_store.append(c)
-    c = pd.concat(c_store)
-    c_median = c.groupby([feature_col])['centrality'].median().reset_index()
-    c_std = c.groupby([feature_col])['centrality'].std().reset_index(name='centrality_std')
+    net = retrieve_net_consensus(cell_type=cell_type)
+    group_col = 'target' if feature_type == 'gene_expression' else 'source'
+    c = net.groupby([group_col]).size()
+    c = c / c.max()
+    c = c.reset_index(name='degree')
+    c.rename(columns={group_col: 'gene'}, inplace=True)
 
-    # print(c_median)
-    # print(stats_t)
-    stats_t = stats_t.merge(c_median, left_on=feature_col, right_on=feature_col, how='left')
-    stats_t = stats_t.merge(c_std, left_on=feature_col, right_on=feature_col, how='left')
+    stats_t = stats_t.merge(c, on='gene', how='left')
     
     # - either find the central features and sort them or sort them based on the given features    
     if features is None:
         # - select the top features: top shared across datasets and top central
-        degrees = c.groupby(feature_col).size().sort_values(ascending=False)
-        degrees = degrees[degrees >= min_degree]
-        c_median_c = c_median[c_median[feature_col].isin(degrees.index)]
-        c_median_c = c_median_c[c_median_c[feature_col].isin(stats_t[feature_col].unique())]
+        c = c[c['gene'].isin(stats_t['gene'].unique())]
+        features = c.sort_values('degree', ascending=False).head(top_features)['gene'].unique() # subset to top ones
         
-        features = c_median_c.sort_values('centrality', ascending=False).head(top_features)[feature_col].unique() # subset to top ones
-        
-        stats_t = stats_t[stats_t[feature_col].isin(features)]
-        stats_t = stats_t.sort_values('centrality', ascending=False)
+        stats_t = stats_t[stats_t['gene'].isin(features)]
+        stats_t = stats_t.sort_values('degree', ascending=False)
     else:
         if feature_type == 'tf_activity':
             pass
@@ -1547,22 +1528,20 @@ def plot_features_vs_datasets(cell_type, datasets=DISCOVERY_COHORTS, data_type='
             # features = [tf for tf in features if tf in tf_all]
 
         # - check if the features are in the stats (remove those that are not present in at least one dataset)
-        stats_t = stats_t[stats_t[feature_col].isin(features)]
-        features = [tf for tf in features if tf in stats_t[feature_col].unique()]
+        stats_t = stats_t[stats_t['gene'].isin(features)]
+        features = [gene for gene in features if gene in stats_t['gene'].unique()]
         features = list(set(features))  # remove duplicates
-        stats_t[feature_col] = pd.Categorical(stats_t[feature_col], categories=features, ordered=True)
-        stats_t = stats_t.sort_values(feature_col)  
+        stats_t['gene'] = pd.Categorical(stats_t['gene'], categories=features, ordered=True)
+        stats_t = stats_t.sort_values('gene')  
     stats_t['neg_log10_adj_pval'] = -np.log10(stats_t['p_value_adj'])
     stats_t['dataset'] = pd.Categorical(stats_t['dataset'], categories=datasets, ordered=True)
     stats_t['dataset'] = stats_t['dataset'].apply(lambda name: surrogate_names.get(name, name))
 
     if stats_t.shape[0]==0:
-        print(f'No data for {cell_type} {feature_col}')
-        raise ValueError(f'No data for {cell_type} {feature_col}')
+        raise ValueError(f'No data for {cell_type} {feature_type}')
         
     # Calculate automated layout parameters
     n_features = len(features)
-    # Update base_height now that we know the actual number of features
     # Use logarithmic scaling for many features - more generous spacing (looser)
     if n_features <= 10:
         base_height = 0.1  # More generous height for very small number of features
@@ -1666,7 +1645,6 @@ def plot_features_vs_datasets(cell_type, datasets=DISCOVERY_COHORTS, data_type='
         
         
     # - main plot
-    df = stats_t.copy()
     fig = plt.figure(figsize=(fig_width, fig_height))
     
     gs = gridspec.GridSpec(1, 3, width_ratios=width_ratios)
@@ -1675,15 +1653,15 @@ def plot_features_vs_datasets(cell_type, datasets=DISCOVERY_COHORTS, data_type='
     ax_legend = fig.add_subplot(gs[-1])
     ax_legend.set_axis_off()
     
-    unique_features = df[feature_col].unique()
-    df[feature_col] = pd.Categorical(df[feature_col], categories=unique_features, ordered=True)
-    ordered_features = df[feature_col].cat.categories  
-    if df['dataset'].nunique() != len(datasets):
-        print( f"Only {df['dataset'].nunique()} datasets are available in the stats.")   
+    unique_features = stats_t['gene'].unique()
+    stats_t['gene'] = pd.Categorical(stats_t['gene'], categories=unique_features, ordered=True)
+    ordered_features = stats_t['gene'].cat.categories  
+    if stats_t['dataset'].nunique() != len(datasets):
+        print( f"Only {stats_t['dataset'].nunique()} datasets are available in the stats.")   
     
-    dotplot(df, 
+    dotplot(stats_t, 
             x='dataset',
-            y = feature_col,
+            y = 'gene',
             ax=ax, 
             ax_legend=ax_legend,
             color_col='slope', 
@@ -1700,34 +1678,34 @@ def plot_features_vs_datasets(cell_type, datasets=DISCOVERY_COHORTS, data_type='
             cbar_width=cbar_width,
             linewidth=0.1,  
             sizes=sizes,
-            size_legend_scale = 200/max(df['neg_log10_adj_pval']),
+            size_legend_scale = 200/max(stats_t['neg_log10_adj_pval']),
             )
     ax.spines[['top', 'right']].set_visible(False)
     ax.margins(**margins_ax1)
-    ax.set_ylabel('TFs' if feature_col=='source' else 'Genes')
-    title = 'TF activity' if feature_col=='source' else 'Gene expression'
+    ax.set_ylabel('Genes')
+    title = surrogate_names.get(feature_type, feature_type)
     ax.set_title(f'{title} - {cell_type}', pad=10, fontsize=10, fontweight='bold')
     
     # ------------ centrality
-    c = c[c[feature_col].isin(features)]
-    c[feature_col] = pd.Categorical(c[feature_col], categories=ordered_features, ordered=True)
+    c = c[c['gene'].isin(features)]
+    c['gene'] = pd.Categorical(c['gene'], categories=ordered_features, ordered=True)
     ax = fig.add_subplot(gs[1])
     
     sns.barplot(
-        data=df,
-        x='centrality',
-        y=feature_col,
+        data=stats_t,
+        x='degree',
+        y='gene',
         ax=ax,
         color='#56B4E9',
         alpha=0.7,
         ci=None,  # turn off seaborn's built-in error estimation
-        errorbar=('sd', df['centrality_std']),  # pass your own std values
+        # errorbar=('sd', stats_t['centrality_std']),  # pass your own std values
         errwidth=1.2,
         capsize=0.2
     )
     ax.spines[['top', 'right', 'left']].set_visible(False)
     ax.margins(**margins_ax2)
-    ax.set_xlabel('Centrality\n(out-degree)' if feature_col=='source' else 'Centrality\n(in-degree)')
+    ax.set_xlabel('Centrality\n(out-degree)' if feature_type in ['tf_activity', 'tfa_traj'] else 'Centrality\n(in-degree)')
     ax.set_ylabel('')
     ax.set_yticks([])
     
@@ -1745,6 +1723,12 @@ def plot_features_vs_datasets(cell_type, datasets=DISCOVERY_COHORTS, data_type='
         top=top_margin,
         wspace=wspace
     )
+    if os.path.exists(plots_dir):
+        file_name = f'{plots_dir}/feature_vs_datasets_{cell_type}_{feature_type}.png'
+        plt.savefig(file_name, dpi=300, bbox_inches='tight')
+        print(f'Saved figure to {file_name}')
+    else:
+        print(f'{plots_dir} is not found. Figure not saved.')
 
     return fig
 

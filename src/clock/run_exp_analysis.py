@@ -162,9 +162,6 @@ def wrapper_trend(top_features_dict, top_feature_values_dict, feature_type, data
         if feature_type == 'tf_activity':
             from hiara.src.feature_association.plots import plot_features_vs_datasets
             aa = plot_features_vs_datasets(cell_type=cell_type, features=features, feature_type=feature_type, sizes=(90, 100))
-            file_name = f'{PLOTS_DIR}/feature_vs_datasets_{cell_type}_{feature_type}.png'
-            print(f"Saving figure to {file_name}")
-            plt.savefig(file_name, dpi=300, transparent=True, bbox_inches='tight')
 def plot_coeff():
     from grnimmuneclock import retrieve_function
     for cell_type in CELL_TYPES:

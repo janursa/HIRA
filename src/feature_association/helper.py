@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 import scanpy as sc
 import anndata as ad
 from statsmodels.stats.multitest import multipletests
-from hiara.src.config import FEATURES_DIR, get_config,  surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
+from hiara.src.config import FEATURES_DIR, get_config, surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
 from tqdm import tqdm
 from hiara.src.config import OUTPUT_DIR, FEATURES_DIR, CORR_THRESHOLD, TF_MIN_TARGET
 from scipy.sparse import issparse
@@ -57,15 +57,10 @@ def retrieve_stats(data_type='bulk', feature_type='tf_activity', cell_type=None,
             )
         stats = stats[stats["cell_type"] == cell_type]
 
-    # map comparison names for single-cohort analyses
-    if dataset is not None and not multi_cohort:
-        config = get_config(dataset)
-        stats["comparison"] = stats["comparison"].map(
-            lambda name: config.name_mapping.get(name, name)
-        )
 
     # significance logic
     if multi_cohort:
+        stats["comparison"] = 'aging'
         p_val_col = "meta_p_adj"
 
         mask_trend = stats["trend"] != "Inconsistent"
@@ -81,18 +76,16 @@ def retrieve_stats(data_type='bulk', feature_type='tf_activity', cell_type=None,
         mask_slope = stats.index.isin(valid_groups.index)
 
     else:
+        config = get_config(dataset)
+        stats["comparison"] = stats["comparison"].map(
+            lambda name: config.name_mapping.get(name, name)
+        )
         p_val_col = "p_value_adj"
         
         stats['p_value_adj'] = stats['p_value_adj'].apply(lambda x: 1E-50 if x < 1E-50 else x)
         mask_trend = pd.Series(True, index=stats.index)
         mask_slope = stats["slope"].abs() > CORR_THRESHOLD
 
-    mask_pvalue = stats[p_val_col] < 0.05
-
-    stats["is_significant"] = mask_pvalue & mask_trend & mask_slope
-
-    # - add trend of conditions
-    if not multi_cohort:
         if dataset == 'perez_sle':
             condition = 'disease'
         elif dataset in ['parsebioscience', 'op', 'CXCL9']:
@@ -112,8 +105,19 @@ def retrieve_stats(data_type='bulk', feature_type='tf_activity', cell_type=None,
                 for x in stats['slope']
             ]
 
-    return stats
+    mask_pvalue = stats[p_val_col] < 0.05
 
+    stats["is_significant"] = mask_pvalue & mask_trend & mask_slope
+
+    return stats
+def retrieve_sig_stats_agg(**kwargs):
+    stats = retrieve_sig_stats(**kwargs)
+    stats_agg = stats.groupby(['cell_type', 'gene']).agg({
+        'slope': 'mean',
+        'meta_p_adj': 'first',
+        'comparison': 'first'
+    }).reset_index()
+    return stats_agg
 def retrieve_sig_stats(**kwargs):
     stats = retrieve_stats(**kwargs)
     stats_sig = stats[stats['is_significant']]
@@ -121,7 +125,7 @@ def retrieve_sig_stats(**kwargs):
 
 def retrieve_feature_data(dataset, cell_type, data_type='bulk', feature_type='tf_activity', condition=None, suffix=''):
     if feature_type == 'gene_expression':
-        adata = retrieve_adata(dataset=dataset, cell_type=cell_type, data_type=data_type, condition=condition)
+        adata = retrieve_adata(dataset=dataset, cell_type=cell_type, data_type=data_type, condition=condition, only_net_genes=True)
         return adata
     file_path = f'{FEATURES_DIR}/{feature_type}/{data_type}/{dataset}_{cell_type}{suffix}.h5ad'
     if os.path.exists(file_path) == False:
@@ -526,9 +530,7 @@ def wrapper_association_with_age_condition(par, association_type, features=None,
         stats_all = pd.concat(stats_store)
     
     print(stats_all['cell_type'].unique())
-    
-    if feature_type == 'gene_expression':
-        stats_all.rename(columns={'gene': 'target'}, inplace=True)
+
 
     return stats_all
 
@@ -667,31 +669,9 @@ def wrapper_genesets_scores(par):
             adata_scores = sc.AnnData(X=X_df.values, obs=obs, var=var)
             write_feature_data(adata_scores, dataset, cell_type, data_type, feature_type=feature_type)
 
-# def wrapper_gene_expression(par):
-#     # --------- load data
-#     cell_types = par['cell_types']
-#     type = par['type']
-#     datasets = par['datasets']
-#     print('Loading data...')
-#     adata_dict = {dataset: retrieve_adata(dataset, type) for dataset in datasets}
-
-#     print('Calculating gene expression...')
-#     stats_store = []
-#     for cell_type in tqdm(cell_types, desc='cell types'):
-#         for dataset in datasets:
-#             adata = adata_dict[dataset][adata_dict[dataset].obs['cell_type']==cell_type]
-
-#             if type == 'sc':
-#                 sc.pp.normalize_total(adata)
-#                 sc.pp.log1p(adata)
-#             write_feature_data(adata, dataset, cell_type, type, feature_type='gene_expression')
-
-
 
 def wrapper_tfa_traj(par):
     from hiara.src.feature_association.trajectory_analysis import annotate, compute_dpt, load_sc_data, compute_tfa_traj_association
-
-    from hiara.src.config import PRIOR_DIR
     # --------- load data
     cell_types = par['cell_types']
     data_type = par['data_type']
@@ -705,13 +685,12 @@ def wrapper_tfa_traj(par):
         for dataset in datasets:
             adata = load_sc_data(dataset=dataset, cell_type=cell_type, test_mode=test_mode, min_cells_threshold=min_cells_threshold)
             # annotate(adata)
-            compute_dpt(adata, leiden_resolution=leiden_resolution) # save adata for visualization and downstream analysis
-            calculate_tf_activity(adata)
-            corr_adata = compute_tfa_traj_association(adata)
+            # compute_dpt(adata, leiden_resolution=leiden_resolution) # save adata for visualization and downstream analysis
+            calculate_tf_activity(adata, net=retrieve_net_consensus(cell_type=cell_type))
+            corr_adata = compute_tfa_traj_association(adata, target='Sub_CT')
             write_feature_data(corr_adata, dataset, cell_type, data_type, feature_type=feature_type)
 
 def wrapper_aging_hallmarks(par):
-    from hiara.src.config import PRIOR_DIR
     # --------- load data
     cell_types = par['cell_types']
     data_type = par['data_type']

@@ -361,62 +361,38 @@ def tfa_traj_association(adata, association='continuous'):
     
     return results_df
 
-def compute_tfa_traj_association(adata, target='dpt'):
+def compute_tfa_traj_association(adata, target='Sub_CT'):
     """
     Calculate Spearman correlation between TF activity and DPT per group.
     Stores results in adata.varm['tfa_traj_corr'] and adata.varm['tfa_traj_pval'].
     """
-    from scipy.stats import spearmanr
-    from hiara import SUB_CTS
     
-    # Get TFs
+    from hiara import SUB_CTS
     tfs = adata.obsm['score_ulm'].columns.tolist()
     if target == 'Sub_CT':
-        # adata.obs['traj_var'] = adata.obs['Sub_CT'].astype('category').cat.codes
-        # should be coded based on SUB_CTS order
         adata.obs['traj_var'] = adata.obs['Sub_CT'].astype('category').cat.set_categories(SUB_CTS, ordered=True).cat.codes
     elif target == 'dpt':
         adata.obs['traj_var'] = adata.obs['dpt']
     else:
         raise ValueError("target must be 'dpt' or 'Sub_CT'")
-    
-    # Get unique groups
     groups = adata.obs['group_id'].unique()
-    
-    # Initialize matrices: rows=TFs, columns=groups
     corr_matrix = pd.DataFrame(index=tfs, columns=groups, dtype=float)
     pval_matrix = pd.DataFrame(index=tfs, columns=groups, dtype=float)
-    
-    print(f"Computing TF-DPT correlations for {len(tfs)} TFs across {len(groups)} groups...")
-    
+    print(f"Computing TF-Traj correlations for {len(tfs)} TFs across {len(groups)} groups..., using {target} as trajectory variable")
     for group in groups:
-        # Subset to this group
-        adata_group = adata[adata.obs['group_id'] == group]
-        
+        adata_group = adata[adata.obs['group_id'] == group]        
         if adata_group.n_obs < 10:
             print(f"Skipping {group}: insufficient cells ({adata_group.n_obs})")
             continue
-        
         target_values = adata_group.obs['traj_var'].values
-        
         for tf in tfs:
             tf_activity = adata_group.obsm['score_ulm'][tf].values
-            
-            # Calculate Spearman correlation
             corr, pval = spearmanr(target_values, tf_activity)
-            
             corr_matrix.loc[tf, group] = corr
             pval_matrix.loc[tf, group] = pval
-    
     corr_adata = ad.AnnData(X=corr_matrix.values.T, var=pd.DataFrame(index=corr_matrix.index), obs=pd.DataFrame(index=corr_matrix.columns))
-    
-    # Get unique group metadata (one row per group_id)
     group_metadata = adata.obs.drop_duplicates(subset='group_id').set_index('group_id')
-    
-    # Calculate cell count per group
     cell_counts = adata.obs.groupby('group_id').size().rename('cell_count')
-    
-    # Merge .obs to include group metadata and cell counts
     corr_adata.obs = corr_adata.obs.merge(group_metadata, left_index=True, right_index=True, how='left')
     corr_adata.obs = corr_adata.obs.merge(cell_counts, left_index=True, right_index=True, how='left')
         

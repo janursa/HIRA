@@ -83,39 +83,24 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         print('Get ride of meeeee')
         # select 10 young and 10 old
         obs['age'] = obs['age'].astype(float).astype(int)
-        old_donors = obs[obs['age']>70]['donor_age'].unique()
-        young_donors = obs[obs['age']<30]['donor_age'].unique()
+        old_donors = obs[obs['age']>60]['donor_age'].unique()
+        young_donors = obs[obs['age']<40]['donor_age'].unique()
         selected_donors = list(young_donors[:20]) + list(old_donors[:20])
         mask_donors = obs['donor_age'].isin(selected_donors)
         mask &= mask_donors.values
-    if True:
-        # For backed mode, we need to read the data carefully to avoid view-of-view issues
-        # Convert masks to indices
+    if True: # experimental. new way to subset backed anndata
         obs_indices = np.where(mask)[0]
         var_indices = np.where(mask_genes)[0]
-        
-        print(f'Number of cells and genes to send to memory: {len(obs_indices)}, {len(var_indices)}')
-        
-        # Read the subset directly from backed h5ad
-        # First subset observations, then variables
         adata_backed = adata  # Keep reference to backed version
         X_subset = adata_backed.X[obs_indices, :][:, var_indices]
-        
-        # Prepare obs DataFrame with proper index
-        obs_subset = obs.iloc[mask].copy()
-        
-        # Prepare var DataFrame with proper index (gene names)
+        obs_subset = obs.iloc[obs_indices].copy() #use mask if problematic
         var_subset = adata_backed.var.iloc[var_indices].copy()
-        
-        # Create new AnnData with the subset
         adata = ad.AnnData(
             X=X_subset,
             obs=obs_subset,
             var=var_subset,
             uns=adata_backed.uns.copy() if hasattr(adata_backed, 'uns') else {},
         )
-        
-        # Copy layers if they exist
         for layer_name in adata_backed.layers.keys():
             adata.layers[layer_name] = adata_backed.layers[layer_name][obs_indices, :][:, var_indices]
         

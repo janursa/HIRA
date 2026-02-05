@@ -171,7 +171,6 @@ def plot_healthy_disease_trend(dataset, data_type, cell_type, case_tf, condition
     
     return ax
 
-
 def get_condition_palette(analysis_type):
     """Get appropriate color palette based on analysis type."""
     if analysis_type == 'disease':
@@ -184,7 +183,6 @@ def get_condition_palette(analysis_type):
         raise ValueError(f"Unknown analysis type: {analysis_type}")
     palette_all = {**palette_trend, **palette}
     return palette_all
-    
 
 def plot_overview_heatmap(stats, args):
     """Generate overview heatmap of minor cell types."""
@@ -220,8 +218,6 @@ def plot_overview_heatmap(stats, args):
     plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
     plt.close()
     print(f"  Saved: {output_path}")
-
-
 
 def wrapper_plot_central_tfs_condition(stats, cell_types, group_col, args):
     """Plot aging vs perturbation comparison."""
@@ -462,10 +458,8 @@ def plot_ctr_condition_donor_level(args, cell_types):
             print(f"    Saved: {output_path}")
 
 def plot_pathway_analysis(stats_sig, args):
-    
     dataset = args.dataset
     output_dir = args.output_dir
-    
     # Choose pathway analysis method based on analysis type
     from hiara.src.pathway_analysis.util import gsea_func
     from hiara.src.pathway_analysis.plots import plot_pathway_gsea
@@ -494,8 +488,6 @@ def plot_pathway_analysis(stats_sig, args):
         print(f"  Saved GSEA plot: {output_path}")
     else:
         print("  No significant pathways found")
-    
-
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -631,8 +623,9 @@ def main():
     if args.dataset == 'soundlife':
         plot_overview_heatmap(stats_sig, args)
         plot_aging_overlap(stats_sig, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'] ,args=args)
-        plot_directional_consistency_scatter(stats, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'], 
-                                             args=args,
+        plot_directional_consistency_scatter(stats, 
+                                             feature_type=args.feature_type,
+                                             save_suffix = args.dataset,
                                              x_label = 'Validation analysis \n(significance)',
                                              y_label = 'Discovery analysis \n(significance)',
                                              agreement='same',
@@ -650,7 +643,9 @@ def main():
         #     cell_types=['CD4T', 'CD8T'],
         #     args=args
         # )
-        plot_directional_consistency_scatter(stats_sub, cell_types=['CD4T', 'CD8T'], args=args,
+        plot_directional_consistency_scatter(stats_sub[stats_sub['cell_type'].isin(['CD4T', 'CD8T'])], 
+                                            feature_type=args.feature_type,
+                                             save_suffix = args.dataset,
                                              x_label = f'SLE \n(significance)',
                                              y_label = 'Natural aging \n(significance)',
                                              agreement='same',
@@ -674,7 +669,9 @@ def main():
         plot_overview_heatmap(stats_sig, args)
         
         args.cell_types = [ct for ct in args.cell_types if ct in selected_cell_types]
-        plot_directional_consistency_scatter(stats, cell_types=selected_cell_types, args=args,
+        plot_directional_consistency_scatter(tats_sub[stats_sub['cell_type'].isin(['CD4T', 'CD8T'])], 
+                                            feature_type=args.feature_type,
+                                             save_suffix = args.dataset,
                                              x_label = f'{config.treatment_groups[1]} \n(significance)',
                                              y_label = 'Natural aging \n(significance)',
                                              agreement='opposite',
@@ -695,7 +692,9 @@ def main():
 
         wrapper_plot_central_tfs_condition(stats, group_col='comparison', cell_types=['CD4T'], args=args)
         plot_ctr_condition_donor_level(args, cell_types=['CD4T']) 
-        plot_directional_consistency_scatter(stats, cell_types=['CD4T', 'CD8T'], args=args,
+        plot_directional_consistency_scatter(tats_sub[stats_sub['cell_type'].isin(['CD4T', 'CD8T'])], 
+                                            feature_type=args.feature_type,
+                                             save_suffix = args.dataset,
                                              x_label = f'{config.treatment_groups[1]} \n(significance)',
                                              y_label = 'Natural aging \n(significance)',
                                              agreement='opposite',
@@ -715,7 +714,9 @@ def main():
         args.case_tfs = ['STAT1', 'BATF'] 
         for comparison in stats['comparison'].unique():
             stats_sub = stats[stats['comparison']==comparison]
-            plot_directional_consistency_scatter(stats_sub, cell_types=['CD4T', 'CD8T'], args=args, 
+            plot_directional_consistency_scatter(tats_sub[stats_sub['cell_type'].isin(['CD4T', 'CD8T'])], 
+                                            feature_type=args.feature_type,
+                                             save_suffix = args.dataset,
                                                  x_label = f'{comparison} \n(significance)',
                                                  y_label = 'Natural aging \n(significance)',
                                                  save_tag = f"_{comparison.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')}",
