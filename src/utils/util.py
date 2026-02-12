@@ -149,8 +149,10 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         age_t = 50
         adata.obs['age_group'] = adata.obs['age'].apply(lambda x: 'Young' if x < age_t else 'Old')
     
-    if data_type == 'sc':
+    if data_type in ['sc', 'bulk_minor']:
         adata = adata[adata.obs[SUB_CT_LABEL].isin(SUB_CTS)].copy()
+    
+
     
     return adata
 

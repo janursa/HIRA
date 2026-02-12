@@ -26,17 +26,21 @@ from hiara.src.feature_association.helper import bin_feature_values, retrieve_fe
 from hiara.src.utils.util import retrieve_net, retrieve_adata, retrieve_net_consensus
 from hiara.src.utils.plots import dotplot
 
+def categorize_granularity(df, granularity):
+    categories = MAJOR_CTS if granularity == MAJOR_CT_LABEL else SUB_CTS
+    categories = [c for c in categories if c in df['cell_type'].unique()]
+    df['cell_type'] = pd.Categorical(
+                                df['cell_type'], 
+                                categories=categories, 
+                                ordered=True
+                                )
+    return df
+    
 def wrapper_sig_features_counts(args):
     analysis_name = args.analysis_name
     granularity = CONFIG_FA[analysis_name]['granularity']
     aging_stats_sig = retrieve_sig_stats(analysis_name=analysis_name).drop_duplicates(subset=['cell_type', 'gene'])
-    categories = MAJOR_CTS if granularity == MAJOR_CT_LABEL else SUB_CTS
-    categories = [c for c in categories if c in aging_stats_sig['cell_type'].unique()]
-    aging_stats_sig['cell_type'] = pd.Categorical(
-                                aging_stats_sig['cell_type'], 
-                                categories=categories, 
-                                ordered=True
-                                )
+    aging_stats_sig = categorize_granularity(aging_stats_sig, granularity)
     sig_features_counts(aging_stats_sig, figsize=(2, 1.5), palette=palette_trend_2)
     
     feature_type = CONFIG_FA[args.analysis_name]['feature_type']
@@ -440,13 +444,16 @@ def gsea_analysis(stats_sig):
     print(f"Saving figure to {file_name}")
     plt.savefig(file_name, bbox_inches='tight', dpi=200)
 def plot_heatmap_overal(stats_aging, analysis_name='tfa_major_b'):
-    stats_aging['cell_type'] = pd.Categorical(stats_aging['cell_type'], categories=MAJOR_CTS, ordered=True)
+    granularity = CONFIG_FA[analysis_name]['granularity']
+    stats_aging = categorize_granularity(stats_aging, granularity)
     stats_aging['dataset'] = pd.Categorical(stats_aging['dataset'], categories=DISCOVERY_COHORTS, ordered=True)
 
     plot_overall_heatmap(stats_aging, 
                         sig_dots_y_offset=3, 
-                        first_col='cell_type',  first_col_palette=palette_major_cts,
-                        second_col='dataset', second_col_palette=palette_datasets,
+                        first_col='cell_type',  
+                        first_col_palette=palette_major_cts if granularity == MAJOR_CT_LABEL else palette_sub_cts,
+                        second_col='dataset', 
+                        second_col_palette=palette_datasets,
                         bbox_to_anchor=(1.05, 1.05),
                         bbox_to_anchor_col2=(1.05, .85),
                         bbox_to_anchor_col1=(1.05, 0.37),

@@ -69,7 +69,8 @@ if __name__ == "__main__":
         # plot_scatter_feature_vs_age(args, cell_types=['CD8T'], features=None, feature_selection_mode='top_sig', top_genes=5)
         # plot_sig_networks()
     elif analysis_name in ['tfa_sub_b']:
-        # wrapper_sig_features_counts(args)
+        wrapper_sig_features_counts(args)
+        plot_heatmap_overal(stats_aging, analysis_name=args.analysis_name)
         # plot_features_vs_datasets(cell_type='Tcm_Naive_CD8', analysis_name=analysis_name)
 
 
@@ -94,13 +95,27 @@ if __name__ == "__main__":
         plot_heatmap_overal(stats_aging, analysis_name=args.analysis_name)
 
     elif analysis_name in ['tfa_traj']:
-        # wrapper_sig_features_counts(args)
+        wrapper_sig_features_counts(args)
         # plot_heatmap_overal(stats_aging, analysis_name=args.analysis_name) features=['TCF7', 'LEF1', 'GATA3', 'KLF6'], 
         plot_scatter_feature_vs_age(args, cell_types=['CD8T'], features=['TCF7', 'LEF1', 'GATA3', 'KLF6'])
         plot_scatter_feature_vs_age(args, cell_types=['CD8T'], feature_selection_mode='top_central')
         plot_scatter_feature_vs_age(args, cell_types=['CD8T'], feature_selection_mode='top_sig')
-        # plot_scatter_feature_vs_age(args, cell_types=['CD8T'], feature_selection_mode='top_sig', top_genes=10)
         plot_features_vs_datasets(cell_type='CD8T',  analysis_name=args.analysis_name, top_features=20)
+
+        # - consistency with tf activity in major CD8T cell types
+        stats_aging_ref = retrieve_sig_stats(analysis_name='tfa_major_b', cell_type='CD8T')
+        
+        plot_directional_consistency_scatter(stats_aging[stats_aging['cell_type']=='CD8T'], 
+                                             stats_aging_ref,
+                                            x_label = 'TF act vs traj. \n(significance)',
+                                            y_label = 'TF act. \n(significance)',
+                                            association_col = '-log10_p_adj',
+                                            agreement='same',
+                                            label_consistent = 'Consistent',
+                                            label_opposing = 'Opposing',
+                                            save_suffix = '',
+                                            pvalue_col='meta_p_adj'
+                                        )
     elif analysis_name in ['ct_freq']:
         plot_scatter_feature_vs_age(args, cell_types=['CD8T'], feature_selection_mode='top_sig', top_features=10)
         plot_features_vs_datasets(cell_type='CD8T', analysis_name=args.analysis_name, top_features=20)

@@ -153,12 +153,11 @@ palette_major_cts = {name: color for name, color in zip(MAJOR_CTS, ['#E69F00', '
 # - mapping
 mapping_major_2_minor = {
     'B': ['Naive_B', 'Memory_B'],
-    'CD4T': ['Tcm_Naive_CD4', 'Tem_Effector_CD4', 'Treg'],
+    'CD4T': ['Tcm_Naive_CD4', 'Tem_Effector_CD4'],
     'CD8T': ['Tcm_Naive_CD8', 'Tem_Trm_CD8', 'Tem_Temra_CD8', 'MAIT'],
     'MONO': ['NonClassic_MONO', 'Classic_MONO'],
-    'NK': ['CD16_NK', 'NK']
+    'NK': ['CD16_NK']
  }
-
 
 mapping_minor_2_major = {
     'Tcm_Naive_CD4': 'CD4T',
@@ -169,7 +168,6 @@ mapping_minor_2_major = {
     'Tem_Temra_CD8': 'CD8T',
     'MAIT': 'CD8T',
     
-    'NK': 'NK',
     'CD16_NK': 'NK',
     'Classic_MONO': 'MONO',
     'NonClassic_MONO': 'MONO',
@@ -190,7 +188,6 @@ palette_sub_cts = {
     'MAIT': '#D32F2F',               # Dark Red (highly differentiated)
     
     # NK: less activated (green) -> more activated (red)
-    'NK': '#66BB6A',                 # Light Green
     'CD16_NK': '#EF5350',            # Light Red
     
     # MONO: classical (green) -> non-classical (red)

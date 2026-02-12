@@ -14,10 +14,11 @@ set -e
 # echo "---------------------------------------------------------- Consensus networks -----------------------------------------------------------------"
 # python src/feature_association/consensus_nets.py
 
-analysis_name="tfa_traj" #"tfa_sub_b"
-cell_types="CD8T" # "Tcm_Naive_CD4"
-test_mode="" #--test-mode
+analysis_name="tfa_sub_b" #"tfa_sub_b"
+cell_types="Naive_B Memory_B Tcm_Naive_CD8 Tem_Trm_CD8 Tem_Temra_CD8 MAIT Tcm_Naive_CD4 Tem_Effector_CD4 NonClassic_MONO Classic_MONO CD16_NK" # "Tcm_Naive_CD4"
+# cell_types="Tcm_Naive_CD8 Tem_Trm_CD8 Tem_Temra_CD8 MAIT" # "Tcm_Naive_CD4"
 
+test_mode="" #--test-mode
 
 echo "---------------------------------------------------------- Aging -----------------------------------------------------------------"
 # python src/feature_association/run_analysis.py --analysis-name $analysis_name --analysis-mode multi-cohort  --association-type continous --cell-types $cell_types $test_mode
