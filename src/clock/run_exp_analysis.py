@@ -7,21 +7,21 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import anndata as ad
-from hiara import CELL_TYPES, PLOTS_DIR, PRIOR_DIR, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK, palette_cell_types, USE_LOCAL_CLOCK, DISCOVERY_COHORTS
+from hiara import MAJOR_CTS, PLOTS_DIR, PRIOR_DIR, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK, palette_major_cts, USE_LOCAL_CLOCK, DISCOVERY_COHORTS
 from hiara import retrieve_net_consensus
 from hiara.src.feature_association.plots import dotplot_category_color
 from hiara.src.config import surrogate_names
 
 def features_stats():
     features_dict = {}
-    for cell_type in CELL_TYPES:
+    for cell_type in MAJOR_CTS:
         net = retrieve_net_consensus(cell_type=cell_type)
         print(cell_type, net.shape)
         features_dict[cell_type] = net['target'].unique().tolist()
     from geneRNBI.src.exp_analysis.helper import plot_interactions, create_interaction_df
 
     interaction_main_df = create_interaction_df(features_dict)
-    aa = plot_interactions(interaction_main_df, min_subset_size=200, min_degree=2, color_map=palette_cell_types)
+    aa = plot_interactions(interaction_main_df, min_subset_size=200, min_degree=2, color_map=palette_major_cts)
     file_name = f'{PLOTS_DIR}/interactions_targets.png'
     print(f"Saving figure to {file_name}")
     plt.savefig(file_name, dpi=300, transparent=True, bbox_inches='tight')
@@ -59,7 +59,7 @@ def gsea(features_dict):
         
     fig, ax = plt.subplots(1, 1, figsize=(2, 8), sharey=True, sharex=True)
 
-    pathway_scores['cell_type'] = pd.Categorical(pathway_scores['cell_type'], categories=CELL_TYPES, ordered=True)
+    pathway_scores['cell_type'] = pd.Categorical(pathway_scores['cell_type'], categories=MAJOR_CTS, ordered=True)
     show_color_legend = True
     show_size_legend = True
 
@@ -164,7 +164,7 @@ def wrapper_trend(top_features_dict, top_feature_values_dict, feature_type, data
             aa = plot_features_vs_datasets(cell_type=cell_type, features=features, feature_type=feature_type, sizes=(90, 100))
 def plot_coeff():
     from grnimmuneclock import retrieve_function
-    for cell_type in CELL_TYPES:
+    for cell_type in MAJOR_CTS:
         model, gene_names = retrieve_function(cell_type=cell_type, use_local_clocks=USE_LOCAL_CLOCK, version=CLOCK_V)
         coefs = model.named_steps["ridge"].coef_
         abs_coefs = np.abs(coefs)

@@ -1,7 +1,7 @@
 import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sns
-from hiara import CELL_TYPES, CLOCKS_DIR, OUTPUT_DIR, PLOTS_DIR, surrogate_names, colors_blind
+from hiara import MAJOR_CTS, CLOCKS_DIR, OUTPUT_DIR, PLOTS_DIR, surrogate_names, colors_blind
 from hiara import wrapper_clock_predictions
 from hiara.src.clock.plots import plot_scatter_age_vs_predictedAge
 from grnimmuneclock import evaluate_groupwise_median, train_aging_clock
@@ -13,7 +13,7 @@ version = 'comparitive'
 
 def train_clocks():
     
-    cell_types = CELL_TYPES
+    cell_types = MAJOR_CTS
     data_type = 'bulk'
     reg_type = 'ridge'
     tune_model = True
@@ -53,7 +53,7 @@ if __name__ == "__main__":
     test_datasets = ['perez_sle', 'aida']
     # train_clocks()
     W_median_prediction = extract_w_results()
-    predictions_all = wrapper_clock_predictions(CELL_TYPES, evaluate_datasets=test_datasets, version=version)
+    predictions_all = wrapper_clock_predictions(MAJOR_CTS, evaluate_datasets=test_datasets, version=version)
     test_predictions = predictions_all[predictions_all['condition']=='healthy'] # only healthy samples?
 
     print(f"Test predictions shape: {test_predictions.shape}")

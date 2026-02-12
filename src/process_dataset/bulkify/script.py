@@ -3,7 +3,7 @@ import argparse
 import anndata as ad
 import numpy as np
 import pandas as pd
-from hiara.src.config import get_config
+from hiara.src.config import get_config, SUB_CT_LABEL
 
 ## VIASH START
 parser = argparse.ArgumentParser()
@@ -67,7 +67,7 @@ if __name__ == '__main__':
     # - bulk minor
     print('Bulkifying minor cell types')
     covariates_minor = pseudobulk_group.copy()
-    covariates_minor.append('Sub_CT')
+    covariates_minor.append(SUB_CT_LABEL)
     adata_bulk_minor_celltypes = bulkify_func(adata, covariates=covariates_minor)
     adata_bulk_minor_celltypes = normalize(adata_bulk_minor_celltypes)
     adata_bulk_minor_celltypes.write(args.bulk_minor_celltype)

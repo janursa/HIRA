@@ -3,23 +3,13 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.patches import Patch
-from matplotlib.lines import Line2D
-from matplotlib import cm
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap
-from matplotlib import colors
-from matplotlib import cm
-from matplotlib import rcParams
-import matplotlib.patches as mpatches
 
-import scipy
-import networkx as nx
-from scipy.stats import spearmanr, linregress
-from hiara.src.config import surrogate_names, palette_datasets, palette_regulation
-from hiara.src.feature_association.helper import calculate_tf_activity
-from hiara.src.utils.util import retrieve_adata, retrieve_net
-
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from matplotlib.colors import TwoSlopeNorm
+from sklearn.preprocessing import MinMaxScaler
+import matplotlib.gridspec as gridspec
 
 
 def plot_umap(adata, color='', palette=None, ax=None, X_label='X_umap', on_data=False, sort_colors=True,
@@ -108,12 +98,7 @@ def dotplot(df, ax,
             cbar_height='4%',
             cbar_width="60%",
             size_legend_scale=10,):
-    import matplotlib.cm as cm
-    import matplotlib.colors as mcolors
-    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-    from matplotlib.colors import TwoSlopeNorm
-    from sklearn.preprocessing import MinMaxScaler
-    import matplotlib.gridspec as gridspec
+    
 
     df[size_col] = df[size_col].replace([np.inf, -np.inf], 1E-20) # replace inf with a small value
     vmin = df[color_col].min()
@@ -203,9 +188,3 @@ def dotplot(df, ax,
 
     cbar.ax.tick_params(labelsize=8, direction='out')
     cbar.ax.set_title(color_legend_title, fontsize=9, pad=5)
-    
-
-
-    # plt.gca().add_artist(size_legend_handle)
-
-    

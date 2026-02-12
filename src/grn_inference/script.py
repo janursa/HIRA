@@ -13,7 +13,7 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import subprocess
 
-from hiara.src.config import CELL_TYPES, minor_cell_types, PRIOR_DIR
+from hiara.src.config import MAJOR_CTS, minor_cell_types, PRIOR_DIR
 from hiara.src.grn_inference.inference import main as main_inference
 from task_grn_inference.src.utils.util import basic_qc
 from hiara import get_config
@@ -132,7 +132,7 @@ if __name__ == '__main__':
         # - grn inference parameters
             'dataset': args.dataset,
             'weight_t': 0.05,
-            'cell_types': CELL_TYPES, #TODO: fix me
+            'cell_types': MAJOR_CTS, #TODO: fix me
             'min_genes_per_cell': 10, 
             'max_genes_per_cell': 5000 if args.data_type == 'sc' else 1e6, 
             'min_cells_per_gene': 500 if args.data_type == 'sc' else 100,

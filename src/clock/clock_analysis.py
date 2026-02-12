@@ -25,7 +25,7 @@ from statsmodels.stats.multitest import multipletests
 from hiara.src.config import (
     PLOTS_DIR, 
     OUTPUT_DIR,
-    CELL_TYPES as default_cell_types,
+    MAJOR_CTS as default_cell_types,
     surrogate_names,
     colors_blind
 )

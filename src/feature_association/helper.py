@@ -9,28 +9,27 @@ from concurrent.futures import ThreadPoolExecutor
 import scanpy as sc
 import anndata as ad
 from statsmodels.stats.multitest import multipletests
-from hiara.src.config import FEATURES_DIR, get_config, surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
+from hiara.src.config import CONFIG_FA, FEATURES_DIR, get_config, surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
 from tqdm import tqdm
-from hiara.src.config import OUTPUT_DIR, FEATURES_DIR, CORR_THRESHOLD, TF_MIN_TARGET
+from hiara.src.config import OUTPUT_DIR, FEATURES_DIR, CORR_THRESHOLD, TF_MIN_TARGET, FEATURE_TYPES, SUB_CT_LABEL
 from scipy.sparse import issparse
 from hiara.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net
 import warnings
 warnings.filterwarnings("ignore")
 
 
-def write_features_stats(stats, data_type, feature_type, multi_cohort=True, dataset=None, suffix=''):    
-    os.makedirs(f'{FEATURES_DIR}/{feature_type}/stats', exist_ok=True)
+def write_features_stats(stats, analysis_name, multi_cohort=True, dataset=None, suffix=''):
+
+    os.makedirs(f'{FEATURES_DIR}/{analysis_name}/stats', exist_ok=True)
     if multi_cohort:
-        file_name = f'{FEATURES_DIR}/{feature_type}/stats/stats_multi_cohort_{data_type}{suffix}.csv'
+        file_name = f'{FEATURES_DIR}/{analysis_name}/stats/stats_multi_cohort{suffix}.csv'
     else:
-        file_name = f'{FEATURES_DIR}/{feature_type}/stats/stats_{dataset}_{data_type}{suffix}.csv'
+        file_name = f'{FEATURES_DIR}/{analysis_name}/stats/stats_{dataset}{suffix}.csv'
     print(f"✓ Condition stats saved: {file_name}")
     stats.to_csv(file_name, index=False)
         
 
-def retrieve_stats(data_type='bulk', feature_type='tf_activity', cell_type=None, dataset=None, multi_cohort=None, features_dir=None):
-    assert data_type in ['bulk', 'sc', 'minor_bulk', 'minor_sc'], f'Unknown data type {data_type}'
-    assert feature_type in ['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_traj'], f'Unknown feature type {feature_type}'
+def retrieve_stats(analysis_name, cell_type=None, dataset=None, multi_cohort=None, features_dir=None, suffix=''):
     # determine whether this is multi-cohort
     if dataset is None:
         multi_cohort = True
@@ -41,11 +40,11 @@ def retrieve_stats(data_type='bulk', feature_type='tf_activity', cell_type=None,
         features_dir = FEATURES_DIR
     if multi_cohort:
         stats = pd.read_csv(
-            f"{features_dir}/{feature_type}/stats/stats_multi_cohort_{data_type}.csv"
+            f"{features_dir}/{analysis_name}/stats/stats_multi_cohort{suffix}.csv"
         )
     else:
         stats = pd.read_csv(
-            f"{features_dir}/{feature_type}/stats/stats_{dataset}_{data_type}.csv"
+            f"{features_dir}/{analysis_name}/stats/stats_{dataset}{suffix}.csv"
         )
     
 
@@ -123,15 +122,16 @@ def retrieve_sig_stats(**kwargs):
     stats_sig = stats[stats['is_significant']]
     return stats_sig
 
-def retrieve_feature_data(dataset, cell_type, data_type='bulk', feature_type='tf_activity', condition=None, suffix=''):
-    if feature_type == 'gene_expression':
-        adata = retrieve_adata(dataset=dataset, cell_type=cell_type, data_type=data_type, condition=condition, only_net_genes=True)
-        return adata
-    file_path = f'{FEATURES_DIR}/{feature_type}/{data_type}/{dataset}_{cell_type}{suffix}.h5ad'
-    if os.path.exists(file_path) == False:
-        raise ValueError(f'File {file_path} does not exist')
+def retrieve_feature_data(dataset, cell_type, analysis_name, condition=None, suffix=''):
+    assert analysis_name in CONFIG_FA, f'Analysis name {analysis_name} not found in CONFIG_FA'
 
-    adata = ad.read_h5ad(file_path)
+    if analysis_name in ['ge_bulk']:
+        adata = retrieve_adata(dataset=dataset, data_type='bulk', cell_type=cell_type)
+    else:
+        file_path = f'{FEATURES_DIR}/{analysis_name}/{dataset}_{cell_type}{suffix}.h5ad'
+        if os.path.exists(file_path) == False:
+            raise ValueError(f'File {file_path} does not exist')
+        adata = ad.read_h5ad(file_path)
 
     # Filter by condition
     if condition is not None and 'condition' in adata.obs.columns:
@@ -139,16 +139,19 @@ def retrieve_feature_data(dataset, cell_type, data_type='bulk', feature_type='tf
             raise ValueError(f'Error in retrieving feature data: given condition "{condition}" not in {adata.obs["condition"].unique()}')
         adata = adata[adata.obs['condition'] == condition].copy()
     
+    # Filter by cell type using the specified granularity column
     if cell_type is not None:
-        if cell_type not in adata.obs['cell_type'].unique():
-            raise ValueError(f'Error in retrieving feature data: given cell type "{cell_type}" not in {adata.obs["cell_type"].unique()}')
-        adata = adata[adata.obs['cell_type'] == cell_type]
+        granularity = CONFIG_FA[analysis_name]['granularity']
+        if granularity not in adata.obs.columns:
+            raise ValueError(f'Error in retrieving feature data: granularity column "{granularity}" not in adata.obs.columns')
+        if cell_type not in adata.obs[granularity].unique():
+            raise ValueError(f'Error in retrieving feature data: given cell type "{cell_type}" not in {adata.obs[granularity].unique()}')
+        adata = adata[adata.obs[granularity] == cell_type]
 
     return adata
 
-def write_feature_data(adata, dataset, cell_type, data_type, feature_type='tf_activity', suffix=''):
-    import os
-    output_dir = f'{FEATURES_DIR}/{feature_type}/{data_type}'
+def write_feature_data(adata, dataset, cell_type, analysis_name, suffix=''):
+    output_dir = f'{FEATURES_DIR}/{analysis_name}'
     os.makedirs(output_dir, exist_ok=True)
     adata.write_h5ad(f'{output_dir}/{dataset}_{cell_type}{suffix}.h5ad')
 
@@ -437,7 +440,7 @@ def wrapper_meta_analysis(stats_features, par):
     #- save
     return stats
 
-def wrapper_association_with_age_condition(par, association_type, features=None, test_type=None, condition='healthy', config=None):
+def wrapper_association_with_age_condition(analysis_name, par, association_type, features=None, test_type=None, condition='healthy', config=None):
     """
     Wrapper function to compute association with age and condition.
     
@@ -456,38 +459,36 @@ def wrapper_association_with_age_condition(par, association_type, features=None,
     """
     
     datasets = par['datasets']
-    feature_type = par['feature_type']
-    data_type = par['data_type']
     cell_types = par['cell_types']
     promotor_only = par.get('promotor_only', False)
     suffix = '_promotor' if promotor_only else ''
 
+    analys_cfg = CONFIG_FA[analysis_name]
+    data_type = analys_cfg['data_type']
+    feature_type = analys_cfg['feature_type']
+    granularity = analys_cfg['granularity']
+
     print(f'Association {feature_type} with condition...')
-    if 'minor' in data_type:
-        cell_types_l = minor_cell_types
-    else:
-        cell_types_l = cell_types
     
     stats_store = []
-    for cell_type in tqdm(cell_types_l, desc='cell types'):
+    for cell_type in tqdm(cell_types, desc='cell types'):
         for dataset in datasets:            
             # Load data
             adata = retrieve_feature_data(
                 dataset=dataset, 
                 cell_type=cell_type, 
-                data_type=data_type, 
-                feature_type=feature_type, 
+                analysis_name=analysis_name, 
                 condition=condition,
                 suffix=suffix
             )
             # - sanity check
-            cell_types = adata.obs['cell_type'].unique()
-            assert len(cell_types) == 1 and cell_types[0] == cell_type, f'Cell type mismatch in {dataset}, {cell_type}'
+            cell_types_in_data = adata.obs[granularity].unique()
+            assert len(cell_types_in_data) == 1 and cell_types_in_data[0] == cell_type, f'Cell type mismatch in {dataset}, {cell_type}'
 
             adata = adata[:, adata.var_names.isin(features)] if features is not None else adata
             
             # Filter by cell type
-            adata_sub = adata[adata.obs['cell_type']==cell_type]
+            adata_sub = adata[adata.obs[granularity]==cell_type]
             if adata_sub.shape[0] < 3:
                 raise ValueError(f'Not enough samples for {cell_type} in {dataset}, only {adata_sub.shape[0]} samples')
             
@@ -581,21 +582,23 @@ def associate_with_condition(adata, config, test_type=None):
 
     return stats
 
-def wrapper_tf_activity(par):
+def wrapper_tf_activity(analysis_name, par):
     print('Loading data...')
-    data_type = par['data_type']
     cell_types = par['cell_types']
     datasets = par['datasets']
     condition = par.get('condition', None)
     promotor_only = par['promotor_only']
+    
     print('Calculating TF activity...')
     print(f'  - Promotor-based only: {promotor_only}')
-    for dataset in datasets:
-        print(dataset, data_type)
-        adata = retrieve_adata(dataset=dataset, data_type=data_type, condition=condition)
 
+    config = CONFIG_FA[analysis_name]
+    data_type = config['data_type']
+    granularity = config['granularity']
+    for dataset in datasets:
         for cell_type in tqdm(cell_types, desc='cell types'):
-            adata_t = adata[adata.obs['cell_type']==cell_type]
+            print(dataset, data_type)
+            adata_t = retrieve_adata(dataset=dataset, data_type=data_type, condition=condition, granularity=granularity, cell_type=cell_type)
             if par['use_consensus_net']:
                 net = retrieve_net_consensus(cell_type=cell_type, promotor_only=promotor_only)
             else:
@@ -606,19 +609,23 @@ def wrapper_tf_activity(par):
             tf_acts.obs['dataset'] = dataset
             tf_acts.uns['dataset'] = dataset
             tf_acts = tf_acts[tf_acts.obs['age'].isna()==False] # there is a bug in the code that causes age to be NaN
-            write_feature_data(tf_acts, dataset, cell_type, data_type, suffix='_promotor' if promotor_only else '')
+            write_feature_data(tf_acts, dataset=dataset, cell_type=cell_type, analysis_name=analysis_name, suffix='_promotor' if promotor_only else '')
 
 def wrapper_genesets_scores(par):
     from hiara.src.utils.util import get_genesets
     # --------- load data
     cell_types = par['cell_types']
-    data_type = par['data_type']
     datasets = par['datasets']
-    feature_type = par['feature_type']
+    analysis_name = par['analysis_name']
+    
+    config = CONFIG_FA[analysis_name]
+    data_type = config['data_type']
+    granularity = config['granularity']
 
     # --------- load data
     print('Loading data...')
-    adata_dict = {dataset: retrieve_adata(dataset, data_type) for dataset in datasets}
+    print(f'  - Granularity: {granularity}')
+    adata_dict = {dataset: retrieve_adata(dataset, data_type, granularity=granularity) for dataset in datasets}
 
     pathways = get_genesets()
     
@@ -628,7 +635,7 @@ def wrapper_genesets_scores(par):
         net = retrieve_net_consensus(cell_type=cell_type) #TOGO 
         net_genes = net['target'].unique()
         for dataset in datasets:
-            adata = adata_dict[dataset][adata_dict[dataset].obs['cell_type']==cell_type]
+            adata = adata_dict[dataset][adata_dict[dataset].obs[granularity]==cell_type]
             
             # Ensure genes are in adata.var_names
             gene_scores = {}
@@ -667,35 +674,70 @@ def wrapper_genesets_scores(par):
             var['n_matching_genes'] = pd.Series(n_matching_genes)
 
             adata_scores = sc.AnnData(X=X_df.values, obs=obs, var=var)
-            write_feature_data(adata_scores, dataset, cell_type, data_type, feature_type=feature_type)
+            write_feature_data(adata_scores, dataset, cell_type, analysis_name=analysis_name, suffix='')
+def df_2_adata(df, adata):
+    df_adata = ad.AnnData(X=df.values, var=pd.DataFrame(index=df.columns), obs=pd.DataFrame(index=df.index))
+    group_metadata = adata.obs.drop_duplicates(subset='group_id').set_index('group_id')
+    cell_counts = adata.obs.groupby('group_id').size().rename('cell_count')
+    df_adata.obs = df_adata.obs.merge(group_metadata, left_index=True, right_index=True, how='left')
+    df_adata.obs = df_adata.obs.merge(cell_counts, left_index=True, right_index=True, how='left')
+    return df_adata
 
-
-def wrapper_tfa_traj(par):
-    from hiara.src.feature_association.trajectory_analysis import annotate, compute_dpt, load_sc_data, compute_tfa_traj_association
+def wrapper_ct_freq(par):
+    from hiara.src.feature_association.trajectory_analysis import load_sc_data
     # --------- load data
     cell_types = par['cell_types']
-    data_type = par['data_type']
     datasets = par['datasets']
-    feature_type = 'tfa_traj'
+    analysis_name = par['analysis_name']
+    test_mode = par.get('test_mode', False)
+    min_cells_threshold=100
+    
+    for cell_type in tqdm(cell_types, desc='cell types'):
+        for dataset in datasets:
+            adata = load_sc_data(dataset=dataset, cell_type=cell_type, test_mode=test_mode, min_cells_threshold=min_cells_threshold)
+            # calculate the relative frequency of each cell type per donor using label Sub_CT
+            obs = adata.obs.copy()
+            freq_df = obs.groupby(['group_id', SUB_CT_LABEL]).size().unstack().fillna(0)
+            freq_df = freq_df.div(freq_df.sum(axis=1), axis=0)
+            freq_adata = df_2_adata(freq_df, adata)
+            write_feature_data(freq_adata, dataset, cell_type, analysis_name=analysis_name)
+
+def wrapper_tfa_traj(par):
+    from hiara.src.feature_association.trajectory_analysis import load_sc_data, compute_tfa_traj_association
+    # --------- load data
+    cell_types = par['cell_types']
+    datasets = par['datasets']
+    analysis_name = par['analysis_name']
     test_mode = False
     leiden_resolution=10
     min_cells_threshold=100
 
+    print(f'  - Analysis: {analysis_name}')
+    
     for cell_type in tqdm(cell_types, desc='cell types'):
         for dataset in datasets:
             adata = load_sc_data(dataset=dataset, cell_type=cell_type, test_mode=test_mode, min_cells_threshold=min_cells_threshold)
             # annotate(adata)
             # compute_dpt(adata, leiden_resolution=leiden_resolution) # save adata for visualization and downstream analysis
             calculate_tf_activity(adata, net=retrieve_net_consensus(cell_type=cell_type))
-            corr_adata = compute_tfa_traj_association(adata, target='Sub_CT')
-            write_feature_data(corr_adata, dataset, cell_type, data_type, feature_type=feature_type)
+            corr_matrix = compute_tfa_traj_association(adata, target=SUB_CT_LABEL)
+            corr_adata = df_2_adata(corr_matrix.T, adata)
+            write_feature_data(corr_adata, dataset, cell_type, analysis_name=analysis_name, suffix='')
 
 def wrapper_aging_hallmarks(par):
+    from hiara.src.config import PRIOR_DIR
     # --------- load data
     cell_types = par['cell_types']
-    data_type = par['data_type']
     datasets = par['datasets']
+    analysis_name = par['analysis_name']
+    
+    config = CONFIG_FA[analysis_name]
+    data_type = config['data_type']
+    granularity = config['granularity']
+    
     print('Loading data...')
+    print(f'  - Granularity: {granularity}')
+    
     # Load aging hallmark genes
     aging_hallmark_genes_path = f'{PRIOR_DIR}/aging_hallmark_genes.csv'
     if not os.path.exists(aging_hallmark_genes_path):
@@ -706,13 +748,13 @@ def wrapper_aging_hallmarks(par):
     
     print(f'Loaded {len(aging_hallmark_genes)} aging hallmark genes')
 
-    adata_dict = {dataset: retrieve_adata(dataset=dataset, data_type=data_type) for dataset in datasets}
+    adata_dict = {dataset: retrieve_adata(dataset=dataset, data_type=data_type, granularity=granularity) for dataset in datasets}
 
     print('Calculating aging hallmark gene expression...')
     
     for cell_type in tqdm(cell_types, desc='cell types'):
         for dataset in datasets:
-            adata = adata_dict[dataset][adata_dict[dataset].obs['cell_type']==cell_type]
+            adata = adata_dict[dataset][adata_dict[dataset].obs[granularity]==cell_type]
             # Filter to only aging hallmark genes
             available_genes = [g for g in aging_hallmark_genes if g in adata.var_names]
             if len(available_genes) == 0:
@@ -720,7 +762,7 @@ def wrapper_aging_hallmarks(par):
             
             adata = adata[:, available_genes].copy()
             
-            write_feature_data(adata, dataset, cell_type, data_type, feature_type='aging_hallmarks')
+            write_feature_data(adata, dataset, cell_type, analysis_name=analysis_name)
 
 def determine_std(adata):
     # Ensure .X is dense

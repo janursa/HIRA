@@ -20,6 +20,20 @@ warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 CLOCK_V = 'V1'
 USE_LOCAL_CLOCK = True  # If True, use clocks saved in CLOCKS_DIR;
 
+
+
+SUB_CT_LABEL = 'Sub_CT'
+MAJOR_CT_LABEL = 'Major_CT'
+FEATURE_TYPES = ['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_traj', 'ct_freq']
+DATA_TYPES = ['sc', 'bulk', 'bulk_minor', 'metacell']
+CONFIG_FA = {
+    'tfa_major_b': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL}, 
+    'tfa_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'tf_activity', 'granularity': SUB_CT_LABEL},
+    'ge_bulk': {'data_type': 'bulk', 'feature_type': 'gene_expression', 'granularity': MAJOR_CT_LABEL},
+    'ge_minor': {'data_type': 'bulk_minor', 'feature_type': 'gene_expression', 'granularity': SUB_CT_LABEL},
+    'tfa_traj': {'data_type': 'sc', 'feature_type': 'tfa_traj', 'granularity': MAJOR_CT_LABEL},
+    'ct_freq': {'data_type': 'sc', 'feature_type': 'ct_freq', 'granularity': MAJOR_CT_LABEL},
+}
 DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
 # DISCOVERY_COHORTS = ['perez_sle', 'aida']
 AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife', 'zhang']
@@ -133,14 +147,14 @@ palette_treatment = OrderedDict([
     ('Increase after treatment', '#FF7F0E'),   # bright orange (stays on warm side, but clearly distinct)
     ('Decrease after treatment', '#1E8449'),   # forest green (darker and more neutral)
 ])
-CELL_TYPES = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
-# CELL_TYPES = ['CD4T']
-palette_cell_types = {name: color for name, color in zip(CELL_TYPES, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}
+MAJOR_CTS = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
+# MAJOR_CTS = ['CD4T']
+palette_major_cts = {name: color for name, color in zip(MAJOR_CTS, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}
 # - mapping
 mapping_major_2_minor = {
     'B': ['Naive_B', 'Memory_B'],
     'CD4T': ['Tcm_Naive_CD4', 'Tem_Effector_CD4', 'Treg'],
-    'CD8T': ['Tem_Trm_CD8', 'Tem_Temra_CD8', 'Tcm_Naive_CD8', 'MAIT'],
+    'CD8T': ['Tcm_Naive_CD8', 'Tem_Trm_CD8', 'Tem_Temra_CD8', 'MAIT'],
     'MONO': ['NonClassic_MONO', 'Classic_MONO'],
     'NK': ['CD16_NK', 'NK']
  }
@@ -371,6 +385,7 @@ DATASET_CONFIGS = {
         treatment_groups=['PBS', 'IL-10'], 
         test_type= 'mixed-effect',#'mixed-effect',
         mixed_effects_formula='feature_values ~ condition',
+        pseudobulk_group=['condition', 'donor_id', 'cell_type', 'well'],
         mixed_effects_group='donor_id',
         display_name='Cytokines',
         # Clock analysis settings

@@ -7,7 +7,8 @@ from sklearn.preprocessing import StandardScaler
 import scanpy as sc
 from pathlib import Path
 from scipy import stats
-from hiara.src.config import SUB_CTS, DISCOVERY_COHORTS, mapping_minor_2_major, CONSENSUS_MIN_DEGREE, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR, NET_WEIGHT_THRESHOLD, NET_MAX_SIZE
+from hiara.src.config import DATA_TYPES, MAJOR_CT_LABEL, SUB_CTS, DISCOVERY_COHORTS, mapping_minor_2_major, CONSENSUS_MIN_DEGREE, \
+     SUB_CT_LABEL, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR, NET_WEIGHT_THRESHOLD, NET_MAX_SIZE
 
 # increase width of output display
 pd.set_option('display.max_columns', None)
@@ -27,13 +28,17 @@ def read_gmt(file_path: str) -> dict[str, list[str]]:
             }
     return gene_sets
 
-def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, condition=None, only_net_genes=False, 
+def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, condition=None, only_net_genes=False, granularity=MAJOR_CT_LABEL,
                    mask_condition_col='condition', 
                    test_mode=False):    
 
     gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
-    assert data_type in ['sc', 'bulk', 'metacell'], f'Unknown type {data_type}'
-    adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/{dataset}.h5ad", backed='r')
+    assert data_type in DATA_TYPES, f'Unknown type {data_type}'
+    if test_mode:
+        adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/abf300.h5ad", backed='r')
+    else:
+        adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/{dataset}.h5ad", backed='r')
+
     obs = adata.obs.copy()
     if dataset not in ['ibd']:
         obs.rename({'perturbation': 'condition', 'disease': 'condition', 'treatment': 'condition', 'Max_WHO_Group': 'condition'}, axis=1, inplace=True)
@@ -53,6 +58,7 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
 
     cfg = get_config(dataset)
     pseudobulk_group = cfg.pseudobulk_group
+    assert pseudobulk_group is not None, f'Pseudobulk group not defined for dataset {dataset}'
     obs['group_id'] = obs[pseudobulk_group].astype(str).agg('_'.join, axis=1)
 
     mask_genes = adata.var_names.isin(gene_names)
@@ -62,9 +68,11 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         mask_genes &= adata.var_names.isin(net['target'].unique())
     
     if cell_type is not None:
-        if cell_type not in obs['cell_type'].unique():
-            raise ValueError(f'Given cell type "{cell_type}" not in {obs["cell_type"].unique()}')
-        cell_type_mask = obs['cell_type'] == cell_type
+        if (granularity == 'Major_CT') & ('Major_CT' not in obs.columns) &  ('cell_type' in obs.columns):
+            obs['Major_CT'] = obs['cell_type']
+        if cell_type not in obs[granularity].unique():
+            raise ValueError(f'Given cell type "{cell_type}" not in {obs[granularity].unique()}')
+        cell_type_mask = obs[granularity] == cell_type
     
     if condition is not None:
         if isinstance(condition, str):
@@ -85,7 +93,7 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         obs['age'] = obs['age'].astype(float).astype(int)
         old_donors = obs[obs['age']>60]['donor_age'].unique()
         young_donors = obs[obs['age']<40]['donor_age'].unique()
-        selected_donors = list(young_donors[:20]) + list(old_donors[:20])
+        selected_donors = list(young_donors[:5]) + list(old_donors[:5])
         mask_donors = obs['donor_age'].isin(selected_donors)
         mask &= mask_donors.values
     if True: # experimental. new way to subset backed anndata
@@ -142,7 +150,7 @@ def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, cond
         adata.obs['age_group'] = adata.obs['age'].apply(lambda x: 'Young' if x < age_t else 'Old')
     
     if data_type == 'sc':
-        adata = adata[adata.obs['Sub_CT'].isin(SUB_CTS)].copy()
+        adata = adata[adata.obs[SUB_CT_LABEL].isin(SUB_CTS)].copy()
     
     return adata
 
@@ -304,7 +312,7 @@ def retrieve_sig_net(data_type='bulk', cell_type=None):
     
 
 #     nets_stats_store = []
-#     for cell_type in CELL_TYPES:
+#     for cell_type in MAJOR_CTS:
 #         stats_tfs_t = stats_tfs[stats_tfs['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'gene'])[['gene', 'meta_p_adj', 'slope', 'trend']]
 #         stats_targets_t = stats_targets[stats_targets['cell_type'] == cell_type].drop_duplicates(subset=['cell_type', 'target'])[['target', 'meta_p_adj', 'slope', 'trend']]
         

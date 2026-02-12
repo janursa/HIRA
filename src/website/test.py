@@ -95,7 +95,7 @@ palette_treatment = OrderedDict([
 ])
 
 cell_types = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
-palette_cell_types = {name: color for name, color in zip(cell_types, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}
+palette_major_cts = {name: color for name, color in zip(cell_types, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}
 
 # - mapping
 mapping_major_2_minor = {
@@ -151,7 +151,7 @@ if True: # define palette for minor cell types
     # Assign variant colors
     palette_minor_types = {}
     for major, minors in grouped_minors.items():
-        variants = generate_color_variants(palette_cell_types[major], len(minors))
+        variants = generate_color_variants(palette_major_cts[major], len(minors))
         for minor, color in zip(minors, variants):
             palette_minor_types[minor] = color
 

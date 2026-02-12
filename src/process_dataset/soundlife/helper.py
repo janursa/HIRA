@@ -145,7 +145,7 @@ def map_cell_types(adata):
     adata.obs['cell_type'] = adata.obs['AIFI_L2'].map(cell_type_mapping)
     
     # Keep original AIFI_L2 as Sub_CT
-    adata.obs['Sub_CT'] = adata.obs['AIFI_L2'].astype(str)
+    adata.obs[SUB_CT_LABEL] = adata.obs['AIFI_L2'].astype(str)
     
     # Also create Major_CT for consistency with other datasets
     adata.obs['Major_CT'] = adata.obs['cell_type']

@@ -9,13 +9,10 @@ Replaces: separate disease, perturbation, and script.py files.
 """
 
 import argparse
-import os
 import sys
-from typing import List
-import pandas as pd
 import warnings
 
-from hiara.src.config import FEATURES_DIR, CELL_TYPES, DISCOVERY_COHORTS, AGING_COHORTS, get_config, META_MIN_COHORT
+from hiara.src.config import FEATURES_DIR, MAJOR_CTS, DISCOVERY_COHORTS, DATA_TYPES, FEATURE_TYPES, get_config, META_MIN_COHORT, CONFIG_FA
 from hiara.src.feature_association.helper import (
     wrapper_tf_activity,
     wrapper_tfa_traj,
@@ -24,57 +21,63 @@ from hiara.src.feature_association.helper import (
     wrapper_association_with_age_condition,
     wrapper_meta_analysis,
     retrieve_sig_stats, 
-    write_features_stats
+    write_features_stats,
+    wrapper_ct_freq
 )
 
 warnings.filterwarnings("ignore")
-warnings.filterwarnings("ignore")
+
+
+def calculate_features(analysis_name, par):
+    """Calculate features based on type."""
+    if analysis_name in ['tfa_major_b', 'tfa_sub_b']:
+        wrapper_tf_activity(analysis_name, par)
+    elif analysis_name == 'ge_bulk':
+        pass
+    elif analysis_name == 'gene_score':
+        wrapper_genesets_scores(par)
+    elif analysis_name == 'aging_hallmarks':
+        wrapper_aging_hallmarks(par)
+    elif analysis_name == 'tfa_traj':
+        wrapper_tfa_traj(par)
+    elif analysis_name == 'ct_freq':
+        wrapper_ct_freq(par)
+    else:
+        raise ValueError(f"Unknown analysis_name: {analysis_name}")
 
 
 def run_single_cohort_analysis(args):
 
     # Get configuration(s) - may be single or multiple
     dataset = args.datasets[0]
-    cell_types = args.cell_types
-    feature_type = args.feature_type
-    data_type = args.data_type
+    
     skip_features = args.skip_features
     config = get_config(dataset)
     
+    # Get analysis configuration from CONFIG_FA
+    if args.analysis_name not in CONFIG_FA:
+        raise ValueError(f"Unknown analysis name: {args.analysis_name}. Available: {list(CONFIG_FA.keys())}")    
     print("\n" + "=" * 80)
     print(f"Analysis type: {args.association_type}")
-    print(f"Dataset: {dataset}")
-    print(f"Feature: {feature_type}")
-    print(f"Cell types: {', '.join(cell_types)}")
+    print(f"Analysis name: {args.analysis_name}")
+
 
     print("=" * 80 + "\n")
     
     # Prepare parameters
     par = {
-        'data_type': data_type,
-        'feature_type': feature_type,
-        'datasets': [dataset],
-        'cell_types': cell_types if cell_types != ['all'] else CELL_TYPES,
+        **args.__dict__,
+        'cell_types': args.cell_types if args.cell_types != ['all'] else MAJOR_CTS,
         'association_type': args.association_type,
         'use_consensus_net': True,
         'promotor_only': args.promotor_only,
         'condition': config.treatment_groups if hasattr(config, 'treatment_groups') else None
     }
-
     
     # Step 1: Calculate features (if needed) - only once for all configs
     if not skip_features:
         print("\n[1/3] Calculating features...")
-        if feature_type == 'tf_activity':
-            wrapper_tf_activity(par)
-        # elif feature_type == 'gene_expression':
-        #     wrapper_gene_expression(par)
-        elif feature_type == 'aging_hallmarks':
-            wrapper_aging_hallmarks(par)
-        elif feature_type == 'tfa_traj':
-            wrapper_tfa_traj(par)
-        else:
-            raise ValueError(f"Unknown feature type: {feature_type}")
+        calculate_features(args.analysis_name, par)
         print("✓ Features calculated")
     else:
         print("\n[1/3] Skipping feature calculation (using cached data)")
@@ -82,6 +85,7 @@ def run_single_cohort_analysis(args):
     # Step 2: Compute condition statistics for each config
     print(f"\n[2/3] Computing condition statistics...")    
     condition_stats = wrapper_association_with_age_condition(
+        analysis_name=args.analysis_name,
         par=par,
         features=None,
         test_type=config.test_type,
@@ -92,8 +96,7 @@ def run_single_cohort_analysis(args):
     
     write_features_stats(
         stats=condition_stats,
-        data_type=data_type,
-        feature_type=feature_type,
+        analysis_name=args.analysis_name,
         multi_cohort=False,
         dataset=dataset
     )
@@ -102,12 +105,23 @@ def run_single_cohort_analysis(args):
 def run_multi_cohort_analysis(
     args
 ):
+    # Get analysis configuration from CONFIG_FA
+    if args.analysis_name not in CONFIG_FA:
+        raise ValueError(f"Unknown analysis name: {args.analysis_name}. Available: {list(CONFIG_FA.keys())}")
+    
+    analysis_config = CONFIG_FA[args.analysis_name]
+    feature_type = analysis_config['feature_type']
+    data_type = analysis_config['data_type']
+    granularity = analysis_config['granularity']
+    
     print("\n" + "=" * 80)
     print(f"MULTI-COHORT AGING ANALYSIS")
-    print(f"Feature: {args.feature_type}")
+    print(f"Analysis name: {args.analysis_name}")
+    print(f"Feature: {feature_type}")
+    print(f"Data type: {data_type}")
+    print(f"Granularity: {granularity}")
     print(f"Datasets: {', '.join(args.datasets)}")
     print(f"Cell types: {', '.join(args.cell_types)}")
-    print(f"Data type: {args.data_type}")
     print(f"Promotor-based only: {args.promotor_only}")
     print("=" * 80 + "\n")
     
@@ -115,12 +129,8 @@ def run_multi_cohort_analysis(
     
     # Prepare parameters
     par = {
-        'data_type': args.data_type,
-        'feature_type': args.feature_type,
-        'cell_types': args.cell_types if args.cell_types != ['all'] else CELL_TYPES,
-        'datasets': args.datasets,
+        **args.__dict__,
         'temp_dir': f'{FEATURES_DIR}/tmp/',
-        'promotor_only': args.promotor_only,
         'META_MIN_COHORT': META_MIN_COHORT,
         'condition': 'healthy',
         'use_consensus_net': True
@@ -129,31 +139,21 @@ def run_multi_cohort_analysis(
     # Step 1: Calculate features
     if not args.skip_features:
         print("\n[1/3] Calculating features...")
-        if args.feature_type == 'tf_activity':
-            wrapper_tf_activity(par)
-        elif args.feature_type == 'gene_expression':
-            pass
-        elif args.feature_type == 'gene_score':
-            wrapper_genesets_scores(par)
-        elif args.feature_type == 'aging_hallmarks':
-            wrapper_aging_hallmarks(par)
-        elif args.feature_type == 'tfa_traj':
-            wrapper_tfa_traj(par)
-        else:
-            raise ValueError(f"Unknown feature type: {args.feature_type}")
-    print("✓ Features calculated")
+        calculate_features(args.analysis_name, par)
+        print("✓ Features calculated")
+    else:
+        print("\n[1/3] Skipping feature calculation (using cached data)")
     
     # Step 2: Calculate association with age
     print("\n[2/3] Computing associations with age...")
-    stats_features = wrapper_association_with_age_condition(par, association_type=args.association_type)
+    stats_features = wrapper_association_with_age_condition(args.analysis_name, par, association_type=args.association_type)
     
     # Step 3: Meta-analysis (discovery/validation)
     print("\n[3/3] Running meta-analysis...")
     stats = wrapper_meta_analysis(stats_features, par)
     write_features_stats(
         stats=stats,
-        data_type=args.data_type,
-        feature_type=args.feature_type,
+        analysis_name=args.analysis_name,
         multi_cohort=True,
         suffix=suffix
     )
@@ -175,6 +175,14 @@ def main():
     )
     
     parser.add_argument(
+        '--analysis-name',
+        type=str,
+        required=True,
+        choices=list(CONFIG_FA.keys()),
+        help=f'Analysis configuration name from CONFIG_FA. Available: {list(CONFIG_FA.keys())}'
+    )
+    
+    parser.add_argument(
         '--datasets',
         type=str,
         nargs='+',
@@ -186,24 +194,14 @@ def main():
         '--cell-types',
         type=str,
         nargs='+',
-        default=CELL_TYPES,
+        default=MAJOR_CTS,
         help='Cell types to analyze (default: CD4T CD8T)'
     )
     
     parser.add_argument(
-        '--feature-type',
-        type=str,
-        default='tf_activity',
-        choices=['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_traj'],
-        help='Feature type to analyze (default: tf_activity)'
-    )
-    
-    parser.add_argument(
-        '--data-type',
-        type=str,
-        choices=['bulk', 'sc', 'metacell'],
-        default='bulk',
-        help='Data type (default: bulk)'
+        '--test-mode',
+        action='store_true',
+        help='Run in test mode with reduced data for quick testing'
     )
     
     parser.add_argument(
@@ -244,8 +242,7 @@ def main():
         multi_cohort = True
 
     stats_sig = retrieve_sig_stats(dataset=None if multi_cohort else dataset,
-                                   feature_type=args.feature_type,
-                                   data_type=args.data_type).drop_duplicates(subset=['gene', 'cell_type', 'condition'])
+                                   analysis_name=args.analysis_name).drop_duplicates(subset=['gene', 'cell_type', 'condition'])
     print(f"\nSignificant features (FDR < 0.05) in meta-analysis:")
     print(stats_sig.groupby(['cell_type', 'condition'])['gene'].nunique())
     

@@ -1,4 +1,76 @@
 
+## Identify sig networks
+def plot_sig_networks(data_type = 'bulk'):
+    from hiara.src.feature_association.helper import determine_sig_network
+    if False:
+        if True:
+            determine_sig_network(data_type, min_degree=3)
+        sig_net = retrieve_sig_net()
+        sig_net_size = sig_net.groupby('cell_type').size()
+        sig_net_size = sig_net_size.reindex(MAJOR_CTS, fill_value=0).reset_index()
+        sig_net_size.columns = ['cell_type', 'edge_count']
+
+        # Ensure categorical order for plotting
+        sig_net_size['cell_type'] = pd.Categorical(sig_net_size['cell_type'], categories=MAJOR_CTS, ordered=True)
+        sig_net_size = sig_net_size.sort_values('cell_type')
+
+        # Plot
+        fig, ax = plt.subplots(figsize=(1.5, 2))
+        ax.barh(sig_net_size['cell_type'], sig_net_size['edge_count'], color=colors_blind[5], alpha=.5)
+
+        # Aesthetics
+        ax.invert_yaxis()
+        ax.set_xlabel('TF-target pair')
+        ax.set_ylabel('')
+        ax.spines[['top', 'right']].set_visible(False)
+        ax.margins(y=0.1, x=0.1)
+        # ax.set_xscale('log')
+        ax.set_title('Aging GRNs size', weight='bold', fontsize=10, pad=15)
+
+
+    if False:
+        sig_net = retrieve_sig_net()
+        n_top = 20
+        cell_type = 'CD8T'
+        df = sig_net[sig_net['cell_type'] == cell_type]
+
+        # Compute top source and target degrees
+        source_counts = df['source'].value_counts().head(n_top).reset_index()
+        source_counts.columns = ['source', 'degree']
+        source_info = df[['source', 'trend_source']].drop_duplicates(subset='source')
+        source_df = source_counts.merge(source_info, on='source', how='left')
+
+        target_counts = df['target'].value_counts().head(n_top).reset_index()
+        target_counts.columns = ['target', 'degree']
+        target_info = df[['target', 'trend_target']].drop_duplicates(subset='target')
+        target_df = target_counts.merge(target_info, on='target', how='left')
+
+        # Setup plot
+        fig, axes = plt.subplots(1, 2, figsize=(3, 4), sharey=False)
+
+        # Plot sources
+        source_colors = source_df['trend_source'].map(palette_trend).values
+        target_colors = target_df['trend_target'].map(palette_trend).values[::-1]
+        axes[0].barh(source_df['source'], source_df['degree'], color=source_colors)
+        axes[0].set_title('TFs', fontsize=10)
+        axes[0].invert_yaxis()
+        axes[0].set_xlabel('Out-degree')
+        axes[0].spines[['top', 'right']].set_visible(False)
+
+        # Plot targets
+        axes[1].barh(target_df['target'][::-1], target_df['degree'][::-1], color=target_colors)
+        axes[1].set_title('Targets', fontsize=10)
+        axes[1].set_xlabel('In-degree')
+        axes[1].spines[['top', 'right']].set_visible(False)
+
+        # Title and layout
+        fig.suptitle(f'Aging TFs and targets: {cell_type}', fontsize=10, weight='bold', y=.95)
+        from matplotlib.patches import Patch
+
+        legend_elements = [Patch(facecolor=color, label=label) for label, color in palette_trend_2.items()]
+        # fig.legend(handles=legend_elements, bbox_to_anchor=(1.5, .8), fontsize=10, frameon=False, title='Trend', title_fontsize=10)
+        fig.tight_layout()
+
 def _plot_directional_consistency_scatter(stats, args):
     """
     Generate directional consistency scatter plots comparing Sound Life vs Reference aging genes.

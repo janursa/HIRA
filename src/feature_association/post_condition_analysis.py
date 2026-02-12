@@ -28,9 +28,10 @@ from hiara import retrieve_feature_data, retrieve_sig_stats, retrieve_stats
 from hiara.src.feature_association.plots import heatplot_age_trend
 # Import common utilities and configuration
 from hiara.src.config import (
+    CONFIG_FA,
     PLOTS_DIR, 
     OUTPUT_DIR,
-    CELL_TYPES, 
+    MAJOR_CTS, 
     DISCOVERY_COHORTS,
     palette_trend,
     palette_disease_effect,
@@ -53,7 +54,7 @@ plt.rcParams["figure.dpi"] = 150
 plt.rcParams["font.family"] = "Arial"
 
 
-def format_tf_activity_for_disease_trend_plot(dataset, data_type, cell_type, tf, age_limit=[20, 75], condition_col='disease'):
+def format_tf_activity_for_disease_trend_plot(dataset, analysis_name, cell_type, tf, age_limit=[20, 75], condition_col='disease'):
     """
     Format TF activity data for disease trend plotting.
     
@@ -61,8 +62,8 @@ def format_tf_activity_for_disease_trend_plot(dataset, data_type, cell_type, tf,
     ----------
     dataset : str
         Dataset name
-    type : str
-        Data type (e.g., 'bulk', 'sc')
+    analysis_name : str
+        Analysis configuration name
     cell_type : str
         Cell type to analyze
     tf : str
@@ -77,7 +78,7 @@ def format_tf_activity_for_disease_trend_plot(dataset, data_type, cell_type, tf,
     pd.DataFrame or None
         Binned dataframe with disease/condition as rows, age bins as columns
     """
-    tf_acts = retrieve_feature_data(dataset=dataset, cell_type=cell_type, data_type=data_type, condition=None)
+    tf_acts = retrieve_feature_data(dataset=dataset, cell_type=cell_type, analysis_name=analysis_name, condition=None)
     tf_acts = tf_acts[(tf_acts.obs['age'] >= age_limit[0]) & (tf_acts.obs['age'] <= age_limit[1])]
     tf_acts = tf_acts[:, tf_acts.var_names == tf]
 
@@ -112,7 +113,7 @@ def format_tf_activity_for_disease_trend_plot(dataset, data_type, cell_type, tf,
     return binned_df
 
 
-def plot_healthy_disease_trend(dataset, data_type, cell_type, case_tf, condition_col, ax=None, normalize=False):
+def plot_healthy_disease_trend(dataset, analysis_name, cell_type, case_tf, condition_col, ax=None, normalize=False):
     """
     Plot healthy vs disease trend for a TF across age.
     
@@ -120,8 +121,8 @@ def plot_healthy_disease_trend(dataset, data_type, cell_type, case_tf, condition
     ----------
     dataset : str
         Dataset name
-    type : str
-        Data type (e.g., 'bulk', 'sc')
+    analysis_name : str
+        Analysis configuration name
     cell_type : str
         Cell type to analyze
     case_tf : str
@@ -139,7 +140,7 @@ def plot_healthy_disease_trend(dataset, data_type, cell_type, case_tf, condition
         The axes object with the plot
     """
     binned_df = format_tf_activity_for_disease_trend_plot(
-        dataset=dataset, data_type=data_type, cell_type=cell_type, tf=case_tf, condition_col=condition_col
+        dataset=dataset, analysis_name=analysis_name, cell_type=cell_type, tf=case_tf, condition_col=condition_col
     )
     
     if binned_df is None:
@@ -200,7 +201,7 @@ def plot_overview_heatmap(stats, args):
             raise ValueError("Overview heatmap only supports single age group at a time.")
 
     slope_col = 'slope'  
-    stats['cell_type'] = pd.Categorical(stats['cell_type'], categories=CELL_TYPES, ordered=True)
+    stats['cell_type'] = pd.Categorical(stats['cell_type'], categories=MAJOR_CTS, ordered=True)
     palette = get_condition_palette(analysis_type)
 
     heamap_overview_cell_types(
@@ -221,7 +222,7 @@ def plot_overview_heatmap(stats, args):
 
 def wrapper_plot_central_tfs_condition(stats, cell_types, group_col, args):
     """Plot aging vs perturbation comparison."""
-    aging_stats_sig = retrieve_sig_stats(data_type='bulk', feature_type=args.feature_type).drop_duplicates(subset=['cell_type', 'gene'])
+    aging_stats_sig = retrieve_sig_stats(analysis_name=args.analysis_name).drop_duplicates(subset=['cell_type', 'gene'])
     aging_stats_sig['analysis'] = 'Age-associated'
     stats['analysis'] = stats[group_col]    
     groups = stats[group_col].unique()
@@ -284,7 +285,7 @@ def plot_disease_case_tfs(args):
         
         plot_healthy_disease_trend(
             dataset=args.dataset, 
-            data_type=args.data_type, 
+            analysis_name=args.analysis_name, 
             cell_type=args.cell_type, 
             case_tf=case_tf, 
             condition_col=condition_col, 
@@ -303,13 +304,13 @@ def plot_disease_case_tfs(args):
 def plot_ctr_condition_donor_level(args, cell_types):
     """Plot donor-level perturbation effects for case genes."""    
     stats = retrieve_stats(
-        dataset=args.dataset, data_type=args.data_type, feature_type=args.feature_type)
+        dataset=args.dataset, analysis_name=args.analysis_name)
     comparisons = stats['comparison'].unique()
     aggregate_per_donor = args.aggregate_per_donor if hasattr(args, 'aggregate_per_donor') else False
     case_tfs = args.case_tfs
     
     for cell_type in cell_types:
-        adata = retrieve_feature_data(dataset=args.dataset, data_type=args.data_type, feature_type=args.feature_type, cell_type=cell_type)
+        adata = retrieve_feature_data(dataset=args.dataset, analysis_name=args.analysis_name, cell_type=cell_type)
         adata_df = adata.to_df()
         adata_df[['donor_id', 'condition']] = adata.obs[['donor_id', 'condition']].values
 
@@ -505,16 +506,11 @@ def parse_args():
         help='Type of analysis: disease, perturbation, or aging'
     )
     parser.add_argument(
-        '--data-type',
+        '--analysis-name',
         type=str,
-        default='bulk',
-        help='Data type: bulk or sc (default: bulk)'
-    )
-    parser.add_argument(
-        '--feature-type',
-        type=str,
-        default='tf_activity',
-        help='Feature type: tf_activity or gene_expression (default: tf_activity)'
+        required=True,
+        choices=list(CONFIG_FA.keys()),
+        help=f'Analysis configuration name from CONFIG_FA. Available: {list(CONFIG_FA.keys())}'
     )
     
     parser.add_argument(
@@ -594,37 +590,49 @@ def parse_args():
     return args
 
 def main():
+    from hiara.src.config import CONFIG_FA
     args = parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Get configuration from CONFIG_FA
+    analysis_config = CONFIG_FA[args.analysis_name]
+    feature_type = analysis_config['feature_type']
+    data_type = analysis_config['data_type']
+    granularity = analysis_config['granularity']
+    
+    # Add to args for backward compatibility
+    args.feature_type = feature_type
+    args.data_type = data_type
+    args.granularity = granularity
     
     if False:
         print("="*60)
         print(f"Dataset: {args.dataset}")
-
         print(f"Analysis type: {args.analysis_type}")
-        print(f"Data type: {args.data_type}")
-        print(f"Feature type: {args.feature_type}")
+        print(f"Analysis name: {args.analysis_name}")
+        print(f"Data type: {data_type}")
+        print(f"Feature type: {feature_type}")
+        print(f"Granularity: {granularity}")
         print("="*60)
 
     args.case_tfs = ['KLF6', 'PRDM1' ,'LEF1', 'ZEB2']
     stats = retrieve_stats(
         dataset=args.dataset,
-        data_type=args.data_type,
-        feature_type=args.feature_type,
+        analysis_name=args.analysis_name,
         multi_cohort=False
     )
 
     stats_sig = stats[stats['is_significant']]
 
-    args.cell_types = CELL_TYPES if args.cell_types == ['all'] else args.cell_types
+    args.cell_types = MAJOR_CTS if args.cell_types == ['all'] else args.cell_types
     
     config = get_config(dataset=args.dataset)
 
     if args.dataset == 'soundlife':
         plot_overview_heatmap(stats_sig, args)
-        plot_aging_overlap(stats_sig, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'] ,args=args)
+        plot_aging_overlap(args.analysis_name, stats_sig, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'] ,args=args)
         plot_directional_consistency_scatter(stats, 
-                                             feature_type=args.feature_type,
+                                             analysis_name=args.analysis_name,
                                              save_suffix = args.dataset,
                                              x_label = 'Validation analysis \n(significance)',
                                              y_label = 'Discovery analysis \n(significance)',
@@ -639,12 +647,13 @@ def main():
         if not args.skip_overview:
             plot_overview_heatmap(stats_sub, args)
         # plot_aging_overlap(
+            # args.analysis_name, 
         #     stats_sig, 
         #     cell_types=['CD4T', 'CD8T'],
         #     args=args
         # )
         plot_directional_consistency_scatter(stats_sub[stats_sub['cell_type'].isin(['CD4T', 'CD8T'])], 
-                                            feature_type=args.feature_type,
+                                            analysis_name=args.analysis_name,
                                              save_suffix = args.dataset,
                                              x_label = f'SLE \n(significance)',
                                              y_label = 'Natural aging \n(significance)',
@@ -656,7 +665,8 @@ def main():
         args.cell_type = 'CD8T'
         args.case_tfs = ['LEF1']
         plot_disease_case_tfs(args)
-        plot_pathway_analysis(stats_sig, args)
+        if not args.skip_pathway:
+            plot_pathway_analysis(stats_sig, args)
 
     if args.dataset == 'parsebioscience':
         if not args.skip_overview:
@@ -669,8 +679,8 @@ def main():
         plot_overview_heatmap(stats_sig, args)
         
         args.cell_types = [ct for ct in args.cell_types if ct in selected_cell_types]
-        plot_directional_consistency_scatter(tats_sub[stats_sub['cell_type'].isin(['CD4T', 'CD8T'])], 
-                                            feature_type=args.feature_type,
+        plot_directional_consistency_scatter(stats_sig[stats_sig['cell_type'].isin(['CD4T', 'CD8T'])], 
+                                            analysis_name=args.analysis_name,
                                              save_suffix = args.dataset,
                                              x_label = f'{config.treatment_groups[1]} \n(significance)',
                                              y_label = 'Natural aging \n(significance)',
@@ -679,8 +689,8 @@ def main():
                                              label_opposing = 'Rejuvenation'
                                              )
         wrapper_plot_central_tfs_condition(stats, group_col='comparison', cell_types=selected_cell_types, args=args)
-        
-        plot_pathway_analysis(stats_sig, args)
+        if not args.skip_pathway:
+            plot_pathway_analysis(stats_sig, args)
 
     if args.dataset == 'op':
         if not args.skip_overview:
@@ -692,8 +702,8 @@ def main():
 
         wrapper_plot_central_tfs_condition(stats, group_col='comparison', cell_types=['CD4T'], args=args)
         plot_ctr_condition_donor_level(args, cell_types=['CD4T']) 
-        plot_directional_consistency_scatter(tats_sub[stats_sub['cell_type'].isin(['CD4T', 'CD8T'])], 
-                                            feature_type=args.feature_type,
+        plot_directional_consistency_scatter(stats_sig[stats_sig['cell_type'].isin(['CD4T', 'CD8T'])], 
+                                            analysis_name=args.analysis_name,
                                              save_suffix = args.dataset,
                                              x_label = f'{config.treatment_groups[1]} \n(significance)',
                                              y_label = 'Natural aging \n(significance)',
@@ -714,12 +724,11 @@ def main():
         args.case_tfs = ['STAT1', 'BATF'] 
         for comparison in stats['comparison'].unique():
             stats_sub = stats[stats['comparison']==comparison]
-            plot_directional_consistency_scatter(tats_sub[stats_sub['cell_type'].isin(['CD4T', 'CD8T'])], 
-                                            feature_type=args.feature_type,
-                                             save_suffix = args.dataset,
+            plot_directional_consistency_scatter(stats_sub[stats_sub['cell_type'].isin(['CD4T', 'CD8T'])], 
+                                            analysis_name=args.analysis_name,
+                                             save_suffix = f"{args.dataset}_f_{comparison.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')}",
                                                  x_label = f'{comparison} \n(significance)',
                                                  y_label = 'Natural aging \n(significance)',
-                                                 save_tag = f"_{comparison.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')}",
                                                  agreement='opposite',
                                                  label_consistent = 'Acceleration' if comparison != 'LPS \n (ctr: RPMI)' else 'Age deceleration',
                                                  label_opposing = 'Rejuvenation' if comparison != 'LPS \n (ctr: RPMI)' else 'Age deceleration',

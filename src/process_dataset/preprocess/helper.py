@@ -175,9 +175,9 @@ def annotate_celltypes(adata):
     }
     # Map Major and Sub cell types
     adata_for_celltypist.obs['Major_CT'] = adata_for_celltypist.obs['majority_voting'].apply(lambda x: mapping.get(x, 'Others'))
-    adata_for_celltypist.obs['Sub_CT'] = adata_for_celltypist.obs['majority_voting'].apply(lambda x: mapping_sub.get(x, 'Others'))
+    adata_for_celltypist.obs[SUB_CT_LABEL] = adata_for_celltypist.obs['majority_voting'].apply(lambda x: mapping_sub.get(x, 'Others'))
     # - post process
-    adata.obs = adata.obs.join(adata_for_celltypist.obs[['Major_CT', 'Sub_CT']])
+    adata.obs = adata.obs.join(adata_for_celltypist.obs[['Major_CT', SUB_CT_LABEL]])
     adata.X = adata.layers["counts"]
     del adata.layers
     adata.obs['cell_type'] = adata.obs['Major_CT']

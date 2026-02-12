@@ -15,7 +15,7 @@ import seaborn as sns
 from scipy.stats import spearmanr, pearsonr
 from matplotlib_venn import venn2
 
-from hiara.src.config import PLOTS_DIR, OUTPUT_DIR, cell_types, palette_cell_types
+from hiara.src.config import PLOTS_DIR, OUTPUT_DIR, cell_types, palette_major_cts
 
 
 def load_stats(data_type='bulk', suffix=''):

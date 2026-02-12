@@ -6,7 +6,7 @@ from scipy.stats import ttest_ind
 import numpy as np
 from pandas.api.types import CategoricalDtype
 from statsmodels.stats.multitest import multipletests
-from hiara import surrogate_names, CELL_TYPES, palette_genders
+from hiara import surrogate_names, MAJOR_CTS, palette_genders
 
 palette_disease = {'Healthy': '#56B4E9', 'SLE': '#F0E442', 'Mild': '#2ca02c', 'Severe': '#e377c2'}
 
@@ -137,7 +137,7 @@ def wrapper_age_acceleration_disease(obs, disease_dataset, ctr, cond, figsize=(4
     from statsmodels.stats.multitest import multipletests
     import numpy as np
 
-    cell_types = CELL_TYPES
+    cell_types = MAJOR_CTS
     
     obs_disease = obs[obs['dataset'] == disease_dataset].copy()
 

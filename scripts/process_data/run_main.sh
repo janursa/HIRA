@@ -75,7 +75,7 @@ for dataset in $datasets; do
         
         PROCESSED_DATASET_FILE="${MAIN_DIR}/datasets/sc/${mapped_name}.h5ad"
         BULK_ALL="${MAIN_DIR}/datasets/bulk/${mapped_name}.h5ad"
-        BULK_MINOR_CELLTYPE="${MAIN_DIR}/datasets/bulk/${mapped_name}_minor.h5ad"
+        BULK_MINOR_CELLTYPE="${MAIN_DIR}/datasets/bulk_minor/${mapped_name}.h5ad"
         # BULK_M="${MAIN_DIR}/datasets/bulk/${mapped_name}_M.h5ad"
         # BULK_F="${MAIN_DIR}/datasets/bulk/${mapped_name}_F.h5ad"
         

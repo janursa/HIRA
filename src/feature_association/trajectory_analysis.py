@@ -1,22 +1,13 @@
 
 import pandas as pd
 import numpy as np
-import seaborn as sns
 import matplotlib.pyplot as plt
-import sys
 import scanpy as sc
 import warnings
-import anndata as ad
-import os
-from scipy.sparse import issparse
-from scipy.stats import spearmanr, pearsonr
-import decoupler as dc
 from statsmodels.formula.api import ols, mixedlm
 from statsmodels.stats.multitest import multipletests
-from statsmodels.nonparametric.smoothers_lowess import lowess
 from tqdm import tqdm
 import logging
-import argparse
 
 warnings.filterwarnings('ignore')
 logging.getLogger('anndata').setLevel(logging.ERROR)
@@ -24,12 +15,9 @@ pd.set_option('display.max_columns', 100)
 plt.rcParams["font.family"] = "Arial"
 
 # Local imports
-from hiara import retrieve_feature_data, retrieve_sig_stats
-from hiara import OUTPUT_DIR, PRIOR_DIR, PLOTS_DIR, CLOCKS_DIR, CELL_TYPES, surrogate_names, colors_blind, palette_cell_types, palette_datasets, palette_datasets_pretty, palette_genders, AGING_COHORTS
-from hiara import retrieve_adata, retrieve_net, retrieve_net_consensus
+from hiara import SUB_CT_LABEL, OUTPUT_DIR
+from hiara import retrieve_adata
 from hiara import get_config
-from geneRNBI.src.helper import load_env
-from task_grn_inference import normalize_func, bulkify_func
 
 
 def write_traj_stats(results, dataset, cell_type):
@@ -90,9 +78,9 @@ def compute_dpt(adata, leiden_resolution=10):
             root_idx = np.where(adata_sub.obs['leiden'] == root_cluster)[0][0]
             adata_sub.uns['iroot'] = root_idx
         else: # select based on Sub_CT population 
-            sub_cts = adata_sub.obs['Sub_CT'].unique()
+            sub_cts = adata_sub.obs[SUB_CT_LABEL].unique()
             assert 'Tcm_Naive_CD8' in sub_cts, f"No 'naive' cells found in group {group} for root selection."
-            naive_cells = adata_sub.obs['Sub_CT'] == 'Tcm_Naive_CD8'
+            naive_cells = adata_sub.obs[SUB_CT_LABEL] == 'Tcm_Naive_CD8'
             assert naive_cells.sum() > 0, f"No cells found in 'Tcm_Naive_CD8' Sub_CT for group {group}"
             root_idx = np.where(naive_cells)[0][0]
             adata_sub.uns['iroot'] = root_idx
@@ -361,7 +349,7 @@ def tfa_traj_association(adata, association='continuous'):
     
     return results_df
 
-def compute_tfa_traj_association(adata, target='Sub_CT'):
+def compute_tfa_traj_association(adata, target=SUB_CT_LABEL):
     """
     Calculate Spearman correlation between TF activity and DPT per group.
     Stores results in adata.varm['tfa_traj_corr'] and adata.varm['tfa_traj_pval'].
@@ -369,12 +357,12 @@ def compute_tfa_traj_association(adata, target='Sub_CT'):
     
     from hiara import SUB_CTS
     tfs = adata.obsm['score_ulm'].columns.tolist()
-    if target == 'Sub_CT':
-        adata.obs['traj_var'] = adata.obs['Sub_CT'].astype('category').cat.set_categories(SUB_CTS, ordered=True).cat.codes
+    if target == SUB_CT_LABEL:
+        adata.obs['traj_var'] = adata.obs[SUB_CT_LABEL].astype('category').cat.set_categories(SUB_CTS, ordered=True).cat.codes
     elif target == 'dpt':
         adata.obs['traj_var'] = adata.obs['dpt']
     else:
-        raise ValueError("target must be 'dpt' or 'Sub_CT'")
+        raise ValueError("target must be 'dpt' or SUB_CT_LABEL")
     groups = adata.obs['group_id'].unique()
     corr_matrix = pd.DataFrame(index=tfs, columns=groups, dtype=float)
     pval_matrix = pd.DataFrame(index=tfs, columns=groups, dtype=float)
@@ -390,10 +378,8 @@ def compute_tfa_traj_association(adata, target='Sub_CT'):
             corr, pval = spearmanr(target_values, tf_activity)
             corr_matrix.loc[tf, group] = corr
             pval_matrix.loc[tf, group] = pval
-    corr_adata = ad.AnnData(X=corr_matrix.values.T, var=pd.DataFrame(index=corr_matrix.index), obs=pd.DataFrame(index=corr_matrix.columns))
-    group_metadata = adata.obs.drop_duplicates(subset='group_id').set_index('group_id')
-    cell_counts = adata.obs.groupby('group_id').size().rename('cell_count')
-    corr_adata.obs = corr_adata.obs.merge(group_metadata, left_index=True, right_index=True, how='left')
-    corr_adata.obs = corr_adata.obs.merge(cell_counts, left_index=True, right_index=True, how='left')
+    
+    return corr_matrix
+
+
         
-    return corr_adata

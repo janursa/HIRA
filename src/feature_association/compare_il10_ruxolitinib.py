@@ -18,8 +18,9 @@ from hiara import retrieve_stats
 from hiara.src.config import (
     PLOTS_DIR, 
     OUTPUT_DIR,
-    CELL_TYPES,
-    surrogate_names
+    MAJOR_CTS,
+    surrogate_names,
+    CONFIG_FA
 )
 from hiara.src.config import get_config
 
@@ -107,15 +108,14 @@ def plot_directional_comparison(stats_il10, stats_ruxo, cell_types, args):
     args : argparse.Namespace
         Command-line arguments
     """
-    feature_type = args.feature_type
     output_dir = args.output_dir
     
     # Define colors
     opposing_color = 'indianred'
     consistent_color = 'darkseagreen'
     
-    label_consistent = 'Consistent \n ({} TFs)'
-    label_opposing = 'Opposing \n ({} TFs)'
+    # label_consistent = 'Consistent \n ({} TFs)'
+    # label_opposing = 'Opposing \n ({} TFs)'
     
     all_cell_data = []
     
@@ -393,7 +393,7 @@ def plot_directional_comparison(stats_il10, stats_ruxo, cell_types, args):
                  frameon=False, fontsize=8, ncol=1)
     
     plt.tight_layout()
-    output_path = os.path.join(output_dir, f'comparison_il10_ruxolitinib_{args.data_type}_{feature_type}.png')
+    output_path = os.path.join(output_dir, f'comparison_il10_ruxolitinib_{args.analysis_name}.png')
     plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
     plt.close()
     print(f"\n✓ Saved comparison plot: {output_path}")
@@ -404,17 +404,14 @@ def parse_args():
         description='Compare IL10 (parsebioscience) to Ruxolitinib (op) effects'
     )
     parser.add_argument(
-        '--feature-type',
+        '--analysis-name',
         type=str,
-        default='tf_activity',
-        help='Feature type: tf_activity or gene_expression (default: tf_activity)'
+        required=True,
+        choices=list(CONFIG_FA.keys()),
+        help='Analysis configuration name from CONFIG_FA'
     )
-    parser.add_argument(
-        '--data-type',
-        type=str,
-        default='bulk',
-        help='Data type: bulk or sc (default: bulk)'
-    )
+
+
     parser.add_argument(
         '--output-dir',
         type=str,
@@ -439,8 +436,8 @@ def main():
     
     print("="*60)
     print("Comparing IL10 (parsebioscience) to Ruxolitinib (op)")
-    print(f"Data type: {args.data_type}")
-    print(f"Feature type: {args.feature_type}")
+    print(f"Analysis name: {args.analysis_name}")
+
     print(f"Cell types: {', '.join(args.cell_types)}")
     print("="*60)
     
@@ -448,8 +445,7 @@ def main():
     print("\nLoading IL10 (parsebioscience) stats...")
     stats_il10 = retrieve_stats(
         dataset='parsebioscience',
-        data_type=args.data_type,
-        feature_type=args.feature_type,
+        analysis_name=args.analysis_name,
         multi_cohort=False
     )
     print(f"  Loaded {len(stats_il10)} records")
@@ -457,8 +453,7 @@ def main():
     print("\nLoading Ruxolitinib (op) stats...")
     stats_ruxo = retrieve_stats(
         dataset='op',
-        data_type=args.data_type,
-        feature_type=args.feature_type,
+        analysis_name=args.analysis_name,
         multi_cohort=False
     )
     print(f"  Loaded {len(stats_ruxo)} records")

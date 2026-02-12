@@ -23,10 +23,10 @@ plt.rcParams["figure.figsize"] = 4, 4
 # --- Directories and Imports ---
 from hiara.src.config import (
     aging_clock_train_datasets, palette_genders, palette_treatment,
-    mapping_major_2_minor, mapping_minor_2_major, CELL_TYPES, palette_datasets,
+    mapping_major_2_minor, mapping_minor_2_major, MAJOR_CTS, palette_datasets,
     datasets_disease, datasets_drug_perturbation, OUTPUT_DIR,
     palette_datasets_pretty, surrogate_names, colors_blind,
-    palette_trend, palette_trend_2, palette_regulation, palette_cell_types
+    palette_trend, palette_trend_2, palette_regulation, palette_major_cts
 )
 from hiara.src.feature_association.helper import retrieve_sig_stats
 from hiara.src.insilico_perturbation.helper import wrapper_in_silico_perturbation
