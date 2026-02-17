@@ -24,15 +24,17 @@ USE_LOCAL_CLOCK = True  # If True, use clocks saved in CLOCKS_DIR;
 
 SUB_CT_LABEL = 'Sub_CT'
 MAJOR_CT_LABEL = 'Major_CT'
-FEATURE_TYPES = ['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_traj', 'ct_freq']
+FEATURE_TYPES = ['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_traj', 'ct_freq', 'ct_pol_dist']
 DATA_TYPES = ['sc', 'bulk', 'bulk_minor', 'metacell']
 CONFIG_FA = {
     'tfa_major_b': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL}, 
     'tfa_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'tf_activity', 'granularity': SUB_CT_LABEL},
-    'ge_bulk': {'data_type': 'bulk', 'feature_type': 'gene_expression', 'granularity': MAJOR_CT_LABEL},
-    'ge_minor': {'data_type': 'bulk_minor', 'feature_type': 'gene_expression', 'granularity': SUB_CT_LABEL},
+    'sub_tf_markers': {'data_type': 'bulk_minor', 'feature_type': 'tf_activity', 'granularity': SUB_CT_LABEL, 'trend_labels': ['Higher in this group', 'Lower in this group']},
+    'ge_major_b': {'data_type': 'bulk', 'feature_type': 'gene_expression', 'granularity': MAJOR_CT_LABEL},
+    'ge_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'gene_expression', 'granularity': SUB_CT_LABEL},
     'tfa_traj': {'data_type': 'sc', 'feature_type': 'tfa_traj', 'granularity': MAJOR_CT_LABEL},
     'ct_freq': {'data_type': 'sc', 'feature_type': 'ct_freq', 'granularity': MAJOR_CT_LABEL},
+    'ct_pol_dist': {'data_type': 'bulk_minor', 'granularity': MAJOR_CT_LABEL},
 }
 DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
 # DISCOVERY_COHORTS = ['perez_sle', 'aida']
@@ -113,6 +115,19 @@ surrogate_names = {
 
                     'tf_activity': 'TF activity',
                     'tfa_traj': 'TF activity vs trajectory',
+
+                    'Tcm_Naive_CD4': 'Tcm/Naive CD4',
+                    'Tem_Effector_CD4': 'Tem/Effector CD4',
+                    'Tcm_Naive_CD8': 'Tcm/Naive CD8',
+                    'Tem_Trm_CD8': 'Tem/Trm CD8',
+                    'Tem_Temra_CD8': 'Tem/Temra CD8',
+                    'MAIT': 'MAIT',
+                    'CD16_NK': 'CD16 NK',
+                    'NonClassic_MONO': 'Non-Classic Mono',
+                    'Classic_MONO': 'Classic Mono',
+                    'Naive_B': 'Naive B',
+                    'Memory_B': 'Memory B',
+
                     }
 surrogate_names_reverse = {v: k for k, v in surrogate_names.items()}
 
@@ -178,25 +193,25 @@ mapping_minor_2_major = {
 SUB_CTS = list(mapping_minor_2_major.keys())
 palette_sub_cts = {
     # CD4T: naive (green) -> effector (red)
-    'Tcm_Naive_CD4': '#4CAF50',      # Green (naive)
-    'Tem_Effector_CD4': '#F44336',   # Red (effector)
+    'Tcm_Naive_CD4': "#056608",      # Green (naive)
+    'Tem_Effector_CD4': "#C5F436",   # Red (effector)
     
     # CD8T: naive (green) -> differentiated (red)
     'Tcm_Naive_CD8': '#4CAF50',      # Green (naive)
     'Tem_Trm_CD8': '#FF9800',        # Orange (intermediate)
     'Tem_Temra_CD8': '#FF5722',      # Deep Orange (more differentiated)
-    'MAIT': '#D32F2F',               # Dark Red (highly differentiated)
+    'MAIT': "#5A0303",               # Dark Red (highly differentiated)
     
     # NK: less activated (green) -> more activated (red)
-    'CD16_NK': '#EF5350',            # Light Red
+    'CD16_NK': "#5D50EF",            # Light Red
     
     # MONO: classical (green) -> non-classical (red)
-    'Classic_MONO': '#66BB6A',       # Light Green
-    'NonClassic_MONO': '#EF5350',    # Light Red
+    'Classic_MONO': "#D4BA35",       # Light Green
+    'NonClassic_MONO': "#C5A637",    # Light Red
     
     # B cells: naive (green) -> memory (red)
-    'Naive_B': '#4CAF50',            # Green (naive)
-    'Memory_B': '#F44336',           # Red (memory)
+    'Naive_B': "#AD1CE6",            # Green (naive)
+    'Memory_B': "#BA824E",           # Red (memory)
 }
 
 @dataclass

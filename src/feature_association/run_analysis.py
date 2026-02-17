@@ -22,7 +22,8 @@ from hiara.src.feature_association.helper import (
     wrapper_meta_analysis,
     retrieve_sig_stats, 
     write_features_stats,
-    wrapper_ct_freq
+    wrapper_ct_freq,
+    wrapper_ct_pol_dist
 )
 
 warnings.filterwarnings("ignore")
@@ -32,7 +33,7 @@ def calculate_features(analysis_name, par):
     """Calculate features based on type."""
     if analysis_name in ['tfa_major_b', 'tfa_sub_b']:
         wrapper_tf_activity(analysis_name, par)
-    elif analysis_name == 'ge_bulk':
+    elif analysis_name in ['ge_sub_b', 'ge_major_b']:
         pass
     elif analysis_name == 'gene_score':
         wrapper_genesets_scores(par)
@@ -42,6 +43,8 @@ def calculate_features(analysis_name, par):
         wrapper_tfa_traj(par)
     elif analysis_name == 'ct_freq':
         wrapper_ct_freq(par)
+    elif analysis_name == 'ct_pol_dist':
+        wrapper_ct_pol_dist(par)
     else:
         raise ValueError(f"Unknown analysis_name: {analysis_name}")
 
@@ -75,7 +78,7 @@ def run_single_cohort_analysis(args):
     }
     
     # Step 1: Calculate features (if needed) - only once for all configs
-    if not skip_features:
+    if not skip_features:  # ct_freq is fast to compute, no need to skip
         print("\n[1/3] Calculating features...")
         calculate_features(args.analysis_name, par)
         print("✓ Features calculated")
@@ -110,14 +113,12 @@ def run_multi_cohort_analysis(
         raise ValueError(f"Unknown analysis name: {args.analysis_name}. Available: {list(CONFIG_FA.keys())}")
     
     analysis_config = CONFIG_FA[args.analysis_name]
-    feature_type = analysis_config['feature_type']
     data_type = analysis_config['data_type']
     granularity = analysis_config['granularity']
     
     print("\n" + "=" * 80)
     print(f"MULTI-COHORT AGING ANALYSIS")
     print(f"Analysis name: {args.analysis_name}")
-    print(f"Feature: {feature_type}")
     print(f"Data type: {data_type}")
     print(f"Granularity: {granularity}")
     print(f"Datasets: {', '.join(args.datasets)}")
@@ -137,20 +138,25 @@ def run_multi_cohort_analysis(
     }
    
     # Step 1: Calculate features
-    if not args.skip_features:
+    if not args.skip_features and args.analysis_name not in ['sub_tf_markers']:
         print("\n[1/3] Calculating features...")
         calculate_features(args.analysis_name, par)
         print("✓ Features calculated")
     else:
         print("\n[1/3] Skipping feature calculation (using cached data)")
     
-    # Step 2: Calculate association with age
-    print("\n[2/3] Computing associations with age...")
-    stats_features = wrapper_association_with_age_condition(args.analysis_name, par, association_type=args.association_type)
+    # Step 2: Calculate association with age or identify markers
+    if args.analysis_name == 'sub_tf_markers':
+        print("\n[2/3] Identifying sub cell type markers...")
+        from hiara.src.feature_association.helper import wrapper_sub_celltype_markers
+        stats_features = wrapper_sub_celltype_markers(args.analysis_name, par)
+    else:
+        print("\n[2/3] Computing associations with age...")
+        stats_features = wrapper_association_with_age_condition(args.analysis_name, par, association_type=args.association_type)
     
     # Step 3: Meta-analysis (discovery/validation)
     print("\n[3/3] Running meta-analysis...")
-    stats = wrapper_meta_analysis(stats_features, par)
+    stats = wrapper_meta_analysis(analysis_name=args.analysis_name, stats_features=stats_features, par=par)
     write_features_stats(
         stats=stats,
         analysis_name=args.analysis_name,

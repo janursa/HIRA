@@ -28,7 +28,13 @@ def read_gmt(file_path: str) -> dict[str, list[str]]:
             }
     return gene_sets
 
-def retrieve_adata(dataset, data_type='bulk', cell_type=None, age_limit=20, condition=None, only_net_genes=False, granularity=MAJOR_CT_LABEL,
+def retrieve_adata(dataset, 
+                   data_type='bulk', 
+                   cell_type=None, 
+                   age_limit=20, 
+                   condition=None, 
+                   only_net_genes=False, 
+                   granularity=MAJOR_CT_LABEL,
                    mask_condition_col='condition', 
                    test_mode=False):    
 

@@ -19,7 +19,7 @@ from matplotlib.patches import Patch
 
 from hiara.src.config import FEATURES_DIR, MAJOR_CT_LABEL, PRIOR_DIR, MAJOR_CTS, SUB_CTS , PLOTS_DIR, colors_blind, DISCOVERY_COHORTS, \
     surrogate_names, palette_datasets, palette_trend, palette_datasets_pretty, mapping_minor_2_major, \
-    palette_trend_2, palette_major_cts, palette_datasets, palette_trend_2, colors_blind, \
+    palette_trend_2, palette_major_cts, palette_sub_cts, palette_datasets, palette_trend_2, colors_blind, \
         CONFIG_FA, cmap_trend
 from hiara.src.feature_association.helper import bin_feature_values, retrieve_feature_data, \
                                                     retrieve_sig_stats, retrieve_stats
@@ -34,6 +34,7 @@ def categorize_granularity(df, granularity):
                                 categories=categories, 
                                 ordered=True
                                 )
+    
     return df
     
 def wrapper_sig_features_counts(args):
@@ -41,7 +42,9 @@ def wrapper_sig_features_counts(args):
     granularity = CONFIG_FA[analysis_name]['granularity']
     aging_stats_sig = retrieve_sig_stats(analysis_name=analysis_name).drop_duplicates(subset=['cell_type', 'gene'])
     aging_stats_sig = categorize_granularity(aging_stats_sig, granularity)
-    sig_features_counts(aging_stats_sig, figsize=(2, 1.5), palette=palette_trend_2)
+
+    aging_stats_sig['cell_type'] = aging_stats_sig['cell_type'].apply(lambda x: surrogate_names.get(x, x))
+    sig_features_counts(aging_stats_sig, palette=palette_trend_2)
     
     feature_type = CONFIG_FA[args.analysis_name]['feature_type']
     plt.ylabel('Significant TFs' if feature_type == 'tf_activity' else 'Significant features')
@@ -168,8 +171,13 @@ def plot_directional_consistency_scatter(
             print(f"  Warning: No data for {cell_type}")
             continue
         ref_ct = stats_ref[stats_ref['cell_type'] == cell_type].copy()
+
         sl_ct = stats[(stats['cell_type'] == cell_type) & (stats['gene'].isin(ref_ct['gene']))].copy()
-        assert len(sl_ct) > 0, f"No overlapping genes between condition and reference aging for {cell_type}"
+        if len(sl_ct) == 0:
+            print(f"  Warning: No overlapping genes for {cell_type}")
+            print(f"available cell types in stats: {stats['cell_type'].unique()}")
+            raise ValueError(f"No overlapping genes or cell types for {cell_type}")
+
     
         # Merge: keep only TFs that are significant in reference aging
         if pvalue_col == 'meta_p_adj':
@@ -403,10 +411,9 @@ def _plot_scatter_feature_vs_age(features, analysis_name, cell_type, datasets=DI
     
     plt.suptitle(f'{cell_type}', fontsize=13, fontweight='bold', y=1.00)
     plt.tight_layout()
-def plot_scatter_feature_vs_age(args, cell_types=None, features=None, feature_selection_mode='top_central', top_features=5, datasets=DISCOVERY_COHORTS):
+def plot_scatter_feature_vs_age(analysis_name, cell_types=None, features=None, feature_selection_mode='top_central', top_features=5, datasets=DISCOVERY_COHORTS):
     assert feature_selection_mode in ['top_central', 'top_sig']
     
-    analysis_name = args.analysis_name
     if cell_types is None:
         cell_types = MAJOR_CTS
     for cell_type in cell_types:
@@ -432,10 +439,121 @@ def plot_scatter_feature_vs_age(args, cell_types=None, features=None, feature_se
         _plot_scatter_feature_vs_age(
             features=selected_features, analysis_name=analysis_name, cell_type=cell_type, datasets=datasets)
         tag = 'custom' if features is not None else ('top_central' if feature_selection_mode == 'top_central' else 'top_sig') 
-        file_name = f"{PLOTS_DIR}/scatter_feature_vs_age_{args.analysis_name}_{cell_type}_{tag}.png"
+        file_name = f"{PLOTS_DIR}/scatter_feature_vs_age_{analysis_name}_{cell_type}_{tag}.png"
         print(f"Saving figure to {file_name}")
         plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
+def plot_young_vs_aging(analysis_name, cell_type, 
+                        young_age_threshold=30, annotate_top_n=10, plots_dir=PLOTS_DIR):
+    """
+    Plot mean feature values in young adults (< age threshold) vs aging slope.
+
+    """
+
+    # Get significant aging associations
+    stats_sig = retrieve_sig_stats(analysis_name=analysis_name, cell_type=cell_type)
+    datasets = stats_sig['dataset'].unique()
+    
+    # Get average slope per feature
+    feature_slopes = stats_sig.groupby('gene').agg({
+        'slope': 'mean',
+        'meta_p_adj': 'first'
+    }).reset_index()
+    
+    # Collect young adult feature values from all datasets
+    young_values_list = []
+    
+    for dataset in datasets:
+        feature_data = retrieve_feature_data(
+            analysis_name=analysis_name,
+            dataset=dataset,
+            cell_type=cell_type
+        )
+        
+        young_mask = feature_data.obs['age'] < young_age_threshold
+        if young_mask.sum() == 0:
+            print(f'Skipping young group for {dataset} {cell_type}')
+            continue
+        
+        feature_data_young = feature_data[young_mask]
+        
+        # Get mean values for each feature
+        X = feature_data_young.X
+        if hasattr(X, 'toarray'):
+            X = X.toarray()
+        
+        mean_values = np.mean(X, axis=0)
+        
+        # Create dataframe
+        young_df = pd.DataFrame({
+            'gene': feature_data_young.var_names,
+            'mean_young_value': mean_values,
+            'dataset': dataset
+        })
+        
+        young_values_list.append(young_df)
+        
+    
+    assert len(young_values_list) > 0, f"No young adult data for {cell_type}"
+    
+    # Combine all datasets and get overall mean
+    all_young_values = pd.concat(young_values_list, ignore_index=True)
+    young_means = all_young_values.groupby('gene')['mean_young_value'].mean().reset_index()
+    
+    # Merge with slopes
+    plot_df = feature_slopes.merge(young_means, on='gene', how='inner')
+    
+    assert len(plot_df) > 0, f"No overlapping features between young values and slopes for {cell_type}"
+    
+    # Calculate -log10 p-value for sizing
+    plot_df['-log10_p'] = -np.log10(plot_df['meta_p_adj'] + 1e-300)
+    
+    # Determine alignment: aligned if same sign (both positive or both negative), orthogonal if different signs
+    plot_df['aligned'] = (plot_df['mean_young_value'] * plot_df['slope']) > 0
+    
+    # Create plot
+    fig, ax = plt.subplots(figsize=(5, 3))
+    
+    # Separate aligned and orthogonal
+    aligned_data = plot_df[plot_df['aligned']]
+    orthogonal_data = plot_df[~plot_df['aligned']]
+    
+    # Plot orthogonal first (so aligned appears on top)
+    s_factor = 1
+    if len(orthogonal_data) > 0:
+
+        ax.scatter(orthogonal_data['slope'], orthogonal_data['mean_young_value'], 
+                    c='indianred', alpha=0.6, 
+                    s=orthogonal_data['-log10_p'] * s_factor,
+                    edgecolors='darkred', linewidths=0.5,
+                    label=f'Converge ({len(orthogonal_data)})')
+    
+    if len(aligned_data) > 0:
+        ax.scatter(aligned_data['slope'], aligned_data['mean_young_value'], 
+                    c='darkseagreen', alpha=0.6, 
+                    s=aligned_data['-log10_p'] * s_factor,
+                    edgecolors='darkgreen', linewidths=0.5,
+                    label=f'Diverge ({len(aligned_data)})')
+
+    # Labels and styling
+    ax.set_xlabel('TATC aging slope', fontsize=10)
+    ax.set_ylabel(f'TATC in young adults\n(<{young_age_threshold} years)', fontsize=10)
+    ax.set_title(f'{cell_type}', fontsize=12, fontweight='bold')
+    ax.axhline(y=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
+    ax.axvline(x=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
+    ax.spines[['top', 'right']].set_visible(False)
+    
+    # Add legend
+    ax.legend(frameon=False, fontsize=9, loc=[1.1, 0.5], title='Naive to Effector')
+    
+    plt.tight_layout()
+    
+    # Save plot
+    file_name = f"{plots_dir}/young_vs_aging_{analysis_name}_{cell_type}.png"
+    print(f"Saving figure to {file_name}")
+    plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+    plt.close()
+
 def gsea_analysis(stats_sig):
     from hiara.src.pathway_analysis.util import get_genesets, pathway_kde_func, get_hallmark, gsea_func, wrapper_gsea
 
@@ -443,25 +561,27 @@ def gsea_analysis(stats_sig):
     file_name = f"{PLOTS_DIR}/gsea_tf_activity.png"
     print(f"Saving figure to {file_name}")
     plt.savefig(file_name, bbox_inches='tight', dpi=200)
-def plot_heatmap_overal(stats_aging, analysis_name='tfa_major_b'):
+def plot_heatmap_overal(stats_aging, analysis_name):
     granularity = CONFIG_FA[analysis_name]['granularity']
     stats_aging = categorize_granularity(stats_aging, granularity)
     stats_aging['dataset'] = pd.Categorical(stats_aging['dataset'], categories=DISCOVERY_COHORTS, ordered=True)
-
+    trends = CONFIG_FA[analysis_name]['trend_labels'] if 'trend_labels' in CONFIG_FA[analysis_name] else ['Decrease in aging', 'Increase in aging']
     plot_overall_heatmap(stats_aging, 
                         sig_dots_y_offset=3, 
                         first_col='cell_type',  
                         first_col_palette=palette_major_cts if granularity == MAJOR_CT_LABEL else palette_sub_cts,
                         second_col='dataset', 
                         second_col_palette=palette_datasets,
-                        bbox_to_anchor=(1.05, 1.05),
-                        bbox_to_anchor_col2=(1.05, .85),
-                        bbox_to_anchor_col1=(1.05, 0.37),
-                        figsize=(4, 6),
+                        bbox_to_anchor=(1.07, 1.07),
+                        bbox_to_anchor_col2=(1.05, .9),
+                        bbox_to_anchor_col1=(1.05, 0.61),
+                        trend_colors = ['#B0BF1A', '#E52B50'],
+                        trend_names = trends,
+                        figsize=(4, 7),
                         map_names={**{'cell_type':'Cell type', 'dataset': 'Dataset'}, **surrogate_names})
     file_name = f"{PLOTS_DIR}/overall_heatmap_{analysis_name}.png"
     print(f"Saving figure to {file_name}")
-    plt.savefig(file_name, bbox_inches='tight', dpi=300)
+    plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
 def plot_central_features(stats_aging, cell_types):
     if True:
         # Parameters
@@ -580,17 +700,20 @@ def plot_case_tf(args):
             print(f"Saving figure to {file_name}")
             plt.savefig(file_name, bbox_inches='tight', dpi=300)
 
-def sig_features_counts(df, figsize=(3.5, 2), palette=None, ax=None):
+def sig_features_counts(df, figsize=None, palette=None, ax=None):
+    x_label_count = df['cell_type'].nunique() 
     df = df[['gene', 'cell_type', 'trend']]
     df['trend'] = df['trend'].astype(CategoricalDtype(categories=palette.keys(), ordered=True))
     df = df[~df.duplicated()].reset_index(drop=True)
     df_counts = df.groupby(['cell_type', 'trend']).size().reset_index(name='count')
     if ax is None:
+        if figsize is None:
+            figsize = (.3*x_label_count+1, 2.5)
         fig, ax = plt.subplots(1, 1, figsize=figsize)
     sns.barplot(data=df_counts, x='cell_type', y='count', alpha=.8, hue='trend', palette=palette, ax=ax)
     # ax.set_ylabel('Gene count')
     ax.set_xlabel('')
-    ax.margins(x=0.1, y=0.1)
+    ax.margins(x=0.1 if x_label_count < 5 else 0.05, y=0.1)
     ax.legend(loc=(1, 0.5), title='Trend', frameon=False)
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
