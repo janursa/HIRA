@@ -351,7 +351,7 @@ def tfa_traj_association(adata, association='continuous'):
 
 def compute_tfa_traj_association(adata, target=SUB_CT_LABEL):
     """
-    Calculate Spearman correlation between TF activity and DPT per group.
+    Calculate Spearman correlation between TF activity and traj variable.
     Stores results in adata.varm['tfa_traj_corr'] and adata.varm['tfa_traj_pval'].
     """
     

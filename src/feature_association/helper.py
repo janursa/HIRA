@@ -9,12 +9,15 @@ from concurrent.futures import ThreadPoolExecutor
 import scanpy as sc
 import anndata as ad
 from statsmodels.stats.multitest import multipletests
-from hiara.src.config import CONFIG_FA, FEATURES_DIR, get_config, surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
+from hiara.src.config import CONFIG_FA, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
 from tqdm import tqdm
 from hiara.src.config import OUTPUT_DIR, FEATURES_DIR, CORR_THRESHOLD, TF_MIN_TARGET, FEATURE_TYPES, SUB_CT_LABEL
 from scipy.sparse import issparse
 from hiara.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net
 import warnings
+from scipy.sparse import issparse
+from scipy.stats import mannwhitneyu
+from scipy.stats import ttest_rel
 warnings.filterwarnings("ignore")
 
 
@@ -122,7 +125,13 @@ def retrieve_sig_stats(**kwargs):
     stats_sig = stats[stats['is_significant']]
     return stats_sig
 
-def retrieve_feature_data(dataset, cell_type, analysis_name, condition=None, suffix=''):
+def retrieve_feature_data(
+                          dataset, 
+                          cell_type, 
+                          analysis_name, 
+                          condition=None, 
+                          suffix=''
+                          ):
     assert analysis_name in CONFIG_FA, f'Analysis name {analysis_name} not found in CONFIG_FA'
 
     if analysis_name in ['ge_bulk']:
@@ -169,9 +178,7 @@ def bin_feature_values(adata):
     return expr_mean
 
 def determine_stats_condition(adata, ctr_group='normal', condition_col='condition', test_type='unpaired', conditions=None, config=None):
-    from scipy.sparse import issparse
-    from scipy.stats import mannwhitneyu
-    from scipy.stats import ttest_rel
+    
     if conditions is None:
         conditions = adata.obs[condition_col].unique()
     dataset = adata.obs['dataset'].unique()[0]
@@ -390,7 +397,7 @@ def run_meta_analysis(stats_all, meta_association_type='max', min_degree=2, temp
             raise
         df_meta = pd.read_csv(out_path)
 
-        assert df_meta.isna().sum().sum() == 0
+        assert df_meta.isna().sum().sum() == 0, f'NaN values found in meta analysis results for {cell_type}'
         df_meta['cell_type'] = cell_type
         print(cell_type, df_meta.shape)
         df_meta_store.append(df_meta)
@@ -405,7 +412,7 @@ def run_meta_analysis(stats_all, meta_association_type='max', min_degree=2, temp
     stats_all = stats_all.merge(df_meta_all, on=['gene', 'cell_type'], how='left')
     return stats_all
 
-def wrapper_meta_analysis(stats_features, par):
+def wrapper_meta_analysis(analysis_name, stats_features, par):
     feature_col = 'gene'
     min_degree = par['META_MIN_COHORT']
     def run_func(min_degree, meta_association_type):
@@ -419,12 +426,13 @@ def wrapper_meta_analysis(stats_features, par):
                 print('Not enough mutual TFs for ', cell_type, ' skipping it')
                 continue
             # - keep only min_degree info that is consistent
-            nan_sim = stats['p_value_adj'].isna().sum()
+            assert isinstance(stats['p_value'].iloc[0], (float, int)), f'p_value should be numeric, found {stats["p_value"].iloc[0]} like values in {cell_type}'
+            nan_sim = stats['p_value'].isna().sum()
             if nan_sim>0:
                 raise ValueError(f'NaN p-values found in stats in {cell_type}: {nan_sim} NaNs')
             meta_stats = run_meta_analysis(stats, temp_dir=par['temp_dir'], meta_association_type=meta_association_type, min_degree=min_degree)
             pval_col = 'meta_p_adj'
-            meta_stats = compute_trend(meta_stats, pval_col=pval_col, slope_col='slope', col=feature_col)
+            meta_stats = compute_trend(analysis_name, meta_stats, pval_col=pval_col, slope_col='slope', col=feature_col)
             stats_store.append(meta_stats)
         if len(stats_store) > 0:
             stats_discovery = pd.concat(stats_store)
@@ -581,6 +589,107 @@ def associate_with_condition(adata, config, test_type=None):
     stats = pd.concat(stats_list)
 
     return stats
+
+
+def wrapper_sub_celltype_markers(analysis_name, par):
+    """
+    Identify TF activity markers for each sub cell type within a major cell type.
+    Performs DE analysis between each sub cell type and all other sub cell types
+    within the same major cell type, across multiple datasets.
+    
+    """
+    from hiara.src.config import mapping_major_2_minor
+    
+    datasets = par['datasets']
+    major_cell_types = par['cell_types']
+    promotor_only = par.get('promotor_only', False)
+    suffix = '_promotor' if promotor_only else ''
+    
+    analys_cfg = CONFIG_FA[analysis_name]
+    granularity = analys_cfg['granularity']
+    
+    print(f'Major cell types: {major_cell_types}')
+    
+    stats_store = []
+    
+    for major_ct in tqdm(major_cell_types, desc='Major cell types'):
+        sub_cell_types = mapping_major_2_minor[major_ct]
+        print(f"\n{major_ct}: analyzing sub types {sub_cell_types}")
+        
+        for dataset in datasets:
+            print(f"  Dataset: {dataset}")
+            
+            # Load TF activity data for all sub cell types of this major type
+            adata_list = []
+            for ct in sub_cell_types:
+                adata = retrieve_feature_data(
+                        dataset=dataset,
+                        cell_type=ct,
+                        analysis_name='tfa_sub_b',  # Use existing TF activity data
+                        condition='healthy',
+                        suffix=suffix
+                        )
+                adata_list.append(adata)
+            adata = ad.concat(adata_list)
+            adata = adata[adata.obs[granularity].isin(sub_cell_types)].copy()     
+
+            if issparse(adata.X):
+                adata.X = adata.X.toarray()
+            
+            # For each sub cell type, perform DE analysis vs all others
+            for target_sub_ct in sub_cell_types:
+                    
+                # Create binary labels: target vs rest
+                mask_target = adata.obs[granularity] == target_sub_ct
+                mask_others = ~mask_target
+                
+                n_target = mask_target.sum()
+                n_others = mask_others.sum()
+                
+                
+                # Perform DE analysis for each TF
+                from scipy.stats import mannwhitneyu
+                
+                results = []
+                for gene in adata.var_names:
+                    values_target = adata[mask_target, gene].X
+                    values_others = adata[mask_others, gene].X
+                    # Mann-Whitney U test
+                    stat, pval = mannwhitneyu(values_target.flatten(), values_others.flatten(), alternative="two-sided")
+                    
+                    # Effect size (median difference)
+                    coef = np.median(values_target) - np.median(values_others)
+                    
+                    results.append({
+                        'gene': gene,
+                        'p_value': pval,
+                        'slope': coef,
+                        'sub_cell_type': target_sub_ct,
+                        'major_cell_type': major_ct,
+                        'n_target': n_target,
+                        'n_others': n_others
+                    })
+                
+                stats_df = pd.DataFrame(results)
+                # print(stats_df)
+                # aaa
+                
+                # FDR correction per sub cell type
+                
+                stats_df['dataset'] = dataset
+                stats_df['cell_type'] = target_sub_ct  # Use sub cell type as main cell_type for compatibility
+                stats_df['comparison'] = f'{target_sub_ct} vs others'
+                
+                stats_store.append(stats_df)
+                print(f"    {target_sub_ct}: {len(stats_df)} TFs analyzed")
+    
+    if len(stats_store) == 0:
+        raise ValueError("No marker statistics calculated. Check data availability.")
+    
+    stats_all = pd.concat(stats_store, ignore_index=True)
+    stats_all['condition'] = 'healthy'  # Add condition column for consistency
+    
+    return stats_all
 
 def wrapper_tf_activity(analysis_name, par):
     print('Loading data...')
@@ -764,6 +873,86 @@ def wrapper_aging_hallmarks(par):
             
             write_feature_data(adata, dataset, cell_type, analysis_name=analysis_name)
 
+def wrapper_ct_pol_dist(par):
+    """
+    Calculate PCA-based distance between naive and effector subtypes using gene expression.
+    For CD8T: Tcm_Naive_CD8 vs Tem_Temra_CD8
+    For CD4T: Tcm_Naive_CD4 vs Tem_Effector_CD4
+    """
+    from sklearn.decomposition import PCA
+    from hiara.src.config import mapping_major_2_minor
+    
+    cell_types = par['cell_types']
+    datasets = par['datasets']
+    analysis_name = par['analysis_name']
+    n_pcs = 10
+    
+    # Define naive-effector pairs
+    pol_pairs = {
+        'CD8T': ('Tcm_Naive_CD8', 'Tem_Temra_CD8'),
+        'CD4T': ('Tcm_Naive_CD4', 'Tem_Effector_CD4')
+    }
+    
+    print('Calculating cell type polarization distance using PCA on gene expression...')
+    
+    for cell_type in tqdm(cell_types, desc='cell types'):
+        if cell_type not in pol_pairs:
+            print(f'Skipping {cell_type} - no polarization pair defined')
+            continue
+            
+        naive_ct, effector_ct = pol_pairs[cell_type]
+        
+        for dataset in datasets:
+            # Load gene expression for both subtypes
+            adata_naive = retrieve_feature_data(
+                analysis_name='ge_sub_b',  # Assuming gene expression data is stored under this analysis name
+                dataset=dataset,
+                cell_type=naive_ct,
+                condition='healthy'  # Ensure we are comparing healthy samples
+            )
+            
+            adata_effector = retrieve_feature_data(
+                analysis_name='ge_sub_b',  # Assuming gene expression data is stored under this analysis name
+                dataset=dataset,
+                cell_type=effector_ct,
+                condition='healthy'  # Ensure we are comparing healthy samples
+            )
+            
+            assert len(adata_naive) == len(adata_effector), f'Unequal number of samples for naive and effector in {dataset}, {cell_type}'
+            # Sort by donor_id
+            adata_naive = adata_naive[adata_naive.obs['group_id'].argsort()]
+            adata_effector = adata_effector[adata_effector.obs['group_id'].argsort()]
+                        
+            
+            # Get dense matrices
+            X_naive = adata_naive.X.toarray() if issparse(adata_naive.X) else adata_naive.X
+            X_effector = adata_effector.X.toarray() if issparse(adata_effector.X) else adata_effector.X
+            
+            # Combine data for PCA fitting
+            X_combined = np.vstack([X_naive, X_effector])
+            
+            # Fit PCA on combined data
+            pca = PCA(n_components=n_pcs)
+            pca.fit(X_combined)
+            
+            # Transform both datasets
+            X_naive_pca = pca.transform(X_naive)
+            X_effector_pca = pca.transform(X_effector)
+            
+            # Calculate absolute difference in PC space per donor
+            pol_dist_pca = np.abs(X_effector_pca - X_naive_pca)
+            
+            # Create new AnnData with PC differences as features
+            pc_names = [f'PC{i+1}_dist' for i in range(n_pcs)]
+            pol_adata = ad.AnnData(
+                X=pol_dist_pca,
+                obs=adata_naive.obs.copy(),
+                var=pd.DataFrame(index=pc_names)
+            )
+            
+            write_feature_data(pol_adata, dataset, cell_type, analysis_name=analysis_name)
+
+
 def determine_std(adata):
     # Ensure .X is dense
     if isinstance(adata.X, np.ndarray):
@@ -875,12 +1064,13 @@ def association_with_age(adata, association_type, gene_col='gene'):
     
     return stats_df
 
-def compute_trend(df, pval_col='meta_p_adj', slope_col='slope', col='gene'):
+def compute_trend(analysis_name, df, pval_col='meta_p_adj', slope_col='slope', col='gene'):
     # Compute -log10(p_value_adj) for dot size
     df["neg_log10_adj_pval"] = -np.log10(df[pval_col])
     if 'trend' in df.columns:
         df.drop('trend', inplace=True, axis=1)
-    
+    increase_trend = CONFIG_FA[analysis_name]['trend_labels'][0] if 'trend_labels' in CONFIG_FA[analysis_name] else 'Increase in aging'
+    decrease_trend = CONFIG_FA[analysis_name]['trend_labels'][1] if 'trend_labels' in CONFIG_FA[analysis_name] else 'Decrease in aging'
     # Function to assign trend based on slope sign and min_degree
     def determine_trend(x):
         pos = (x > 0).sum()
@@ -890,9 +1080,9 @@ def compute_trend(df, pval_col='meta_p_adj', slope_col='slope', col='gene'):
         
         # print(pos, neg, total, threshold)
         if pos >= (threshold):
-            return 'Increase in aging'
+            return increase_trend
         elif neg >= (threshold):
-            return 'Decrease in aging'
+            return decrease_trend
         else:
             return 'Inconsistent'
 
