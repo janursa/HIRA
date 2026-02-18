@@ -12,7 +12,7 @@ import argparse
 import sys
 import warnings
 
-from hiara.src.config import FEATURES_DIR, MAJOR_CTS, DISCOVERY_COHORTS, DATA_TYPES, FEATURE_TYPES, get_config, META_MIN_COHORT, CONFIG_FA
+from hiara.src.config import FEATURES_DIR, MAJOR_CTS, DISCOVERY_COHORTS, DATA_TYPES, FEATURE_TYPES, get_config, META_MIN_COHORT, get_config_fa, get_available_fa_analyses, MAJOR_CT_LABEL, SUB_CT_LABEL
 from hiara.src.feature_association.helper import (
     wrapper_tf_activity,
     wrapper_tfa_peg,
@@ -47,7 +47,7 @@ def calculate_features(analysis_name, par):
     elif analysis_name == 'ct_pol_dist':
         wrapper_ct_pol_dist(par)
     elif analysis_name == 'ccc_sub_b':
-        wrapper_cc_communication(analysis_name, par, n_jobs=1)
+        wrapper_cc_communication(analysis_name, par, n_jobs=20)
     else:
         raise ValueError(f"Unknown analysis_name: {analysis_name}")
 
@@ -60,23 +60,25 @@ def run_single_cohort_analysis(args):
     skip_features = args.skip_features
     config = get_config(dataset)
     
-    # Get analysis configuration from CONFIG_FA
-    if args.analysis_name not in CONFIG_FA:
-        raise ValueError(f"Unknown analysis name: {args.analysis_name}. Available: {list(CONFIG_FA.keys())}")    
+    # Validate analysis configuration exists
+    try:
+        _ = get_config_fa(args.analysis_name)
+    except ValueError as e:
+        raise ValueError(f"Unknown analysis name: {args.analysis_name}") from e
+    
     print("\n" + "=" * 80)
     print(f"Analysis type: {args.association_type}")
     print(f"Analysis name: {args.analysis_name}")
-
 
     print("=" * 80 + "\n")
     
     # Prepare parameters
     par = {
         **args.__dict__,
-        'cell_types': args.cell_types if args.cell_types != ['all'] else MAJOR_CTS,
         'association_type': args.association_type,
         'use_consensus_net': True,
         'promotor_only': args.promotor_only,
+        'cell_types': define_cell_types(args.analysis_name),
         'condition': config.treatment_groups if hasattr(config, 'treatment_groups') else None
     }
     
@@ -106,16 +108,22 @@ def run_single_cohort_analysis(args):
         multi_cohort=False,
         dataset=dataset
     )
-
+def define_cell_types(analysis_name):
+    cell_types = get_config_fa(analysis_name).get('cell_types', None)
+    granularity = get_config_fa(analysis_name)['granularity']
+    if cell_types is None:
+        cell_types = MAJOR_CTS if granularity==MAJOR_CT_LABEL else SUB_CTS
+    return cell_types
 
 def run_multi_cohort_analysis(
     args
 ):
-    # Get analysis configuration from CONFIG_FA
-    if args.analysis_name not in CONFIG_FA:
-        raise ValueError(f"Unknown analysis name: {args.analysis_name}. Available: {list(CONFIG_FA.keys())}")
+    # Validate and get analysis configuration
+    try:
+        analysis_config = get_config_fa(args.analysis_name)
+    except ValueError as e:
+        raise ValueError(f"Unknown analysis name: {args.analysis_name}") from e
     
-    analysis_config = CONFIG_FA[args.analysis_name]
     data_type = analysis_config['data_type']
     granularity = analysis_config['granularity']
     
@@ -125,18 +133,19 @@ def run_multi_cohort_analysis(
     print(f"Data type: {data_type}")
     print(f"Granularity: {granularity}")
     print(f"Datasets: {', '.join(args.datasets)}")
-    print(f"Cell types: {', '.join(args.cell_types)}")
     print(f"Promotor-based only: {args.promotor_only}")
     print("=" * 80 + "\n")
     
     suffix = '_promotor' if args.promotor_only else ''
     
     # Prepare parameters
+    
     par = {
         **args.__dict__,
         'temp_dir': f'{FEATURES_DIR}/tmp/',
         'META_MIN_COHORT': META_MIN_COHORT,
         'condition': 'healthy',
+        'cell_types': define_cell_types(args.analysis_name),
         'use_consensus_net': True
     }
    
@@ -187,8 +196,8 @@ def main():
         '--analysis-name',
         type=str,
         required=True,
-        choices=list(CONFIG_FA.keys()),
-        help=f'Analysis configuration name from CONFIG_FA. Available: {list(CONFIG_FA.keys())}'
+        choices=get_available_fa_analyses(),
+        help=f'Analysis configuration name. Available: {get_available_fa_analyses()}'
     )
     
     parser.add_argument(
@@ -199,13 +208,6 @@ def main():
         help='List of datasets for multi-cohort mode (e.g., data1 data2 data3)'
     )
     
-    parser.add_argument(
-        '--cell-types',
-        type=str,
-        nargs='+',
-        default=MAJOR_CTS,
-        help='Cell types to analyze (default: CD4T CD8T)'
-    )
     
     parser.add_argument(
         '--test-mode',

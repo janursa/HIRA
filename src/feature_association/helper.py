@@ -9,9 +9,9 @@ from concurrent.futures import ThreadPoolExecutor
 import scanpy as sc
 import anndata as ad
 from statsmodels.stats.multitest import multipletests
-from hiara.src.config import CONFIG_FA, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
+from hiara.src.config import get_config_fa, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
 from tqdm import tqdm
-from hiara.src.config import OUTPUT_DIR, FEATURES_DIR, CORR_THRESHOLD, TF_MIN_TARGET, FEATURE_TYPES, SUB_CT_LABEL
+from hiara.src.config import OUTPUT_DIR, FEATURES_DIR, CORR_THRESHOLD, TF_MIN_TARGET, FEATURE_TYPES, SUB_CT_LABEL, MAJOR_CT_LABEL
 from scipy.sparse import issparse
 from hiara.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net
 import warnings
@@ -132,11 +132,15 @@ def retrieve_feature_data(
                           condition=None, 
                           suffix=''
                           ):
-    assert analysis_name in CONFIG_FA, f'Analysis name {analysis_name} not found in CONFIG_FA'
+    # Validate analysis_name exists
+    try:
+        _ = get_config_fa(analysis_name)
+    except ValueError as e:
+        raise ValueError(f'Analysis name {analysis_name} not found in CONFIG_FA') from e
 
     if analysis_name in ['ge_major_b', 'ge_sub_b']:
-        granularity = CONFIG_FA[analysis_name]['granularity']
-        data_type = CONFIG_FA[analysis_name]['data_type']
+        granularity = get_config_fa(analysis_name)['granularity']
+        data_type = get_config_fa(analysis_name)['data_type']
         adata = retrieve_adata(dataset=dataset, 
                                data_type=data_type, 
                                cell_type=cell_type, 
@@ -157,7 +161,7 @@ def retrieve_feature_data(
     # Filter by cell type using the specified granularity column
     # Skip filtering if cell_type is 'all' (used for cross-cell-type analyses like ccc_sub_b)
     if cell_type is not None and cell_type != 'all':
-        granularity = CONFIG_FA[analysis_name]['granularity']
+        granularity = get_config_fa(analysis_name)['granularity']
         if granularity not in adata.obs.columns:
             raise ValueError(f'Error in retrieving feature data: granularity column "{granularity}" not in adata.obs.columns')
         if cell_type not in adata.obs[granularity].unique():
@@ -479,7 +483,7 @@ def wrapper_association_with_age_condition(analysis_name, par, association_type,
     promotor_only = par.get('promotor_only', False)
     suffix = '_promotor' if promotor_only else ''
 
-    analys_cfg = CONFIG_FA[analysis_name]
+    analys_cfg = get_config_fa(analysis_name)
     granularity = analys_cfg['granularity']
     
     stats_store = []
@@ -610,7 +614,7 @@ def wrapper_sub_celltype_markers(analysis_name, par):
     promotor_only = par.get('promotor_only', False)
     suffix = '_promotor' if promotor_only else ''
     
-    analys_cfg = CONFIG_FA[analysis_name]
+    analys_cfg = get_config_fa(analysis_name)
     granularity = analys_cfg['granularity']
     
     print(f'Major cell types: {major_cell_types}')
@@ -706,7 +710,7 @@ def wrapper_tf_activity(analysis_name, par):
     print('Calculating TF activity...')
     print(f'  - Promotor-based only: {promotor_only}')
 
-    config = CONFIG_FA[analysis_name]
+    config = get_config_fa(analysis_name)
     data_type = config['data_type']
     granularity = config['granularity']
     for dataset in datasets:
@@ -732,7 +736,7 @@ def wrapper_genesets_scores(par):
     datasets = par['datasets']
     analysis_name = par['analysis_name']
     
-    config = CONFIG_FA[analysis_name]
+    config = get_config_fa(analysis_name)
     data_type = config['data_type']
     granularity = config['granularity']
 
@@ -789,10 +793,10 @@ def wrapper_genesets_scores(par):
 
             adata_scores = sc.AnnData(X=X_df.values, obs=obs, var=var)
             write_feature_data(adata_scores, dataset, cell_type, analysis_name=analysis_name, suffix='')
-def df_2_adata(df, adata):
+def df_2_adata(df, obs):
     df_adata = ad.AnnData(X=df.values, var=pd.DataFrame(index=df.columns), obs=pd.DataFrame(index=df.index))
-    group_metadata = adata.obs.drop_duplicates(subset='group_id').set_index('group_id')
-    cell_counts = adata.obs.groupby('group_id').size().rename('cell_count')
+    group_metadata = obs.drop_duplicates(subset='donor_age').set_index('donor_age')
+    cell_counts = obs.groupby('donor_age').size().rename('cell_count')
     df_adata.obs = df_adata.obs.merge(group_metadata, left_index=True, right_index=True, how='left')
     df_adata.obs = df_adata.obs.merge(cell_counts, left_index=True, right_index=True, how='left')
     return df_adata
@@ -800,21 +804,27 @@ def df_2_adata(df, adata):
 def wrapper_ct_freq(par):
     from hiara.src.feature_association.trajectory_analysis import load_sc_data
     # --------- load data
-    cell_types = par['cell_types']
     datasets = par['datasets']
     analysis_name = par['analysis_name']
-    test_mode = par.get('test_mode', False)
-    min_cells_threshold=100
-    
-    for cell_type in tqdm(cell_types, desc='cell types'):
-        for dataset in datasets:
-            adata = load_sc_data(dataset=dataset, cell_type=cell_type, test_mode=test_mode, min_cells_threshold=min_cells_threshold)
-            # calculate the relative frequency of each cell type per donor using label Sub_CT
-            obs = adata.obs.copy()
-            freq_df = obs.groupby(['group_id', SUB_CT_LABEL]).size().unstack().fillna(0)
+    # test_mode = par.get('test_mode', False)
+    # min_cells_threshold=100
+    data_type = get_config_fa(analysis_name)['data_type']
+    granularity = get_config_fa(analysis_name)['granularity']
+    cell_types = par['cell_types']
+    for dataset in datasets:
+        for cell_type in tqdm(cell_types, desc='cell types'):
+            obs = retrieve_adata(dataset=dataset, 
+                                data_type=data_type, 
+                                only_obs=True, 
+                                condition='healthy', 
+                                cell_type=cell_type
+                                )
+            freq_df = obs.groupby(['donor_age', granularity]).size().unstack().fillna(0)
             freq_df = freq_df.div(freq_df.sum(axis=1), axis=0)
-            freq_adata = df_2_adata(freq_df, adata)
+            freq_adata = df_2_adata(freq_df, obs)
+            freq_adata.obs[granularity] = cell_type
             write_feature_data(freq_adata, dataset, cell_type, analysis_name=analysis_name)
+        
 
 def wrapper_tfa_peg(par):
     from hiara.src.feature_association.trajectory_analysis import load_sc_data, compute_tfa_peg_association
@@ -845,7 +855,7 @@ def wrapper_aging_hallmarks(par):
     datasets = par['datasets']
     analysis_name = par['analysis_name']
     
-    config = CONFIG_FA[analysis_name]
+    config = get_config_fa(analysis_name)
     data_type = config['data_type']
     granularity = config['granularity']
     
@@ -977,7 +987,7 @@ def _wrapper_cell_cell_communication(analysis_name, par):
     )
     print(f'  - Loaded {len(lr_pairs)} ligand-receptor pairs')
     
-    config = CONFIG_FA[analysis_name]
+    config = get_config_fa(analysis_name)
     data_type = config['data_type']
     
     print('Calculating cell-cell communication scores ACROSS all cell types...')
@@ -1102,7 +1112,7 @@ def wrapper_cc_communication(analysis_name, par, n_jobs=1):
     import liana as li   
     datasets = par['datasets']
     condition = par.get('condition', 'healthy')
-    config = CONFIG_FA[analysis_name]
+    config = get_config_fa(analysis_name)
     granularity = config['granularity']
     data_type = config['data_type']
     
@@ -1282,8 +1292,8 @@ def compute_trend(analysis_name, df, pval_col='meta_p_adj', slope_col='slope', c
     df["neg_log10_adj_pval"] = -np.log10(df[pval_col])
     if 'trend' in df.columns:
         df.drop('trend', inplace=True, axis=1)
-    increase_trend = CONFIG_FA[analysis_name]['trend_labels'][0] if 'trend_labels' in CONFIG_FA[analysis_name] else 'Increase in aging'
-    decrease_trend = CONFIG_FA[analysis_name]['trend_labels'][1] if 'trend_labels' in CONFIG_FA[analysis_name] else 'Decrease in aging'
+    increase_trend = get_config_fa(analysis_name)['trend_labels'][0] if 'trend_labels' in get_config_fa(analysis_name) else 'Increase in aging'
+    decrease_trend = get_config_fa(analysis_name)['trend_labels'][1] if 'trend_labels' in get_config_fa(analysis_name) else 'Decrease in aging'
     # Function to assign trend based on slope sign and min_degree
     def determine_trend(x):
         pos = (x > 0).sum()

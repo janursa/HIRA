@@ -36,7 +36,8 @@ def retrieve_adata(dataset,
                    only_net_genes=False, 
                    granularity=MAJOR_CT_LABEL,
                    mask_condition_col='condition', 
-                   test_mode=False):    
+                   test_mode=False,
+                   only_obs=False):    
 
     gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
     assert data_type in DATA_TYPES, f'Unknown type {data_type}'
@@ -73,12 +74,14 @@ def retrieve_adata(dataset,
         net = retrieve_net_consensus(cell_type=cell_type)
         mask_genes &= adata.var_names.isin(net['target'].unique())
     
-    if cell_type is not None:
+    if (cell_type is not None and cell_type != 'all'):
         if (granularity == 'Major_CT') & ('Major_CT' not in obs.columns) &  ('cell_type' in obs.columns):
             obs['Major_CT'] = obs['cell_type']
         if cell_type not in obs[granularity].unique():
             raise ValueError(f'Given cell type "{cell_type}" not in {obs[granularity].unique()}')
         cell_type_mask = obs[granularity] == cell_type
+    else:
+        cell_type_mask = pd.Series(np.ones(len(obs), dtype=bool), index=obs.index)
     
     if condition is not None:
         if isinstance(condition, str):
@@ -102,12 +105,47 @@ def retrieve_adata(dataset,
         selected_donors = list(young_donors[:5]) + list(old_donors[:5])
         mask_donors = obs['donor_age'].isin(selected_donors)
         mask &= mask_donors.values
+    
+    # Apply mask to obs and apply all transformations
+    obs_subset = obs.iloc[np.where(mask)[0]].copy()
+    obs_subset['dataset'] = dataset
+    
+    # Age processing
+    if 'age' in obs_subset.columns:
+        nan_age = obs_subset['age'].isna()
+        if nan_age.sum() > 0:
+            print(f'Warning: {nan_age.sum()} cells with NaN age found. ')
+            raise ValueError('Cells with NaN age found.')
+        obs_subset['age'] = obs_subset['age'].astype(float).astype(int)
+        obs_subset = obs_subset[obs_subset['age'] >= age_limit].copy()  
+    else:
+        print('Warning: "age" column not found in obs. Setting to default age of 20.')
+        obs_subset['age'] = 20
+    
+    # Sex mapping
+    if 'sex' in obs_subset.columns:
+        obs_subset['sex'] = obs_subset['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
+
+    # Age group
+    age_t = 50
+    obs_subset['age_group'] = obs_subset['age'].apply(lambda x: 'Young' if x < age_t else 'Old')
+    
+    # Cell type filtering
+    if data_type in ['sc', 'bulk_minor']:
+        obs_subset = obs_subset[obs_subset[SUB_CT_LABEL].isin(SUB_CTS)].copy()
+        obs_subset[SUB_CT_LABEL] = pd.Categorical(obs_subset[SUB_CT_LABEL], categories=SUB_CTS, ordered=True)
+    
+    # If only_obs is True, return the processed obs dataframe without loading .X
+    if only_obs:
+        return obs_subset
+    
+    # Otherwise, create AnnData object with .X
     if True: # experimental. new way to subset backed anndata
-        obs_indices = np.where(mask)[0]
+        obs_indices = obs_subset.index
+        obs_positions = np.where(obs.index.isin(obs_indices))[0]
         var_indices = np.where(mask_genes)[0]
         adata_backed = adata  # Keep reference to backed version
-        X_subset = adata_backed.X[obs_indices, :][:, var_indices]
-        obs_subset = obs.iloc[obs_indices].copy() #use mask if problematic
+        X_subset = adata_backed.X[obs_positions, :][:, var_indices]
         var_subset = adata_backed.var.iloc[var_indices].copy()
         adata = ad.AnnData(
             X=X_subset,
@@ -116,15 +154,12 @@ def retrieve_adata(dataset,
             uns=adata_backed.uns.copy() if hasattr(adata_backed, 'uns') else {},
         )
         for layer_name in adata_backed.layers.keys():
-            adata.layers[layer_name] = adata_backed.layers[layer_name][obs_indices, :][:, var_indices]
-        
+            adata.layers[layer_name] = adata_backed.layers[layer_name][obs_positions, :][:, var_indices]
     else:
         adata = adata[mask, mask_genes].to_memory()    
-    
         obs = obs[mask]
         for c in obs.columns:
             adata.obs[c] = obs[c]
-    
     
     if ('lognorm' in adata.layers) | ('X_norm' in adata.layers):
         print(f'Using layer {("lognorm" if "lognorm" in adata.layers else "X_norm")}')
@@ -134,31 +169,8 @@ def retrieve_adata(dataset,
             adata.layers['counts'] = adata.X.copy()
             sc.pp.normalize_total(adata)
             sc.pp.log1p(adata)
-    adata.obs['dataset'] = dataset
+    
     adata.uns['dataset'] = dataset
-    
-    if 'age' in adata.obs.columns:
-        nan_age = adata.obs['age'].isna()
-        if nan_age.sum() > 0:
-            print(f'Warning: {nan_age.sum()} cells with NaN age found. ')
-            raise ValueError('Cells with NaN age found.')
-        adata.obs['age'] = adata.obs['age'].astype(float).astype(int)
-        adata = adata[adata.obs['age'] >= age_limit].copy()  
-    else:
-        print('Warning: "age" column not found in adata.obs. Setting to default age of 20.')
-        adata.obs['age'] = 20
-    
-    if 'sex' in adata.obs.columns:
-        adata.obs['sex'] = adata.obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
-
-    if True:
-        age_t = 50
-        adata.obs['age_group'] = adata.obs['age'].apply(lambda x: 'Young' if x < age_t else 'Old')
-    
-    if data_type in ['sc', 'bulk_minor']:
-        adata = adata[adata.obs[SUB_CT_LABEL].isin(SUB_CTS)].copy()
-    
-
     
     return adata
 

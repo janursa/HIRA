@@ -23,7 +23,8 @@ from hiara.src.config import (
     DISCOVERY_COHORTS,
     palette_trend,
     surrogate_names,
-    CONFIG_FA
+    get_config_fa,
+    get_available_fa_analyses
 )
 from hiara import retrieve_net_consensus
 
@@ -45,14 +46,13 @@ plt.rcParams["font.family"] = "Arial"
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--analysis-name', type=str, required=True, 
-                       choices=list(CONFIG_FA.keys()),
-                       help='Analysis configuration name from CONFIG_FA')
+                       choices=get_available_fa_analyses(),
+                       help='Analysis configuration name')
     parser.add_argument('--skip-pathway', action='store_true', help='Skip pathway analysis')
 
     args = parser.parse_args()
     analysis_name = args.analysis_name
     skip_pathway = args.skip_pathway
-
     print(f"\n{'='*80}")
     print(f"POST-AGING ANALYSIS")
     print(f"Analysis name: {args.analysis_name}")
@@ -142,8 +142,9 @@ if __name__ == "__main__":
                                             pvalue_col='meta_p_adj'
                                         )
     elif analysis_name in ['ct_freq']:
-        plot_scatter_feature_vs_age(analysis_name, cell_types=['CD8T'], feature_selection_mode='top_sig', top_features=10)
-        plot_features_vs_datasets(cell_type='CD8T', analysis_name=args.analysis_name, top_features=20)
+        cell_types = get_config_fa(analysis_name)['cell_types']
+        plot_scatter_feature_vs_age(analysis_name, cell_types=cell_types, feature_selection_mode='top_sig', top_features=10)
+        # plot_features_vs_datasets(cell_type='CD8T', analysis_name=args.analysis_name, top_features=20)
     elif analysis_name == 'ct_pol_dist':
         plot_scatter_feature_vs_age(analysis_name, cell_types=['CD8T', 'CD4T'], features=['pol_dist'], filter_for_sig=False)
     elif analysis_name == 'ccc_sub_b':

@@ -20,7 +20,7 @@ from matplotlib.patches import Patch
 from hiara.src.config import FEATURES_DIR, MAJOR_CT_LABEL, PRIOR_DIR, MAJOR_CTS, SUB_CTS , PLOTS_DIR, colors_blind, DISCOVERY_COHORTS, \
     surrogate_names, palette_datasets, palette_trend, palette_datasets_pretty, mapping_minor_2_major, \
     palette_trend_2, palette_major_cts, palette_sub_cts, palette_datasets, palette_trend_2, colors_blind, \
-        CONFIG_FA, cmap_trend
+        get_config_fa, cmap_trend
 from hiara.src.feature_association.helper import bin_feature_values, retrieve_feature_data, \
                                                     retrieve_sig_stats, retrieve_stats
 from hiara.src.utils.util import retrieve_net, retrieve_adata, retrieve_net_consensus
@@ -39,14 +39,14 @@ def categorize_granularity(df, granularity):
     
 def wrapper_sig_features_counts(args):
     analysis_name = args.analysis_name
-    granularity = CONFIG_FA[analysis_name]['granularity']
+    granularity = get_config_fa(analysis_name)['granularity']
     aging_stats_sig = retrieve_sig_stats(analysis_name=analysis_name).drop_duplicates(subset=['cell_type', 'gene'])
     aging_stats_sig = categorize_granularity(aging_stats_sig, granularity)
 
     aging_stats_sig['cell_type'] = aging_stats_sig['cell_type'].apply(lambda x: surrogate_names.get(x, x))
     sig_features_counts(aging_stats_sig, palette=palette_trend_2)
     
-    feature_type = CONFIG_FA[args.analysis_name]['feature_type']
+    feature_type = get_config_fa(args.analysis_name)['feature_type']
     plt.ylabel('Significant TFs' if feature_type == 'tf_activity' else 'Significant features')
     file_name = f"{PLOTS_DIR}/aging_features_count_{args.analysis_name}.png"
     print(f"Saving figure to {file_name}")
@@ -382,7 +382,7 @@ def _plot_scatter_feature_vs_age(features, analysis_name, cell_type, datasets=DI
                         alpha=0.5, s=20, color=color, label=dataset)
         
         ax.set_xlabel('Age (years)', fontsize=10)
-        y_label = CONFIG_FA[analysis_name]['feature_type']
+        y_label = get_config_fa(analysis_name)['feature_type']
         ax.set_ylabel(surrogate_names.get(y_label, y_label), fontsize=10)
         feature = surrogate_names.get(feature, feature)
         ax.set_title(f'{feature}', fontsize=11, fontweight='bold')
@@ -448,7 +448,7 @@ def plot_young_vs_aging(analysis_name, cell_type,
 
     # Get significant aging associations
     stats_sig = retrieve_sig_stats(analysis_name=analysis_name, cell_type=cell_type)
-    feature_type = CONFIG_FA[analysis_name]['feature_type']
+    feature_type = get_config_fa(analysis_name)['feature_type']
     datasets = stats_sig['dataset'].unique()
     
     # Get average slope per feature
@@ -560,10 +560,10 @@ def gsea_analysis(stats_sig):
     print(f"Saving figure to {file_name}")
     plt.savefig(file_name, bbox_inches='tight', dpi=200)
 def plot_heatmap_overal(stats_aging, analysis_name):
-    granularity = CONFIG_FA[analysis_name]['granularity']
+    granularity = get_config_fa(analysis_name)['granularity']
     stats_aging = categorize_granularity(stats_aging, granularity)
     stats_aging['dataset'] = pd.Categorical(stats_aging['dataset'], categories=DISCOVERY_COHORTS, ordered=True)
-    trends = CONFIG_FA[analysis_name]['trend_labels'] if 'trend_labels' in CONFIG_FA[analysis_name] else ['Decrease in aging', 'Increase in aging']
+    trends = get_config_fa(analysis_name)['trend_labels'] if 'trend_labels' in get_config_fa(analysis_name) else ['Decrease in aging', 'Increase in aging']
     plot_overall_heatmap(stats_aging, 
                         sig_dots_y_offset=3, 
                         first_col='cell_type',  
@@ -800,7 +800,7 @@ def plot_feature_values_all_datasets(cell_type, feature,
     if ax is None:
         fig, ax = plt.subplots(figsize=(3, 2))
 
-    feature_type = CONFIG_FA[analysis_name]['feature_type']
+    feature_type = get_config_fa(analysis_name)['feature_type']
     heatplot_age_trend(mean_expr[ages], cmap='magma' if feature_type=='tf_activity' else 'viridis', 
                         cbar_title = "Gene \n expression" if feature_type == 'gene_expression' else (
                                     "TF \n activity" if feature_type == 'tf_activity' else "Gene score"
@@ -1064,7 +1064,7 @@ def plot_features_vs_datasets(cell_type,
                               show_size_legend=False,
                               plots_dir=PLOTS_DIR):
 
-    feature_type = CONFIG_FA[analysis_name]['feature_type']
+    feature_type = get_config_fa(analysis_name)['feature_type']
     n_datasets = len(datasets)
     estimated_n_features = top_features if features is None else len(features) if features is not None else top_features
     base_width = max(1.5, min(3.5, 1.0 + n_datasets * 0.2))  # Tighter width range: 1.5-3.5 instead of 1.8-4
