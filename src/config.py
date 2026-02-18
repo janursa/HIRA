@@ -26,6 +26,33 @@ SUB_CT_LABEL = 'Sub_CT'
 MAJOR_CT_LABEL = 'Major_CT'
 FEATURE_TYPES = ['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_peg', 'ct_freq', 'ct_pol_dist', 'cell_cell_communication']
 DATA_TYPES = ['sc', 'bulk', 'bulk_minor', 'metacell']
+# - mapping
+mapping_major_2_minor = {
+    'B': ['Naive_B', 'Memory_B'],
+    'CD4T': ['Tcm_Naive_CD4', 'Tem_Effector_CD4'],
+    'CD8T': ['Tcm_Naive_CD8', 'Tem_Trm_CD8', 'Tem_Temra_CD8', 'MAIT'],
+    'MONO': ['NonClassic_MONO', 'Classic_MONO'],
+    'NK': ['CD16_NK']
+ }
+
+mapping_minor_2_major = {
+    'Tcm_Naive_CD4': 'CD4T',
+    'Tem_Effector_CD4': 'CD4T',
+    
+    'Tcm_Naive_CD8': 'CD8T',
+    'Tem_Trm_CD8': 'CD8T',
+    'Tem_Temra_CD8': 'CD8T',
+    'MAIT': 'CD8T',
+    
+    'CD16_NK': 'NK',
+    'Classic_MONO': 'MONO',
+    'NonClassic_MONO': 'MONO',
+    
+    'Naive_B': 'B',
+    'Memory_B': 'B',
+}
+SUB_CTS = list(mapping_minor_2_major.keys())
+MAJOR_CTS = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
 CONFIG_FA = {
     'tfa_major_b': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL}, 
     'tfa_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'tf_activity', 'granularity': SUB_CT_LABEL},
@@ -33,10 +60,21 @@ CONFIG_FA = {
     'ge_major_b': {'data_type': 'bulk', 'feature_type': 'gene_expression', 'granularity': MAJOR_CT_LABEL},
     'ge_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'gene_expression', 'granularity': SUB_CT_LABEL},
     'tfa_peg': {'data_type': 'sc', 'feature_type': 'tfa_peg', 'granularity': MAJOR_CT_LABEL},
-    'ct_freq': {'data_type': 'sc', 'feature_type': 'ct_freq', 'granularity': MAJOR_CT_LABEL},
+    'ct_freq': {'data_type': 'sc', 'feature_type': 'ct_freq', 'granularity': SUB_CT_LABEL, 'cell_types': MAJOR_CTS},
     'ct_pol_dist': {'data_type': 'bulk_minor', 'feature_type':'ct_pol_dist', 'granularity': MAJOR_CT_LABEL},
     'ccc_sub_b': {'data_type': 'sc', 'feature_type': 'cell_cell_communication', 'granularity': MAJOR_CT_LABEL},
 }
+
+def get_config_fa(analysis_name):
+    """Get feature analysis configuration by name."""
+    if analysis_name not in CONFIG_FA:
+        raise ValueError(f"Analysis '{analysis_name}' not found in configuration. Available: {list(CONFIG_FA.keys())}")
+    return CONFIG_FA[analysis_name]
+
+def get_available_fa_analyses():
+    """Get list of available feature analysis configurations."""
+    return list(CONFIG_FA.keys())
+
 DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
 # DISCOVERY_COHORTS = ['perez_sle', 'aida']
 AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife', 'zhang']
@@ -166,35 +204,10 @@ palette_treatment = OrderedDict([
     ('Increase after treatment', '#FF7F0E'),   # bright orange (stays on warm side, but clearly distinct)
     ('Decrease after treatment', '#1E8449'),   # forest green (darker and more neutral)
 ])
-MAJOR_CTS = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
-# MAJOR_CTS = ['CD4T']
-palette_major_cts = {name: color for name, color in zip(MAJOR_CTS, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}
-# - mapping
-mapping_major_2_minor = {
-    'B': ['Naive_B', 'Memory_B'],
-    'CD4T': ['Tcm_Naive_CD4', 'Tem_Effector_CD4'],
-    'CD8T': ['Tcm_Naive_CD8', 'Tem_Trm_CD8', 'Tem_Temra_CD8', 'MAIT'],
-    'MONO': ['NonClassic_MONO', 'Classic_MONO'],
-    'NK': ['CD16_NK']
- }
 
-mapping_minor_2_major = {
-    'Tcm_Naive_CD4': 'CD4T',
-    'Tem_Effector_CD4': 'CD4T',
-    
-    'Tcm_Naive_CD8': 'CD8T',
-    'Tem_Trm_CD8': 'CD8T',
-    'Tem_Temra_CD8': 'CD8T',
-    'MAIT': 'CD8T',
-    
-    'CD16_NK': 'NK',
-    'Classic_MONO': 'MONO',
-    'NonClassic_MONO': 'MONO',
-    
-    'Naive_B': 'B',
-    'Memory_B': 'B',
-}
-SUB_CTS = list(mapping_minor_2_major.keys())
+palette_major_cts = {name: color for name, color in zip(MAJOR_CTS, ['#E69F00', '#56B4E9', '#F0E442', '#002266', '#998000'])}
+
+# MAJOR_CTS = ['CD4T']
 palette_sub_cts = {
     # CD4T: naive (green) -> effector (red)
     'Tcm_Naive_CD4': "#056608",      # Green (naive)

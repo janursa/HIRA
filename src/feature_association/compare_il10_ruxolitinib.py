@@ -20,7 +20,8 @@ from hiara.src.config import (
     OUTPUT_DIR,
     MAJOR_CTS,
     surrogate_names,
-    CONFIG_FA
+    get_config_fa,
+    get_available_fa_analyses
 )
 from hiara.src.config import get_config
 
@@ -407,8 +408,8 @@ def parse_args():
         '--analysis-name',
         type=str,
         required=True,
-        choices=list(CONFIG_FA.keys()),
-        help='Analysis configuration name from CONFIG_FA'
+        choices=get_available_fa_analyses(),
+        help='Analysis configuration name'
     )
 
 

@@ -28,7 +28,8 @@ from hiara import retrieve_feature_data, retrieve_sig_stats, retrieve_stats
 from hiara.src.feature_association.plots import heatplot_age_trend
 # Import common utilities and configuration
 from hiara.src.config import (
-    CONFIG_FA,
+    get_config_fa,
+    get_available_fa_analyses,
     PLOTS_DIR, 
     OUTPUT_DIR,
     MAJOR_CTS, 
@@ -509,8 +510,8 @@ def parse_args():
         '--analysis-name',
         type=str,
         required=True,
-        choices=list(CONFIG_FA.keys()),
-        help=f'Analysis configuration name from CONFIG_FA. Available: {list(CONFIG_FA.keys())}'
+        choices=get_available_fa_analyses(),
+        help=f'Analysis configuration name. Available: {get_available_fa_analyses()}'
     )
     
     parser.add_argument(
@@ -590,12 +591,11 @@ def parse_args():
     return args
 
 def main():
-    from hiara.src.config import CONFIG_FA
     args = parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Get configuration from CONFIG_FA
-    analysis_config = CONFIG_FA[args.analysis_name]
+    # Get configuration
+    analysis_config = get_config_fa(args.analysis_name)
     feature_type = analysis_config['feature_type']
     data_type = analysis_config['data_type']
     granularity = analysis_config['granularity']

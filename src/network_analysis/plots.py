@@ -20,7 +20,7 @@ import networkx as nx
 from hiara.src.config import GRNS_DIR, PRIOR_DIR, MAJOR_CTS, OUTPUT_DIR, PLOTS_DIR, get_config, colors_blind, DISCOVERY_COHORTS, \
     surrogate_names, palette_datasets, mapping_minor_2_major, \
     palette_trend_2, palette_major_cts, palette_datasets, palette_trend_2, colors_blind, \
-        CONFIG_FA, cmap_trend
+        get_config_fa, cmap_trend
 from hiara.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data, \
                                                     retrieve_sig_stats, retrieve_stats
 from hiara.src.utils.util import retrieve_net, retrieve_adata, retrieve_net_consensus
