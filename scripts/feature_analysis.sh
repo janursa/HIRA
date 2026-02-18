@@ -11,16 +11,21 @@
 #SBATCH --mail-user=jalil.nourisa@gmail.com   
 
 set -e
+
+# Activate conda environment
+# source ~/.bash_profile
+# conda activate py10
+
 # echo "---------------------------------------------------------- Consensus networks -----------------------------------------------------------------"
 # python src/feature_association/consensus_nets.py
 
-analysis_name="ct_pol_dist" #"sub_tf_markers" #"tfa_sub_b" "sub_tf_markers"
+analysis_name="ccc_sub_b" #"sub_tf_markers" #"tfa_sub_b" "sub_tf_markers" ct_pol_dist
 # cell_types="Naive_B Memory_B Tcm_Naive_CD8 Tem_Trm_CD8 Tem_Temra_CD8 MAIT Tcm_Naive_CD4 Tem_Effector_CD4 NonClassic_MONO Classic_MONO CD16_NK" # "Tcm_Naive_CD4"
-cell_types="CD8T CD4T" # "Tcm_Naive_CD4"
-test_mode="" #--test-mode
+cell_types="all" # "Tcm_Naive_CD4"
+test_mode="--test-mode" #--test-mode
 
 echo "---------------------------------------------------------- Aging -----------------------------------------------------------------"
-python src/feature_association/run_analysis.py --analysis-name $analysis_name --analysis-mode multi-cohort  --association-type continous --cell-types $cell_types $test_mode
+python src/feature_association/run_analysis.py --analysis-name $analysis_name --analysis-mode multi-cohort  --association-type continous --cell-types $cell_types $test_mode 
 python src/feature_association/post_aging_analysis.py --analysis-name $analysis_name --skip-pathway
 
 # echo "---------------------------------------------------------- Soundlife -----------------------------------------------------------------"

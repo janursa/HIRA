@@ -24,7 +24,7 @@ USE_LOCAL_CLOCK = True  # If True, use clocks saved in CLOCKS_DIR;
 
 SUB_CT_LABEL = 'Sub_CT'
 MAJOR_CT_LABEL = 'Major_CT'
-FEATURE_TYPES = ['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_traj', 'ct_freq', 'ct_pol_dist']
+FEATURE_TYPES = ['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_peg', 'ct_freq', 'ct_pol_dist', 'cell_cell_communication']
 DATA_TYPES = ['sc', 'bulk', 'bulk_minor', 'metacell']
 CONFIG_FA = {
     'tfa_major_b': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL}, 
@@ -32,9 +32,10 @@ CONFIG_FA = {
     'sub_tf_markers': {'data_type': 'bulk_minor', 'feature_type': 'tf_activity', 'granularity': SUB_CT_LABEL, 'trend_labels': ['Higher in this group', 'Lower in this group']},
     'ge_major_b': {'data_type': 'bulk', 'feature_type': 'gene_expression', 'granularity': MAJOR_CT_LABEL},
     'ge_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'gene_expression', 'granularity': SUB_CT_LABEL},
-    'tfa_traj': {'data_type': 'sc', 'feature_type': 'tfa_traj', 'granularity': MAJOR_CT_LABEL},
+    'tfa_peg': {'data_type': 'sc', 'feature_type': 'tfa_peg', 'granularity': MAJOR_CT_LABEL},
     'ct_freq': {'data_type': 'sc', 'feature_type': 'ct_freq', 'granularity': MAJOR_CT_LABEL},
-    'ct_pol_dist': {'data_type': 'bulk_minor', 'granularity': MAJOR_CT_LABEL},
+    'ct_pol_dist': {'data_type': 'bulk_minor', 'feature_type':'ct_pol_dist', 'granularity': MAJOR_CT_LABEL},
+    'ccc_sub_b': {'data_type': 'sc', 'feature_type': 'cell_cell_communication', 'granularity': MAJOR_CT_LABEL},
 }
 DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
 # DISCOVERY_COHORTS = ['perez_sle', 'aida']
@@ -114,7 +115,8 @@ surrogate_names = {
                     'Dimethyl Sulfoxide': 'DMSO',
 
                     'tf_activity': 'TF activity',
-                    'tfa_traj': 'TF activity vs trajectory',
+                    'tfa_peg': 'PEG',
+                    'ct_pol_dist': 'Naive/Effector transcriptional distance',
 
                     'Tcm_Naive_CD4': 'Tcm/Naive CD4',
                     'Tem_Effector_CD4': 'Tem/Effector CD4',
@@ -127,6 +129,8 @@ surrogate_names = {
                     'Classic_MONO': 'Classic Mono',
                     'Naive_B': 'Naive B',
                     'Memory_B': 'Memory B',
+
+                
 
                     }
 surrogate_names_reverse = {v: k for k, v in surrogate_names.items()}

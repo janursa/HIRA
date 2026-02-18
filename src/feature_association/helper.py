@@ -134,14 +134,20 @@ def retrieve_feature_data(
                           ):
     assert analysis_name in CONFIG_FA, f'Analysis name {analysis_name} not found in CONFIG_FA'
 
-    if analysis_name in ['ge_bulk']:
-        adata = retrieve_adata(dataset=dataset, data_type='bulk', cell_type=cell_type)
+    if analysis_name in ['ge_major_b', 'ge_sub_b']:
+        granularity = CONFIG_FA[analysis_name]['granularity']
+        data_type = CONFIG_FA[analysis_name]['data_type']
+        adata = retrieve_adata(dataset=dataset, 
+                               data_type=data_type, 
+                               cell_type=cell_type, 
+                               only_net_genes=True, 
+                               condition=condition,
+                               granularity=granularity)
     else:
         file_path = f'{FEATURES_DIR}/{analysis_name}/{dataset}_{cell_type}{suffix}.h5ad'
         if os.path.exists(file_path) == False:
             raise ValueError(f'File {file_path} does not exist')
         adata = ad.read_h5ad(file_path)
-
     # Filter by condition
     if condition is not None and 'condition' in adata.obs.columns:
         if condition not in adata.obs['condition'].unique():
@@ -149,7 +155,8 @@ def retrieve_feature_data(
         adata = adata[adata.obs['condition'] == condition].copy()
     
     # Filter by cell type using the specified granularity column
-    if cell_type is not None:
+    # Skip filtering if cell_type is 'all' (used for cross-cell-type analyses like ccc_sub_b)
+    if cell_type is not None and cell_type != 'all':
         granularity = CONFIG_FA[analysis_name]['granularity']
         if granularity not in adata.obs.columns:
             raise ValueError(f'Error in retrieving feature data: granularity column "{granularity}" not in adata.obs.columns')
@@ -161,6 +168,7 @@ def retrieve_feature_data(
 
 def write_feature_data(adata, dataset, cell_type, analysis_name, suffix=''):
     output_dir = f'{FEATURES_DIR}/{analysis_name}'
+    print('Saving feature data to: ', output_dir)
     os.makedirs(output_dir, exist_ok=True)
     adata.write_h5ad(f'{output_dir}/{dataset}_{cell_type}{suffix}.h5ad')
 
@@ -472,11 +480,7 @@ def wrapper_association_with_age_condition(analysis_name, par, association_type,
     suffix = '_promotor' if promotor_only else ''
 
     analys_cfg = CONFIG_FA[analysis_name]
-    data_type = analys_cfg['data_type']
-    feature_type = analys_cfg['feature_type']
     granularity = analys_cfg['granularity']
-
-    print(f'Association {feature_type} with condition...')
     
     stats_store = []
     for cell_type in tqdm(cell_types, desc='cell types'):
@@ -491,6 +495,7 @@ def wrapper_association_with_age_condition(analysis_name, par, association_type,
             )
             # - sanity check
             cell_types_in_data = adata.obs[granularity].unique()
+            
             assert len(cell_types_in_data) == 1 and cell_types_in_data[0] == cell_type, f'Cell type mismatch in {dataset}, {cell_type}'
 
             adata = adata[:, adata.var_names.isin(features)] if features is not None else adata
@@ -811,8 +816,8 @@ def wrapper_ct_freq(par):
             freq_adata = df_2_adata(freq_df, adata)
             write_feature_data(freq_adata, dataset, cell_type, analysis_name=analysis_name)
 
-def wrapper_tfa_traj(par):
-    from hiara.src.feature_association.trajectory_analysis import load_sc_data, compute_tfa_traj_association
+def wrapper_tfa_peg(par):
+    from hiara.src.feature_association.trajectory_analysis import load_sc_data, compute_tfa_peg_association
     # --------- load data
     cell_types = par['cell_types']
     datasets = par['datasets']
@@ -829,7 +834,7 @@ def wrapper_tfa_traj(par):
             # annotate(adata)
             # compute_dpt(adata, leiden_resolution=leiden_resolution) # save adata for visualization and downstream analysis
             calculate_tf_activity(adata, net=retrieve_net_consensus(cell_type=cell_type))
-            corr_matrix = compute_tfa_traj_association(adata, target=SUB_CT_LABEL)
+            corr_matrix = compute_tfa_peg_association(adata, target=SUB_CT_LABEL)
             corr_adata = df_2_adata(corr_matrix.T, adata)
             write_feature_data(corr_adata, dataset, cell_type, analysis_name=analysis_name, suffix='')
 
@@ -875,17 +880,15 @@ def wrapper_aging_hallmarks(par):
 
 def wrapper_ct_pol_dist(par):
     """
-    Calculate PCA-based distance between naive and effector subtypes using gene expression.
+    Calculate mean absolute TF activity difference between naive and effector subtypes.
     For CD8T: Tcm_Naive_CD8 vs Tem_Temra_CD8
     For CD4T: Tcm_Naive_CD4 vs Tem_Effector_CD4
     """
-    from sklearn.decomposition import PCA
     from hiara.src.config import mapping_major_2_minor
     
     cell_types = par['cell_types']
     datasets = par['datasets']
     analysis_name = par['analysis_name']
-    n_pcs = 10
     
     # Define naive-effector pairs
     pol_pairs = {
@@ -893,7 +896,7 @@ def wrapper_ct_pol_dist(par):
         'CD4T': ('Tcm_Naive_CD4', 'Tem_Effector_CD4')
     }
     
-    print('Calculating cell type polarization distance using PCA on gene expression...')
+    print('Calculating cell type polarization distance using mean absolute TF activity difference...')
     
     for cell_type in tqdm(cell_types, desc='cell types'):
         if cell_type not in pol_pairs:
@@ -903,97 +906,292 @@ def wrapper_ct_pol_dist(par):
         naive_ct, effector_ct = pol_pairs[cell_type]
         
         for dataset in datasets:
-            # Load gene expression for both subtypes
+            # Load TF activity for both subtypes
             adata_naive = retrieve_feature_data(
-                analysis_name='ge_sub_b',  # Assuming gene expression data is stored under this analysis name
+                analysis_name='tfa_sub_b',
                 dataset=dataset,
                 cell_type=naive_ct,
-                condition='healthy'  # Ensure we are comparing healthy samples
+                condition='healthy'
             )
             
             adata_effector = retrieve_feature_data(
-                analysis_name='ge_sub_b',  # Assuming gene expression data is stored under this analysis name
+                analysis_name='tfa_sub_b',
                 dataset=dataset,
                 cell_type=effector_ct,
-                condition='healthy'  # Ensure we are comparing healthy samples
+                condition='healthy'
             )
             
-            assert len(adata_naive) == len(adata_effector), f'Unequal number of samples for naive and effector in {dataset}, {cell_type}'
+            if len(adata_naive) != len(adata_effector):
+                groups_a = adata_naive.obs['group_id'].unique()
+                groups_b = adata_effector.obs['group_id'].unique()
+                # keep only common donors
+                common_groups = np.intersect1d(groups_a, groups_b)
+                adata_naive = adata_naive[adata_naive.obs['group_id'].isin(common_groups)]
+                adata_effector = adata_effector[adata_effector.obs['group_id'].isin(common_groups)]
+                assert len(adata_naive) == len(adata_effector), f'After filtering to common donors, still mismatch in number of samples for {dataset}, {cell_type}'
             # Sort by donor_id
             adata_naive = adata_naive[adata_naive.obs['group_id'].argsort()]
             adata_effector = adata_effector[adata_effector.obs['group_id'].argsort()]
-                        
+            
+            # Get common TFs
+            common_tfs = np.intersect1d(adata_naive.var_names, adata_effector.var_names)
+            adata_naive = adata_naive[:, common_tfs]
+            adata_effector = adata_effector[:, common_tfs]
             
             # Get dense matrices
             X_naive = adata_naive.X.toarray() if issparse(adata_naive.X) else adata_naive.X
             X_effector = adata_effector.X.toarray() if issparse(adata_effector.X) else adata_effector.X
             
-            # Combine data for PCA fitting
-            X_combined = np.vstack([X_naive, X_effector])
+            # Calculate mean absolute difference across all TFs per donor
+            pol_dist = np.mean(np.abs(X_effector - X_naive), axis=1)
             
-            # Fit PCA on combined data
-            pca = PCA(n_components=n_pcs)
-            pca.fit(X_combined)
-            
-            # Transform both datasets
-            X_naive_pca = pca.transform(X_naive)
-            X_effector_pca = pca.transform(X_effector)
-            
-            # Calculate absolute difference in PC space per donor
-            pol_dist_pca = np.abs(X_effector_pca - X_naive_pca)
-            
-            # Create new AnnData with PC differences as features
-            pc_names = [f'PC{i+1}_dist' for i in range(n_pcs)]
+            # Create new AnnData with single polarization distance feature
             pol_adata = ad.AnnData(
-                X=pol_dist_pca,
+                X=pol_dist.reshape(-1, 1),
                 obs=adata_naive.obs.copy(),
-                var=pd.DataFrame(index=pc_names)
+                var=pd.DataFrame(index=['pol_dist'])
             )
             
             write_feature_data(pol_adata, dataset, cell_type, analysis_name=analysis_name)
 
+def _wrapper_cell_cell_communication(analysis_name, par):
+    """
+    Calculate cell-cell communication scores using ligand-receptor pairs from CellPhoneDB.
+    Analyzes communication across ALL cell type subtypes (e.g., CD8T subtypes → CD4T subtypes).
+    Features are named: {sender_subtype}_{ligand}_{receiver_subtype}_{receptor}
+    This creates a donor-level feature matrix (not subtype-level).
+    
+    Note: Since communication is across all subtypes, cell_type parameter is used to create
+    a single combined output per dataset (we use 'all' as the cell_type key).
+    """
+    from omnipath.interactions import import_intercell_network
+    
+    datasets = par['datasets']
+    condition = par.get('condition', 'healthy')
+    
+    print('Loading CellPhoneDB ligand-receptor database...')
+    lr_pairs = import_intercell_network(
+        interactions_params={'datasets': 'cellphonedb'},
+        transmitter_params={'categories': 'ligand'},
+        receiver_params={'categories': 'receptor'}
+    )
+    print(f'  - Loaded {len(lr_pairs)} ligand-receptor pairs')
+    
+    config = CONFIG_FA[analysis_name]
+    data_type = config['data_type']
+    
+    print('Calculating cell-cell communication scores ACROSS all cell types...')
+    print(f'  - Data type: {data_type}')
+    print(f'  - Feature naming: {{sender_subtype}}_{{ligand}}_{{receiver_subtype}}_{{receptor}}')
+    
+    for dataset in datasets:
+        print(f'\nProcessing {dataset}...')
+        
+        # Load ALL data at once (all cell types, all subtypes)
+        adata_all = retrieve_adata(
+            dataset=dataset,
+            data_type=data_type,
+            condition=condition,
+            granularity=SUB_CT_LABEL
+        )
+        
+        # Get all unique subtypes
+        all_subtypes = adata_all.obs[SUB_CT_LABEL].unique()
+        print(f'  Found {len(all_subtypes)} subtypes: {list(all_subtypes)}')
+        
+        # Get all unique donors from the full dataset
+        all_donors = sorted(adata_all.obs['group_id'].unique())
+        
+        if len(all_donors) < 10:
+            print(f'  Skipping {dataset} - only {len(all_donors)} donors')
+            continue
+        
+        print(f'  Found {len(all_donors)} donors')
+        
+        # Split by subtype for easier processing
+        subtype_adatas = {
+            subtype: adata_all[adata_all.obs[SUB_CT_LABEL] == subtype].copy()
+            for subtype in all_subtypes
+        }
+        
+        # Calculate communication scores for ALL subtype pairs (across cell types)
+        comm_scores_dict = {}
+        
+        for sender_subtype, adata_sender in tqdm(subtype_adatas.items(), desc=f'{dataset} - sender subtypes'):
+            
+            for receiver_subtype, adata_receiver in subtype_adatas.items():
+                
+                # Find common donors between THIS sender-receiver pair
+                sender_donors = set(adata_sender.obs['group_id'].unique())
+                receiver_donors = set(adata_receiver.obs['group_id'].unique())
+                pair_common_donors = sorted(sender_donors & receiver_donors)
+                
+                if len(pair_common_donors) == 0:
+                    continue
+                
+                # For each L-R pair, calculate communication score
+                for _, row in lr_pairs.iterrows():
+                    # OmniPath intercell network uses 'source_genesymbol' and 'target_genesymbol'
+                    ligand = row.get('source_genesymbol', row.get('genesymbol_intercell_source', ''))
+                    receptor = row.get('target_genesymbol', row.get('genesymbol_intercell_target', ''))
+                    
+                    if not ligand or not receptor:
+                        continue
+                    
+                    # Check if ligand and receptor are expressed
+                    if ligand not in adata_sender.var_names or receptor not in adata_receiver.var_names:
+                        continue
+                    
+                    # Get expression per donor (mean across cells in each donor) for common donors only
+                    ligand_expr_per_donor = adata_sender[:, ligand].to_df().groupby(adata_sender.obs['group_id']).mean()[ligand]
+                    receptor_expr_per_donor = adata_receiver[:, receptor].to_df().groupby(adata_receiver.obs['group_id']).mean()[receptor]
+                    
+                    # Filter to common donors and ensure same order
+                    ligand_expr_per_donor = ligand_expr_per_donor.loc[pair_common_donors]
+                    receptor_expr_per_donor = receptor_expr_per_donor.loc[pair_common_donors]
 
-def determine_std(adata):
-    # Ensure .X is dense
-    if isinstance(adata.X, np.ndarray):
-        X_dense = adata.X
-    elif hasattr(adata.X, "todense"):
-        X_dense = adata.X.todense().A
-    else:
-        raise TypeError("Unexpected type for adata.X: {}".format(data_type(adata.X)))
+                    # Communication score = ligand_expression * receptor_expression
+                    pair_comm_score = ligand_expr_per_donor.values * receptor_expr_per_donor.values
+                    
+                    # Feature name
+                    feature_name = f'{sender_subtype}_{ligand}_{receiver_subtype}_{receptor}'
+                    
+                    # Store scores for all donors (fill with NaN for donors not in this pair)
+                    if feature_name not in comm_scores_dict:
+                        comm_scores_dict[feature_name] = pd.Series(index=all_donors, dtype=float)
+                    
+                    comm_scores_dict[feature_name].loc[pair_common_donors] = pair_comm_score
+        
+        if not comm_scores_dict:
+            print(f'  No communication scores calculated for {dataset}')
+            continue
+        
+        # Create feature matrix (donors × L-R pairs) from dict of Series
+        comm_df = pd.DataFrame(comm_scores_dict)
+        
+        # Remove donors with all NaN values (donors that don't have any of the subtypes)
+        comm_df = comm_df.dropna(how='all')
+        
+        if comm_df.shape[0] < 10:
+            print(f'  Skipping {dataset} - only {comm_df.shape[0]} donors with data after filtering')
+            continue
+        
+        # Create AnnData object
+        # Get metadata from the full dataset
+        obs_metadata = adata_all.obs[adata_all.obs['group_id'].isin(comm_df.index)].copy()
+        obs_metadata = obs_metadata.drop_duplicates(subset='group_id').set_index('group_id')
+        obs_metadata = obs_metadata.loc[comm_df.index]  # Ensure same order
+        
+        comm_adata = ad.AnnData(
+            X=comm_df.values,
+            obs=obs_metadata,
+            var=pd.DataFrame(index=comm_df.columns)
+        )
+        
+        # Add dataset info
+        comm_adata.obs['dataset'] = dataset
+        comm_adata.uns['dataset'] = dataset
+        
+        # Write feature data - use 'all' as cell_type since it spans all cell types
+        write_feature_data(comm_adata, dataset=dataset, cell_type='all', analysis_name=analysis_name)
+        print(f'  ✓ {dataset}: {comm_adata.shape[0]} donors × {comm_adata.shape[1]} L-R pairs across all subtypes')
 
-    # Create DataFrame
-    df = pd.DataFrame(X_dense, index=adata.obs.index, columns=adata.var_names)
-    genes = df.columns
 
-    # Add metadata
-    df["age"] = adata.obs["age"].astype(str)
-    df["donor_id"] = adata.obs["donor_id"].astype(str)
-    df["cell_type"] = adata.obs["cell_type"].astype(str)
 
-    # Compute standard deviation
-    std_df = df.groupby(['cell_type', "donor_id", 'age']).std()
-    std_adata = sc.AnnData(std_df.values)
+def wrapper_cc_communication(analysis_name, par, n_jobs=1): 
+    import liana as li   
+    datasets = par['datasets']
+    condition = par.get('condition', 'healthy')
+    config = CONFIG_FA[analysis_name]
+    granularity = config['granularity']
+    data_type = config['data_type']
+    
+    for dataset in datasets:
+        print(f'\nProcessing {dataset}...')
+        
+        # Load ALL data at once (all cell types, all subtypes)
+        adata_all = retrieve_adata(
+            dataset=dataset,
+            data_type=data_type,
+            condition=condition,
+            test_mode=par['test_mode']
+        )
+        
+        # Get all unique donors
+        all_donors = sorted(adata_all.obs['donor_age'].unique())
+        print(f'  Found {len(all_donors)} donors')
+        
+        # Dictionary to store communication scores per donor
+        # Key: feature_name (source_ligand_target_receptor)
+        # Value: Series indexed by donor_age
+        comm_scores_dict = {}
+        
+        for donor_age in tqdm(all_donors, desc=f'{dataset} - donors'):
+            adata_donor = adata_all[adata_all.obs['donor_age'] == donor_age].copy()
+            
+            # Run LIANA rank_aggregate for this donor
+            lr_results = li.mt.rank_aggregate(
+                adata_donor,
+                groupby=SUB_CT_LABEL,   # Communication between subtypes
+                resource_name="consensus",  # Uses consensus LR database
+                n_jobs=n_jobs,
+                expr_prop=0.1,  # Min expression proportion
+                n_perms=None,  # Skip permutation test for speed
+                verbose=False,
+                use_raw=False,
+                inplace=False
+            )
+            
+            # Extract communication scores
+            # Use 'lrscore' as the main metric (LIANA's aggregate score)
+            for _, row in lr_results.iterrows():
+                source = row['source']
+                target = row['target']
+                ligand = row['ligand_complex']
+                receptor = row['receptor_complex']
+                score = row['lrscore']  # Use LIANA's aggregate score
+                assert np.isnan(score) == False, f'NaN score for {source} → {target} ({ligand} → {receptor}) in donor {donor_age}, skipping'
+                
+                # Create feature name: source_ligand_target_receptor
+                feature_name = f'{source}__{ligand}__{target}__{receptor}'
+                
+                # Initialize if not exists
+                if feature_name not in comm_scores_dict:
+                    comm_scores_dict[feature_name] = pd.Series(index=all_donors, dtype=float)
+                
+                # Store score for this donor
+                comm_scores_dict[feature_name].loc[donor_age] = score
+        
+        if not comm_scores_dict:
+            print(f'  No communication scores calculated for {dataset}')
+            continue
+        
+        # Create feature matrix (donors × L-R pairs)
+        comm_df = pd.DataFrame(comm_scores_dict)
+        
+        # Remove donors with all NaN (shouldn't happen, but safety check)
+        comm_df = comm_df.dropna(how='all')
+        
+        # Create AnnData object
+        # Get metadata from the full dataset
+        obs_metadata = adata_all.obs[adata_all.obs['donor_age'].isin(comm_df.index)].copy()
+        obs_metadata = obs_metadata.drop_duplicates(subset='donor_age').set_index('donor_age')
+        obs_metadata = obs_metadata.loc[comm_df.index]  # Ensure same order
+        
+        comm_adata = ad.AnnData(
+            X=comm_df.values,
+            obs=obs_metadata,
+            var=pd.DataFrame(index=comm_df.columns)
+        )
+        
+        # Add dataset info
+        comm_adata.obs['dataset'] = dataset
+        comm_adata.uns['dataset'] = dataset
+        comm_adata.obs[granularity] = 'all'  # Since this is across all cell types
+        # Write feature data - use 'all' as cell_type since it spans all cell types
+        write_feature_data(comm_adata, dataset=dataset, cell_type='all', analysis_name=analysis_name)
+        print(f'  ✓ {dataset}: {comm_adata.shape[0]} donors × {comm_adata.shape[1]} L-R pairs')
 
-    # Reconstruct obs
-    std_adata.obs = std_df.reset_index()[['cell_type', "donor_id", 'age']]
-
-    # Prepare metadata from adata.obs with only unique mappings
-    group_cols = ['cell_type', 'donor_id', 'age']
-    unique_cols = [col for col in adata.obs.columns if col not in group_cols]
-    meta_df = adata.obs.copy()
-    meta_df[group_cols] = meta_df[group_cols].astype(str)  # Ensure dtype consistency
-    meta_df = meta_df[group_cols + unique_cols].drop_duplicates(subset=group_cols)
-
-    std_adata.obs[group_cols] = std_adata.obs[group_cols].astype(str)  # Also convert here
-    std_adata.obs = std_adata.obs.merge(meta_df, on=group_cols, how='left')
-
-    # Final cleanup
-    std_adata.obs['age'] = pd.to_numeric(std_adata.obs['age'], errors='coerce')
-    std_adata.var = pd.DataFrame(index=genes)
-    std_adata.X = np.nan_to_num(std_adata.X, nan=0)
-
-    return std_adata
 
 def association_with_age(adata, association_type, gene_col='gene'):
     '''
@@ -1009,6 +1207,20 @@ def association_with_age(adata, association_type, gene_col='gene'):
         df = adata_sub.to_df()
         df = df.reset_index(drop=True)
         df['age'] = adata_sub.obs['age'].values
+        
+        # Remove NaN values (donors missing this feature/subtype)
+        valid_mask = ~df[gene].isna()
+        df = df[valid_mask]
+        
+        if len(df) < 10:
+            # Not enough non-NaN samples for reliable statistics
+            return {
+                gene_col: gene,
+                'p_value': 1.0,
+                'slope': 0.0,
+                'n_samples': len(df)
+            }
+        
         df.sort_values('age', inplace=True)
 
         ages = df['age'].values
@@ -1042,7 +1254,8 @@ def association_with_age(adata, association_type, gene_col='gene'):
         return {
             gene_col: gene,
             'p_value': float(p_value),
-            'slope': float(slope)
+            'slope': float(slope),
+            'n_samples': len(df)
         }
 
     # Parallelize gene processing

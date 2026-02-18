@@ -329,12 +329,9 @@ def _plot_scatter_feature_vs_age(features, analysis_name, cell_type, datasets=DI
     
     for idx, feature in enumerate(features):
         ax = axes[idx]
-        
-        # Collect data from all datasets
         all_ages = []
         all_values = []
         all_datasets = []
-        
         for dataset in datasets:
             try:
                 feature_data = retrieve_feature_data(
@@ -342,7 +339,6 @@ def _plot_scatter_feature_vs_age(features, analysis_name, cell_type, datasets=DI
                     dataset=dataset,
                     cell_type=cell_type
                 )
-                
                 # Get feature index
                 if feature not in feature_data.var_names:
                     continue
@@ -384,21 +380,11 @@ def _plot_scatter_feature_vs_age(features, analysis_name, cell_type, datasets=DI
             color = palette_datasets_pretty.get(dataset, 'gray')
             ax.scatter(dataset_data['age'], dataset_data['value'], 
                         alpha=0.5, s=20, color=color, label=dataset)
-            
-            # Plot regression line using slope from stats
-            # dataset_stats = stats[(stats['gene'] == feature) & (stats['dataset'] == dataset)]
-            # if not dataset_stats.empty:
-            #     slope = dataset_stats['slope'].values[0]
-            #     ages_range = np.array([dataset_data['age'].min(), dataset_data['age'].max()])
-            #     mean_value = dataset_data['value'].mean()
-            #     mean_age = dataset_data['age'].mean()
-            #     intercept = mean_value - slope * mean_age
-                
-            #     ax.plot(ages_range, slope * ages_range + intercept, 
-            #            color=color, linestyle='--', linewidth=2, alpha=0.8)
         
         ax.set_xlabel('Age (years)', fontsize=10)
-        ax.set_ylabel('Gene', fontsize=10)
+        y_label = CONFIG_FA[analysis_name]['feature_type']
+        ax.set_ylabel(surrogate_names.get(y_label, y_label), fontsize=10)
+        feature = surrogate_names.get(feature, feature)
         ax.set_title(f'{feature}', fontsize=11, fontweight='bold')
         ax.spines[['top', 'right']].set_visible(False)
         
@@ -411,13 +397,23 @@ def _plot_scatter_feature_vs_age(features, analysis_name, cell_type, datasets=DI
     
     plt.suptitle(f'{cell_type}', fontsize=13, fontweight='bold', y=1.00)
     plt.tight_layout()
-def plot_scatter_feature_vs_age(analysis_name, cell_types=None, features=None, feature_selection_mode='top_central', top_features=5, datasets=DISCOVERY_COHORTS):
+def plot_scatter_feature_vs_age(
+        analysis_name, 
+        cell_types=None, 
+        features=None, 
+        filter_for_sig=True,
+        feature_selection_mode='top_central', 
+        top_features=5, 
+        datasets=DISCOVERY_COHORTS
+        ):
     assert feature_selection_mode in ['top_central', 'top_sig']
-    
-    if cell_types is None:
-        cell_types = MAJOR_CTS
+    if filter_for_sig:
+        stats_all = retrieve_sig_stats(analysis_name=analysis_name)
+    else:
+        stats_all = retrieve_stats(analysis_name=analysis_name)
+    cell_types = cell_types if cell_types is not None else stats_all['cell_type'].unique()
     for cell_type in cell_types:
-        stats = retrieve_sig_stats(analysis_name=analysis_name, cell_type=cell_type)
+        stats = stats_all[stats_all['cell_type'] == cell_type]
         if stats.empty:
             print(f"No significant features for {cell_type}, skipping...")
             continue
@@ -452,6 +448,7 @@ def plot_young_vs_aging(analysis_name, cell_type,
 
     # Get significant aging associations
     stats_sig = retrieve_sig_stats(analysis_name=analysis_name, cell_type=cell_type)
+    feature_type = CONFIG_FA[analysis_name]['feature_type']
     datasets = stats_sig['dataset'].unique()
     
     # Get average slope per feature
@@ -536,8 +533,9 @@ def plot_young_vs_aging(analysis_name, cell_type,
                     label=f'Diverge ({len(aligned_data)})')
 
     # Labels and styling
-    ax.set_xlabel('TATC aging slope', fontsize=10)
-    ax.set_ylabel(f'TATC in young adults\n(<{young_age_threshold} years)', fontsize=10)
+    feature_type = surrogate_names.get(feature_type, feature_type)
+    ax.set_xlabel(f'{feature_type} aging slope', fontsize=10)
+    ax.set_ylabel(f'{feature_type} in young adults\n(<{young_age_threshold} years)', fontsize=10)
     ax.set_title(f'{cell_type}', fontsize=12, fontweight='bold')
     ax.axhline(y=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
     ax.axvline(x=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
@@ -692,7 +690,7 @@ def plot_case_tf(args):
             if plot_genexpression:
                 ax.set_xlabel('')
                 ax = axes[1]
-                plot_feature_values_all_datasets(cell_type, analysis_name='ge_bulk', feature=case_tf, 
+                plot_feature_values_all_datasets(cell_type, analysis_name='ge_major_b', feature=case_tf, 
                                                 datasets=datasets, show_cbar=show_cbar, ax=ax, show_ylabels=show_ylabels)
             
             plt.suptitle(f'{cell_type}', y=1.05)
@@ -1284,7 +1282,7 @@ def plot_features_vs_datasets(cell_type,
     )
     ax.spines[['top', 'right', 'left']].set_visible(False)
     ax.margins(**margins_ax2)
-    ax.set_xlabel('Centrality\n(out-degree)' if feature_type in ['tf_activity', 'tfa_traj'] else 'Centrality\n(in-degree)')
+    ax.set_xlabel('Centrality\n(out-degree)' if feature_type in ['tf_activity', 'tfa_peg'] else 'Centrality\n(in-degree)')
     ax.set_ylabel('')
     ax.set_yticks([])
     
@@ -1931,3 +1929,5 @@ def plot_activation_vs_expression(df_combined,
         ax.axhline(sig_threshold, linestyle="--", color="red", alpha=alpha, linewidth=linewidth)  # Horizontal
         ax.axhline(-sig_threshold, linestyle="--", color="red", alpha=alpha, linewidth=linewidth)  # Horizontal
         ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1), frameon=False, fontsize=10, title='Dataset', title_fontsize=10)
+
+

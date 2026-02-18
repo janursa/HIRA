@@ -21,10 +21,10 @@ from hiara import get_config
 
 
 def write_traj_stats(results, dataset, cell_type):
-    output_path = f"{OUTPUT_DIR}/tfa_traj_stats_{dataset}_{cell_type}.csv"
+    output_path = f"{OUTPUT_DIR}/tfa_peg_stats_{dataset}_{cell_type}.csv"
     results.to_csv(output_path, index=False)
 def retrieve_traj_stats(dataset, cell_type):
-    output_path = f"{OUTPUT_DIR}/tfa_traj_stats_{dataset}_{cell_type}.csv"
+    output_path = f"{OUTPUT_DIR}/tfa_peg_stats_{dataset}_{cell_type}.csv"
     traj_df = pd.read_csv(output_path)
     return traj_df 
 
@@ -249,7 +249,7 @@ def _run_association_model(adata_subset, tfs, factor_name, formula):
     return results
 
 
-def tfa_traj_association(adata, association='continuous'):
+def tfa_peg_association(adata, association='continuous'):
     """
     Run association analysis to find TFs whose pseudotime association changes with a factor.
     
@@ -349,10 +349,10 @@ def tfa_traj_association(adata, association='continuous'):
     
     return results_df
 
-def compute_tfa_traj_association(adata, target=SUB_CT_LABEL):
+def compute_tfa_peg_association(adata, target=SUB_CT_LABEL):
     """
     Calculate Spearman correlation between TF activity and traj variable.
-    Stores results in adata.varm['tfa_traj_corr'] and adata.varm['tfa_traj_pval'].
+    Stores results in adata.varm['tfa_peg_corr'] and adata.varm['tfa_peg_pval'].
     """
     
     from hiara import SUB_CTS

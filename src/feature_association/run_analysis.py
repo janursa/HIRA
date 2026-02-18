@@ -15,7 +15,7 @@ import warnings
 from hiara.src.config import FEATURES_DIR, MAJOR_CTS, DISCOVERY_COHORTS, DATA_TYPES, FEATURE_TYPES, get_config, META_MIN_COHORT, CONFIG_FA
 from hiara.src.feature_association.helper import (
     wrapper_tf_activity,
-    wrapper_tfa_traj,
+    wrapper_tfa_peg,
     wrapper_aging_hallmarks,
     wrapper_genesets_scores,
     wrapper_association_with_age_condition,
@@ -23,7 +23,8 @@ from hiara.src.feature_association.helper import (
     retrieve_sig_stats, 
     write_features_stats,
     wrapper_ct_freq,
-    wrapper_ct_pol_dist
+    wrapper_ct_pol_dist,
+    wrapper_cc_communication
 )
 
 warnings.filterwarnings("ignore")
@@ -33,18 +34,20 @@ def calculate_features(analysis_name, par):
     """Calculate features based on type."""
     if analysis_name in ['tfa_major_b', 'tfa_sub_b']:
         wrapper_tf_activity(analysis_name, par)
-    elif analysis_name == 'ge_bulk':
+    elif analysis_name in ['ge_sub_b', 'ge_major_b']:
         pass
     elif analysis_name == 'gene_score':
         wrapper_genesets_scores(par)
     elif analysis_name == 'aging_hallmarks':
         wrapper_aging_hallmarks(par)
-    elif analysis_name == 'tfa_traj':
-        wrapper_tfa_traj(par)
+    elif analysis_name == 'tfa_peg':
+        wrapper_tfa_peg(par)
     elif analysis_name == 'ct_freq':
         wrapper_ct_freq(par)
     elif analysis_name == 'ct_pol_dist':
         wrapper_ct_pol_dist(par)
+    elif analysis_name == 'ccc_sub_b':
+        wrapper_cc_communication(analysis_name, par, n_jobs=1)
     else:
         raise ValueError(f"Unknown analysis_name: {analysis_name}")
 

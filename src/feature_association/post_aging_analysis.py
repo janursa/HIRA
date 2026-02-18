@@ -32,6 +32,7 @@ from hiara.src.feature_association.plots import wrapper_sig_features_counts, plo
     plot_interaction_of_features_between_cell_types, plot_case_tf, gsea_analysis, plot_scatter_feature_vs_age, \
         plot_features_vs_datasets, plot_directional_consistency_scatter, \
         plot_young_vs_aging
+from hiara.src.feature_association.cc.plots import wrapper_ccc_post_analysis
 
 
 warnings.filterwarnings("ignore")
@@ -61,6 +62,8 @@ if __name__ == "__main__":
     stats_features_sig = retrieve_sig_stats(analysis_name=args.analysis_name)
 
     if analysis_name in ['tfa_major_b']:
+        plot_scatter_feature_vs_age(analysis_name, cell_types=['CD8T', 'CD4T'], )
+
         plot_heatmap_overal(stats_features, analysis_name=args.analysis_name)
         wrapper_sig_features_counts(args)
         plot_central_features(stats_features_sig, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'])
@@ -92,8 +95,7 @@ if __name__ == "__main__":
                                             save_suffix = 'sub_vs_major_aging',
                                             pvalue_col='meta_p_adj',
                                             all_sig=True
-                                        )
-        
+                                        )     
     elif analysis_name == 'gene_expression':
         wrapper_sig_features_counts(args)
         plot_heatmap_overal(stats_features, analysis_name=args.analysis_name)
@@ -115,10 +117,7 @@ if __name__ == "__main__":
                                             save_suffix = '',
                                             pvalue_col='meta_p_adj'
                                         )
-
-        
-        
-    elif analysis_name in ['tfa_traj']:
+    elif analysis_name in ['tfa_peg']:
         plot_young_vs_aging(analysis_name, cell_type='CD8T',  
                         young_age_threshold=30, annotate_top_n=10)
         wrapper_sig_features_counts(args)
@@ -146,11 +145,10 @@ if __name__ == "__main__":
         plot_scatter_feature_vs_age(analysis_name, cell_types=['CD8T'], feature_selection_mode='top_sig', top_features=10)
         plot_features_vs_datasets(cell_type='CD8T', analysis_name=args.analysis_name, top_features=20)
     elif analysis_name == 'ct_pol_dist':
-        wrapper_sig_features_counts(args)
-        plot_heatmap_overal(stats_features, analysis_name=args.analysis_name)
-        plot_scatter_feature_vs_age(analysis_name, cell_types=['CD8T', 'CD4T'], feature_selection_mode='top_sig', top_features=10)
-        plot_features_vs_datasets(cell_type='CD8T', analysis_name=args.analysis_name, top_features=20)
-        plot_features_vs_datasets(cell_type='CD4T', analysis_name=args.analysis_name, top_features=20)
+        plot_scatter_feature_vs_age(analysis_name, cell_types=['CD8T', 'CD4T'], features=['pol_dist'], filter_for_sig=False)
+    elif analysis_name == 'ccc_sub_b':
+        wrapper_ccc_post_analysis(analysis_name)
+        plot_scatter_feature_vs_age(analysis_name, cell_types=['all'], feature_selection_mode='top_sig', top_features=10)
     else:
         
         raise ValueError('Unknown feature type')
