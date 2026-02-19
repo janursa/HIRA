@@ -12,7 +12,7 @@ import argparse
 import sys
 import warnings
 
-from hiara.src.config import FEATURES_DIR, MAJOR_CTS, DISCOVERY_COHORTS, DATA_TYPES, FEATURE_TYPES, get_config, META_MIN_COHORT, get_config_fa, get_available_fa_analyses, MAJOR_CT_LABEL, SUB_CT_LABEL
+from hiara.src.config import SUB_CTS, FEATURES_DIR, MAJOR_CTS, DISCOVERY_COHORTS, DATA_TYPES, FEATURE_TYPES, get_config, META_MIN_COHORT, get_config_fa, get_available_fa_analyses, MAJOR_CT_LABEL, SUB_CT_LABEL
 from hiara.src.feature_association.helper import (
     wrapper_tf_activity,
     wrapper_tfa_peg,
@@ -254,7 +254,7 @@ def main():
 
     stats_sig = retrieve_sig_stats(dataset=None if multi_cohort else dataset,
                                    analysis_name=args.analysis_name).drop_duplicates(subset=['gene', 'cell_type', 'condition'])
-    print(f"\nSignificant features (FDR < 0.05) in meta-analysis:")
+    print(f"\nSignificant features (FDR < 0.05):")
     print(stats_sig.groupby(['cell_type', 'condition'])['gene'].nunique())
     
     return 0

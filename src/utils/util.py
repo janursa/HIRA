@@ -176,7 +176,7 @@ def retrieve_adata(dataset,
 
 def retrieve_net(dataset, cell_type, promotor_only=False, data_type='sc', grns_dir=GRNS_DIR, prior_dir=PRIOR_DIR):      
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-    assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO'], f'Unknown cell type {cell_type_major}'
+    assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO', 'all'], f'Unknown cell type {cell_type_major}'
     folder = f"{grns_dir}/{dataset}/{data_type}/"
     
     net = pd.read_csv(f"{folder}/net_{cell_type_major}.csv")

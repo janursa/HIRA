@@ -161,9 +161,9 @@ def plot_directional_consistency_scatter(
     label_consistent = label_consistent + ' \n ({} TFs)'
     label_opposing = label_opposing + ' \n ({} TFs)'
 
-    stats = stats.groupby(['cell_type', 'gene']).agg({'slope': 'mean', pvalue_col: 'max'}).reset_index()
+    stats = stats.groupby(['cell_type', 'gene', 'comparison']).agg({'slope': 'mean', pvalue_col: 'max'}).reset_index()
     # Load reference aging genes (only significant)
-    stats_ref = stats_ref.groupby(['cell_type', 'gene']).agg({'slope': 'mean', 'meta_p_adj': 'max'}).reset_index()
+    stats_ref = stats_ref.groupby(['cell_type', 'gene', 'comparison']).agg({'slope': 'mean', 'meta_p_adj': 'max'}).reset_index()
     included_cell_types = stats['cell_type'].unique()
     all_cell_data = []
     for cell_type in included_cell_types:
@@ -186,16 +186,16 @@ def plot_directional_consistency_scatter(
         if True:
             
             sl_ct['abs_log10_p_adj_sl'] = sl_ct[pvalue_col].apply(lambda x: -np.log10(x + 1e-300))
-            print(f"\n  Top 5 TFs with positive slope:")
-            top_5 = sl_ct[sl_ct['slope'] > 0].nlargest(5, 'abs_log10_p_adj_sl')
-            names = ', '.join(top_5['gene'].tolist())
-            print(f"    {cell_type}: {names}")
-            print(f"\n  Top 5 TFs with negative slope:")
-            top_5 = sl_ct[sl_ct['slope'] < 0].nlargest(5, 'abs_log10_p_adj_sl')
-            names = ', '.join(top_5['gene'].tolist())
-            print(f"    {cell_type}: {names}")
+            # print(f"\n  Top 5 TFs with positive slope:")
+            # top_5 = sl_ct[sl_ct['slope'] > 0].nlargest(5, 'abs_log10_p_adj_sl')
+            # names = ', '.join(top_5['gene'].tolist())
+            # print(f"    {cell_type}: {names}")
+            # print(f"\n  Top 5 TFs with negative slope:")
+            # top_5 = sl_ct[sl_ct['slope'] < 0].nlargest(5, 'abs_log10_p_adj_sl')
+            # names = ', '.join(top_5['gene'].tolist())
+            # print(f"    {cell_type}: {names}")
         merged = ref_ct.merge(
-            sl_ct[['gene', 'slope', pvalue_col]],
+            sl_ct[['gene', 'slope', 'comparison' ,pvalue_col]],
             on='gene',
             how='left',
             suffixes=('_ref', '_sl')
@@ -209,6 +209,8 @@ def plot_directional_consistency_scatter(
             print(f"  {cell_type}: All {len(overlap)} aging TFs found in SL data.")
         else:
             print(missing_merged['gene'].nunique(), ' missing genes in the condition data for ', cell_type)
+            # Filter out missing genes before continuing
+            merged = merged[~merged['slope_sl'].isna()].copy()
         
         merged['consistent'] = np.sign(merged['slope_ref']) == np.sign(merged['slope_sl'])
         merged['cell_type'] = cell_type
@@ -271,6 +273,12 @@ def plot_directional_consistency_scatter(
         ax.axvline(x=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
         
         # Set symmetric axis limits around zero
+        # Check for NaN values
+        if cell_data[f'{association_col}_sl'].isna().any():
+            raise ValueError(f"NaN values found in {association_col}_sl for cell type {cell_type}")
+        if cell_data[f'{association_col}_ref'].isna().any():
+            raise ValueError(f"NaN values found in {association_col}_ref for cell type {cell_type}")
+        
         x_max = max(abs(cell_data[f'{association_col}_sl'].min()), abs(cell_data[f'{association_col}_sl'].max()))
         y_max = max(abs(cell_data[f'{association_col}_ref'].min()), abs(cell_data[f'{association_col}_ref'].max()))
         
@@ -1062,7 +1070,9 @@ def plot_features_vs_datasets(cell_type,
                               filter_significant=True, 
                               features_dir=None,
                               show_size_legend=False,
-                              plots_dir=PLOTS_DIR):
+                              plots_dir=PLOTS_DIR,
+                              
+                              ):
 
     feature_type = get_config_fa(analysis_name)['feature_type']
     n_datasets = len(datasets)

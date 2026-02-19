@@ -240,34 +240,138 @@ def plot_ccc_top_pairs(stats_sig, analysis_name, top_n=20):
     print(f"  ✓ Saved: {file_name}")
 
 
-def wrapper_ccc_post_analysis(analysis_name):
+def plot_ccc_lr_pairs_vs_datasets(analysis_name, datasets=None, top_n=15, filter_significant=True):
     """
-    Main wrapper for CCC post-analysis
+    Plot hub L-R pairs across datasets - shows which ligand-receptor interactions
+    are consistently significant across multiple datasets and cell type pairs.
+    Similar to plot_features_vs_datasets but for CCC data.
     """
-    print("\n" + "="*80)
-    print("CCC POST-ANALYSIS")
-    print("="*80)
+    from hiara.src.feature_association.helper import retrieve_stats
+    from hiara.src.config import DISCOVERY_COHORTS, surrogate_names, cmap_trend
+    from matplotlib.colors import Normalize
+    from matplotlib import gridspec
     
-    # Load significant results
-    stats_sig = retrieve_sig_stats(analysis_name=analysis_name)
+    if datasets is None:
+        datasets = DISCOVERY_COHORTS
     
-    if len(stats_sig) == 0:
-        print("No significant results found!")
-        return
+    print(f"\nCreating L-R pairs vs datasets plot...")
     
-    print(f"\nTotal significant L-R pairs: {len(stats_sig)}")
-    print(f"  Increasing with age: {(stats_sig['slope'] > 0).sum()}")
-    print(f"  Decreasing with age: {(stats_sig['slope'] < 0).sum()}")
+    # Load all stats
+    stats_all = retrieve_stats(analysis_name=analysis_name)
+    stats_all = stats_all[stats_all['dataset'].isin(datasets)]
     
-    # Run all analyses
-    plot_ccc_sender_receiver_matrix(stats_sig.copy(), analysis_name, trend='both')
-    plot_ccc_sender_receiver_matrix(stats_sig.copy(), analysis_name, trend='positive')
-    plot_ccc_sender_receiver_matrix(stats_sig.copy(), analysis_name, trend='negative')
-    plot_ccc_directionality(stats_sig.copy(), analysis_name)
-    plot_ccc_ligand_receptor_families(stats_sig.copy(), analysis_name)
-    plot_ccc_hub_analysis(stats_sig.copy(), analysis_name)
-    plot_ccc_top_pairs(stats_sig.copy(), analysis_name, top_n=20)
+    if filter_significant:
+        stats_sig = retrieve_sig_stats(analysis_name=analysis_name)
+        sig_genes = stats_sig['gene'].unique()
+        stats_all = stats_all[stats_all['gene'].isin(sig_genes)]
     
-    print("\n" + "="*80)
-    print("CCC POST-ANALYSIS COMPLETE")
-    print("="*80)
+    # Parse L-R pair from feature name (extract ligand-receptor: indices 1 and 3)
+    def get_lr_pair(gene_name):
+        parts = parse_ccc_feature_name(gene_name)
+        if parts[1] and parts[3]:
+            return f"{parts[1]}-{parts[3]}"  # ligand-receptor
+        return None
+    
+    stats_all['lr_pair'] = stats_all['gene'].apply(get_lr_pair)
+    stats_all = stats_all[stats_all['lr_pair'].notna()]
+    
+    # Count how many times each L-R pair appears across datasets and cell type combinations (centrality)
+    lr_counts = stats_all.groupby('lr_pair').size().reset_index(name='centrality')
+    lr_counts = lr_counts.sort_values('centrality', ascending=False)
+    
+    # Get top hub L-R pairs
+    top_lr_pairs = lr_counts.head(top_n)['lr_pair'].values
+    stats_subset = stats_all[stats_all['lr_pair'].isin(top_lr_pairs)]
+    
+    # Prepare data for plotting
+    stats_subset['neg_log10_adj_pval'] = -np.log10(stats_subset['p_value_adj'])
+    stats_subset['dataset'] = stats_subset['dataset'].apply(lambda name: surrogate_names.get(name, name))
+    stats_subset['dataset'] = pd.Categorical(stats_subset['dataset'], categories=[surrogate_names.get(d, d) for d in datasets], ordered=True)
+    stats_subset['lr_pair'] = pd.Categorical(stats_subset['lr_pair'], categories=top_lr_pairs, ordered=True)
+    
+    # Group by L-R pair and dataset, aggregate across cell type pairs
+    plot_data = stats_subset.groupby(['lr_pair', 'dataset']).agg({
+        'slope': 'mean',
+        'neg_log10_adj_pval': 'max',
+        'gene': 'size'
+    }).reset_index()
+    plot_data.rename(columns={'gene': 'n_cell_pairs'}, inplace=True)
+    
+    # Prepare centrality data
+    centrality_data = lr_counts[lr_counts['lr_pair'].isin(top_lr_pairs)].copy()
+    centrality_data['lr_pair'] = pd.Categorical(centrality_data['lr_pair'], categories=top_lr_pairs, ordered=True)
+    centrality_data = centrality_data.sort_values('lr_pair')
+    
+    # Normalize centrality for plotting
+    centrality_data['centrality_norm'] = centrality_data['centrality'] / centrality_data['centrality'].max()
+    
+    # Plotting
+    n_datasets = len(datasets)
+    base_width = max(1.5, min(3.5, 1.0 + n_datasets * 0.2))
+    base_height = max(0.12, min(0.25, 0.2 - top_n * 0.002))
+    fig_width = base_width * n_datasets + 2  # Extra space for centrality
+    fig_height = base_height * top_n + 1
+    
+    # Create figure with gridspec for multiple panels
+    fig = plt.figure(figsize=(fig_width, fig_height))
+    gs = gridspec.GridSpec(1, 2, width_ratios=[3, 1], wspace=0.05)
+    
+    # Main scatter plot
+    ax_main = fig.add_subplot(gs[0])
+    
+    # Create color normalization for slope (symmetric around 0)
+    max_abs_slope = abs(plot_data['slope']).max()
+    norm = Normalize(vmin=-max_abs_slope, vmax=max_abs_slope)
+    
+    # Create scatter plot
+    for dataset in plot_data['dataset'].unique():
+        data_subset = plot_data[plot_data['dataset'] == dataset]
+        x = [list(plot_data['dataset'].cat.categories).index(dataset)] * len(data_subset)
+        y = [list(plot_data['lr_pair'].cat.categories).index(lr) for lr in data_subset['lr_pair']]
+        
+        scatter = ax_main.scatter(
+            x, y,
+            s=data_subset['neg_log10_adj_pval'] * 10,
+            c=data_subset['slope'],
+            cmap=cmap_trend,
+            norm=norm,
+            alpha=0.8,
+            edgecolors='black',
+            linewidths=0.5
+        )
+    
+    # Format main plot axes
+    ax_main.set_xticks(range(len(plot_data['dataset'].cat.categories)))
+    ax_main.set_xticklabels(plot_data['dataset'].cat.categories, rotation=45, ha='right')
+    ax_main.set_yticks(range(len(top_lr_pairs)))
+    ax_main.set_yticklabels(top_lr_pairs)
+    ax_main.set_xlabel('Dataset', fontsize=11)
+    ax_main.set_ylabel('Ligand-Receptor Pair', fontsize=11)
+    ax_main.set_title(f'Top {top_n} Hub L-R Pairs Across Datasets', fontsize=12, pad=10)
+    ax_main.spines['right'].set_visible(False)
+    ax_main.spines['top'].set_visible(False)
+    ax_main.grid(True, alpha=0.2, axis='y')
+    
+    # Add colorbar
+    cbar = plt.colorbar(scatter, ax=ax_main, label='Association with age (slope)', pad=0.02)
+    
+    # Centrality barplot
+    ax_centrality = fig.add_subplot(gs[1])
+    ax_centrality.barh(
+        range(len(centrality_data)),
+        centrality_data['centrality'].values,
+        color='#56B4E9',
+        alpha=0.7
+    )
+    ax_centrality.set_yticks(range(len(top_lr_pairs)))
+    ax_centrality.set_yticklabels([])  # No labels, shared with main plot
+    ax_centrality.set_xlabel('Centrality\n(# occurrences)', fontsize=10)
+    ax_centrality.spines['right'].set_visible(False)
+    ax_centrality.spines['top'].set_visible(False)
+    ax_centrality.spines['left'].set_visible(False)
+    ax_centrality.set_ylim(ax_main.get_ylim())
+    
+    file_name = f"{PLOTS_DIR}/ccc_lr_pairs_vs_datasets_{analysis_name}.png"
+    plt.savefig(file_name, bbox_inches='tight', dpi=300)
+    plt.close()
+    print(f"  ✓ Saved: {file_name}")

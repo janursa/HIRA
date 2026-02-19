@@ -49,8 +49,6 @@ def retrieve_stats(analysis_name, cell_type=None, dataset=None, multi_cohort=Non
         stats = pd.read_csv(
             f"{features_dir}/{analysis_name}/stats/stats_{dataset}{suffix}.csv"
         )
-    
-
     # optional cell-type filtering
     if cell_type is not None:
         if cell_type not in stats["cell_type"].unique():
@@ -200,7 +198,8 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
         mask_ctr = adata.obs[condition_col] == ctr_group
         assert mask_ctr.sum() > 0, f'No control found in {ctr_group} {dataset}'
         mask_condition = adata.obs[condition_col] == condition
-        assert mask_condition.sum() > 0, f'No condition found in {condition} {dataset}'
+        if mask_condition.sum() == 0:
+            raise ValueError(f'No condition found in {condition} {dataset} condition_col: {condition_col}, available conditions: {adata.obs[condition_col].unique()}')
         
         control_group = adata.X[mask_ctr.values, :]
         case_group = adata.X[mask_condition.values, :]
@@ -795,8 +794,11 @@ def wrapper_genesets_scores(par):
             write_feature_data(adata_scores, dataset, cell_type, analysis_name=analysis_name, suffix='')
 def df_2_adata(df, obs):
     df_adata = ad.AnnData(X=df.values, var=pd.DataFrame(index=df.columns), obs=pd.DataFrame(index=df.index))
+    
+    # Use donor_age as the primary grouping key
     group_metadata = obs.drop_duplicates(subset='donor_age').set_index('donor_age')
     cell_counts = obs.groupby('donor_age').size().rename('cell_count')
+    
     df_adata.obs = df_adata.obs.merge(group_metadata, left_index=True, right_index=True, how='left')
     df_adata.obs = df_adata.obs.merge(cell_counts, left_index=True, right_index=True, how='left')
     return df_adata
@@ -811,19 +813,47 @@ def wrapper_ct_freq(par):
     data_type = get_config_fa(analysis_name)['data_type']
     granularity = get_config_fa(analysis_name)['granularity']
     cell_types = par['cell_types']
+    
+    # Handle condition parameter - convert to list if needed
+    conditions = par['condition']
+    if isinstance(conditions, str):
+        conditions = [conditions]
+    
     for dataset in datasets:
         for cell_type in tqdm(cell_types, desc='cell types'):
-            obs = retrieve_adata(dataset=dataset, 
-                                data_type=data_type, 
-                                only_obs=True, 
-                                condition='healthy', 
-                                cell_type=cell_type
-                                )
-            freq_df = obs.groupby(['donor_age', granularity]).size().unstack().fillna(0)
-            freq_df = freq_df.div(freq_df.sum(axis=1), axis=0)
-            freq_adata = df_2_adata(freq_df, obs)
-            freq_adata.obs[granularity] = cell_type
-            write_feature_data(freq_adata, dataset, cell_type, analysis_name=analysis_name)
+            # Process each condition separately and concatenate
+            freq_adata_list = []
+            
+            for condition in conditions:
+                obs = retrieve_adata(dataset=dataset, 
+                                    data_type=data_type, 
+                                    only_obs=True, 
+                                    condition=condition, 
+                                    cell_type=cell_type
+                                    )
+                
+                # Skip if no data for this condition
+                if len(obs) == 0:
+                    print(f'No data for {dataset}, {cell_type}, {condition}')
+                    continue
+                
+                freq_df = obs.groupby(['donor_age', granularity]).size().unstack(fill_value=0)
+                freq_df = freq_df.div(freq_df.sum(axis=1), axis=0)
+                freq_adata = df_2_adata(freq_df, obs)
+                freq_adata.obs[granularity] = cell_type
+                freq_adata.obs['condition'] = condition
+                freq_adata_list.append(freq_adata)
+            
+            # Concatenate all conditions
+            if len(freq_adata_list) == 0:
+                print(f'No frequency data calculated for {dataset}, {cell_type}')
+                raise ValueError(f'No frequency data calculated for {dataset}, {cell_type}')
+            elif len(freq_adata_list) == 1:
+                freq_adata_combined = freq_adata_list[0]
+            else:
+                freq_adata_combined = ad.concat(freq_adata_list, join='outer', fill_value=0)
+            
+            write_feature_data(freq_adata_combined, dataset, cell_type, analysis_name=analysis_name)
         
 
 def wrapper_tfa_peg(par):

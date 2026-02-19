@@ -20,11 +20,19 @@ warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 CLOCK_V = 'V1'
 USE_LOCAL_CLOCK = True  # If True, use clocks saved in CLOCKS_DIR;
 
-
-
 SUB_CT_LABEL = 'Sub_CT'
 MAJOR_CT_LABEL = 'Major_CT'
-FEATURE_TYPES = ['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_peg', 'ct_freq', 'ct_pol_dist', 'cell_cell_communication']
+FEATURE_TYPES = ['tf_activity', 'gene_expression', 'gene_score', 'aging_hallmarks', 'tfa_peg', 'ct_freq', 'ct_pol_dist', 'cc_interaction']
+FEATURE_DEF = {
+    'tf_activity': 'TF activity',
+    'gene_expression': 'Gene expression',
+    'gene_score': 'Gene score',
+    'aging_hallmarks': 'Aging hallmarks',
+    'tfa_peg': 'TF activity association with progenitor-effector gradient',
+    'ct_freq': 'Cell type composition (frequency)',
+    'ct_pol_dist': 'Naive/effector polarization distance calculated using TF activity features',
+    'cc_interaction': 'Cell-cell communication features from sub cell type analysis',
+}
 DATA_TYPES = ['sc', 'bulk', 'bulk_minor', 'metacell']
 # - mapping
 mapping_major_2_minor = {
@@ -60,11 +68,21 @@ CONFIG_FA = {
     'ge_major_b': {'data_type': 'bulk', 'feature_type': 'gene_expression', 'granularity': MAJOR_CT_LABEL},
     'ge_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'gene_expression', 'granularity': SUB_CT_LABEL},
     'tfa_peg': {'data_type': 'sc', 'feature_type': 'tfa_peg', 'granularity': MAJOR_CT_LABEL},
-    'ct_freq': {'data_type': 'sc', 'feature_type': 'ct_freq', 'granularity': SUB_CT_LABEL, 'cell_types': MAJOR_CTS},
+    'ct_freq': {'data_type': 'sc', 'feature_type': 'ct_freq', 'granularity': SUB_CT_LABEL, 'cell_types': ['CD8T', 'CD4T']},
     'ct_pol_dist': {'data_type': 'bulk_minor', 'feature_type':'ct_pol_dist', 'granularity': MAJOR_CT_LABEL},
-    'ccc_sub_b': {'data_type': 'sc', 'feature_type': 'cell_cell_communication', 'granularity': MAJOR_CT_LABEL},
+    'ccc_sub_b': {'data_type': 'sc', 'feature_type': 'cc_interaction', 'granularity': MAJOR_CT_LABEL},
 }
-
+ANALYSIS_DEF = {
+    'tfa_major_b': 'TF activity features from major cell type analysis',
+    'tfa_sub_b': 'TF activity features from sub cell type analysis',
+    'sub_tf_markers': 'TF markers for each sub cell types',
+    'ge_major_b': 'Gene expression features from major cell type analysis',
+    'ge_sub_b': 'Gene expression features from sub cell type analysis',
+    'tfa_peg': 'TF activity association with progenitor-effector gradient',
+    'ct_freq': 'Cell type composition (frequency)',
+    'ct_pol_dist': 'Naive/effector polarization distance calculated using TF activity features',
+    'ccc_sub_b': 'Cell-cell communication features from sub cell type analysis',
+}
 def get_config_fa(analysis_name):
     """Get feature analysis configuration by name."""
     if analysis_name not in CONFIG_FA:
