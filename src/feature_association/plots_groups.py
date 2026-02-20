@@ -18,7 +18,7 @@ from hiara.src.feature_association.plots import (
     plot_aging_overlap,
     plot_ccc_lr_pairs_vs_datasets
 )
-from hiara.src.feature_association.cc.plots import plot_ccc_directionality, plot_ccc_ligand_receptor_families, plot_ccc_sender_receiver_matrix, plot_ccc_top_pairs
+from hiara.src.feature_association.cc.plots import plot_ccc_directionality, plot_ccc_hub_analysis, plot_ccc_ligand_receptor_families, plot_ccc_sender_receiver_matrix, plot_ccc_top_pairs
 from hiara import retrieve_sig_stats, retrieve_stats, mapping_minor_2_major
 from hiara.src.config import get_config_fa, get_config, MAJOR_CTS
 
@@ -143,6 +143,7 @@ def wrapper_plots_ccc_sub_b_aging(args, stats_features, stats_features_sig, skip
     plot_ccc_lr_pairs_vs_datasets(analysis_name, top_n=15, filter_significant=True)
     
     # CCC-specific plots
+    plot_ccc_hub_analysis(stats_features_sig.copy(), analysis_name)
     plot_ccc_sender_receiver_matrix(stats_features_sig.copy(), analysis_name, trend='both')
     plot_ccc_sender_receiver_matrix(stats_features_sig.copy(), analysis_name, trend='positive')
     plot_ccc_sender_receiver_matrix(stats_features_sig.copy(), analysis_name, trend='negative')

@@ -73,29 +73,30 @@ def retrieve_adata(dataset,
         print('Filtering to only genes in the GRN network...')
         net = retrieve_net_consensus(cell_type=cell_type)
         mask_genes &= adata.var_names.isin(net['target'].unique())
+    # Cell type filtering
+    if data_type in ['sc', 'bulk_minor']:
+        obs = obs[obs[SUB_CT_LABEL].isin(SUB_CTS)].copy()
+        obs[SUB_CT_LABEL] = pd.Categorical(obs[SUB_CT_LABEL], categories=SUB_CTS, ordered=True)
     
+    mask = np.ones(len(obs), dtype=bool)
     if (cell_type is not None and cell_type != 'all'):
         if (granularity == 'Major_CT') & ('Major_CT' not in obs.columns) &  ('cell_type' in obs.columns):
             obs['Major_CT'] = obs['cell_type']
         if cell_type not in obs[granularity].unique():
-            raise ValueError(f'Given cell type "{cell_type}" not in {obs[granularity].unique()}')
+            raise ValueError(f'Given cell type "{cell_type}" not in {obs[granularity].unique()} dataset: {dataset}')
         cell_type_mask = obs[granularity] == cell_type
-    else:
-        cell_type_mask = pd.Series(np.ones(len(obs), dtype=bool), index=obs.index)
-    
+        mask &= cell_type_mask.values
+
+
     if condition is not None:
         if isinstance(condition, str):
             condition = [condition]
         for c in condition:
             if c not in obs[mask_condition_col].unique():
-                raise ValueError(f'Given condition "{c}" not in {obs[mask_condition_col].unique()}')
+                raise ValueError(f'Given condition "{c}" not in {obs[mask_condition_col].unique()} dataset: {dataset}')
         mask_condition = obs[mask_condition_col].isin(condition)
-    mask = np.ones(adata.n_obs, dtype=bool)
-    
-    if cell_type is not None:
-        mask &= cell_type_mask.values
-    if condition is not None:
         mask &= mask_condition.values
+
     if test_mode: #filter by donors
         print('Get ride of meeeee')
         # select 10 young and 10 old
@@ -107,41 +108,36 @@ def retrieve_adata(dataset,
         mask &= mask_donors.values
     
     # Apply mask to obs and apply all transformations
-    obs_subset = obs.iloc[np.where(mask)[0]].copy()
-    obs_subset['dataset'] = dataset
+    obs = obs.iloc[np.where(mask)[0]].copy()
+    obs['dataset'] = dataset
     
     # Age processing
-    if 'age' in obs_subset.columns:
-        nan_age = obs_subset['age'].isna()
+    if 'age' in obs.columns:
+        nan_age = obs['age'].isna()
         if nan_age.sum() > 0:
             print(f'Warning: {nan_age.sum()} cells with NaN age found. ')
             raise ValueError('Cells with NaN age found.')
-        obs_subset['age'] = obs_subset['age'].astype(float).astype(int)
-        obs_subset = obs_subset[obs_subset['age'] >= age_limit].copy()  
+        obs['age'] = obs['age'].astype(float).astype(int)
+        obs = obs[obs['age'] >= age_limit].copy()  
     else:
         print('Warning: "age" column not found in obs. Setting to default age of 20.')
-        obs_subset['age'] = 20
+        obs['age'] = 20
     
     # Sex mapping
-    if 'sex' in obs_subset.columns:
-        obs_subset['sex'] = obs_subset['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
-
+    if 'sex' in obs.columns:
+        obs['sex'] = obs['sex'].apply(lambda name: {'F': 'Female', 'M':'Male'}.get(name, name))
     # Age group
     age_t = 50
-    obs_subset['age_group'] = obs_subset['age'].apply(lambda x: 'Young' if x < age_t else 'Old')
+    obs['age_group'] = obs['age'].apply(lambda x: 'Young' if x < age_t else 'Old')
     
-    # Cell type filtering
-    if data_type in ['sc', 'bulk_minor']:
-        obs_subset = obs_subset[obs_subset[SUB_CT_LABEL].isin(SUB_CTS)].copy()
-        obs_subset[SUB_CT_LABEL] = pd.Categorical(obs_subset[SUB_CT_LABEL], categories=SUB_CTS, ordered=True)
     
     # If only_obs is True, return the processed obs dataframe without loading .X
     if only_obs:
-        return obs_subset
+        return obs
     
     # Otherwise, create AnnData object with .X
     if True: # experimental. new way to subset backed anndata
-        obs_indices = obs_subset.index
+        obs_indices = obs.index
         obs_positions = np.where(obs.index.isin(obs_indices))[0]
         var_indices = np.where(mask_genes)[0]
         adata_backed = adata  # Keep reference to backed version
@@ -149,7 +145,7 @@ def retrieve_adata(dataset,
         var_subset = adata_backed.var.iloc[var_indices].copy()
         adata = ad.AnnData(
             X=X_subset,
-            obs=obs_subset,
+            obs=obs,
             var=var_subset,
             uns=adata_backed.uns.copy() if hasattr(adata_backed, 'uns') else {},
         )

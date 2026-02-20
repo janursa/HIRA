@@ -344,7 +344,8 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
 
 
             if stats_df is None:
-                raise ValueError(f'No stats returned for condition {condition} vs {ctr_group} in dataset {dataset}')
+                print(f'Skipping {condition} vs {ctr_group} in dataset {dataset} because the stats df is empty (likely due to insufficient samples)')
+                continue
 
             # For interaction models, apply FDR per coefficient type
             if 'coefficient' in stats_df.columns:
@@ -365,6 +366,10 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
             stats_all.append(stats_df)
     
     # Combine all stats
+    if len(stats_all) == 0:
+        print(f'No valid statistics for dataset {dataset} - all conditions had insufficient samples')
+        return None
+    
     stats_df = pd.concat(stats_all, ignore_index=True)
     stats_df['dataset'] = dataset
 
@@ -590,10 +595,19 @@ def associate_with_condition(adata, config, test_type=None):
             conditions=[treatment],
             config=config
         )
+        
+        if stats is None:
+            print(f'Skipping comparison {treatment} vs {control} - no valid statistics')
+            continue
+            
         stats['comparison'] = f'{treatment} vs {control}'
         stats['comparison'] = stats['comparison'].map(lambda name: config.name_mapping.get(name, name))
         
         stats_list.append(stats)
+    
+    if len(stats_list) == 0:
+        raise ValueError(f'No valid comparisons found - all had insufficient samples')
+        
     stats = pd.concat(stats_list)
 
     return stats
@@ -713,9 +727,14 @@ def wrapper_tf_activity(analysis_name, par):
     data_type = config['data_type']
     granularity = config['granularity']
     for dataset in datasets:
+        adata = retrieve_adata(dataset=dataset, data_type=data_type, condition=condition)
+
         for cell_type in tqdm(cell_types, desc='cell types'):
             print(dataset, data_type)
-            adata_t = retrieve_adata(dataset=dataset, data_type=data_type, condition=condition, granularity=granularity, cell_type=cell_type)
+            adata_t = adata[adata.obs[granularity] == cell_type].copy()
+            if len(adata_t) == 0:
+                print(f'No samples for {cell_type} in {dataset}, skipping TF activity calculation')
+                continue
             if par['use_consensus_net']:
                 net = retrieve_net_consensus(cell_type=cell_type, promotor_only=promotor_only)
             else:
