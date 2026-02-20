@@ -31,18 +31,20 @@ for k, v in DATASET_NAME_MAPPING.items():
 
 set -e
 # Define run flags
-RUN_TEST=false
+RUN_TEST=true
 RUN_PROCESS_DATASET=true
 RUN_PSEUDOBULK=true
 MAIN_DIR='/vol/projects/jnourisa/hiara/'
 
 
 # datasets to include -> preprocessing 
-datasets="  op" # data12 data7_allTPs_jalil data1 SLE 
+datasets="soundlife" # data12 data7_allTPs_jalil data1 SLE 
 
 for dataset in $datasets; do
         
-        if [ "$dataset" = "op" ]; then
+        if [ "$dataset" = "soundlife" ]; then
+                input_file="/vol/projects/CIIM/soundlife/"  # DIRECTORY with multiple h5ad files
+        elif [ "$dataset" = "op" ]; then
                 input_file="/vol/projects/jnourisa/genernbi/resources/datasets_raw/op_perturbation_sc_counts.h5ad"
         elif [ "$dataset" = "CXCL9" ]; then
                 input_file="/vol/projects/CIIM/Healthy_Single_Cell_Data/count_matrix/CXCL9_TI.h5ad"

@@ -92,21 +92,21 @@ def format_columns(adata):
     # Assign vaccinated column (0 or 1)
     adata.obs['vaccinated'] = parsed['vaccinated']
     
-    print(f'Added standardized columns. Total columns: {len(adata.obs.columns)}')
-    print(f'Age group distribution:')
-    print(adata.obs['age_group'].value_counts(dropna=False))
-    print(f'Vaccinated distribution:')
-    print(adata.obs['vaccinated'].value_counts(dropna=False))
-    print(f'Year distribution:')
-    print(adata.obs['year'].value_counts(dropna=False))
+    # print(f'Added standardized columns. Total columns: {len(adata.obs.columns)}')
+    # print(f'Age group distribution:')
+    # print(adata.obs['age_group'].value_counts(dropna=False))
+    # print(f'Vaccinated distribution:')
+    # print(adata.obs['vaccinated'].value_counts(dropna=False))
+    # print(f'Year distribution:')
+    # print(adata.obs['year'].value_counts(dropna=False))
     
     return adata
 
 
 def map_cell_types(adata):
     """
-    Map AIFI_L2 annotations to major cell types and filter out unmapped types.
-    Sets cell_type (Major_CT) and Sub_CT columns.
+    Map AIFI_L2 annotations to major cell types and standardized sub cell types.
+    Sets cell_type (Major_CT) and Sub_CT columns with standardized nomenclature.
     """
     print('Mapping cell types from AIFI_L2...')
     
@@ -141,27 +141,66 @@ def map_cell_types(adata):
         'Intermediate monocyte': 'MONO',
     }
     
-    # Map cell types
+    # Define mapping from AIFI_L2 to standardized sub cell types
+    # This maps to the SUB_CTS defined in config.py
+    sub_cell_type_mapping = {
+        # CD4T subtypes
+        'Naive CD4 T cell': 'Tcm_Naive_CD4',
+        'Memory CD4 T cell': 'Tem_Effector_CD4',
+        'Treg': 'Treg',
+        
+        # CD8T subtypes
+        'Naive CD8 T cell': 'Tcm_Naive_CD8',
+        'Memory CD8 T cell': 'Tem_Trm_CD8',
+        'MAIT': 'MAIT',
+        'CD8aa': 'CD8a/a',
+        
+        # NK subtypes
+        'CD56bright NK cell': 'CD16_NK',
+        'CD56dim NK cell': 'CD16_NK',
+        'Proliferating NK cell': 'CD16_NK',
+        
+        # B cell subtypes
+        'Naive B cell': 'Naive_B',
+        'Memory B cell': 'Memory_B',
+        'Transitional B cell': 'Naive_B',
+        'Effector B cell': 'Memory_B',
+        'Plasma cell': 'Plasma_B',
+        
+        # Monocyte subtypes
+        'CD14 monocyte': 'Classic_MONO',
+        'CD16 monocyte': 'NonClassic_MONO',
+        'Intermediate monocyte': 'Classic_MONO',
+    }
+    
+    # Map major cell types
     adata.obs['cell_type'] = adata.obs['AIFI_L2'].map(cell_type_mapping)
+    adata.obs[MAJOR_CT_LABEL] = adata.obs['cell_type']
     
-    # Keep original AIFI_L2 as Sub_CT
-    adata.obs[SUB_CT_LABEL] = adata.obs['AIFI_L2'].astype(str)
+    # Map standardized sub cell types
+    adata.obs[SUB_CT_LABEL] = adata.obs['AIFI_L2'].map(sub_cell_type_mapping)
     
-    # Also create Major_CT for consistency with other datasets
-    adata.obs['Major_CT'] = adata.obs['cell_type']
+    # Keep original AIFI_L2 for reference
+    adata.obs['AIFI_L2_original'] = adata.obs['AIFI_L2'].astype(str)
     
     # Count unmapped cells
-    unmapped = adata.obs['cell_type'].isna().sum()
+    unmapped_major = adata.obs['cell_type'].isna().sum()
+    unmapped_sub = adata.obs[SUB_CT_LABEL].isna().sum()
     total = adata.shape[0]
-    print(f'Unmapped cells: {unmapped:,} ({unmapped/total*100:.2f}%)')
+    
+    print(f'Unmapped major cell types: {unmapped_major:,} ({unmapped_major/total*100:.2f}%)')
+    print(f'Unmapped sub cell types: {unmapped_sub:,} ({unmapped_sub/total*100:.2f}%)')
     
     # Filter out unmapped cell types
     adata = adata[~adata.obs['cell_type'].isna()].copy()
     print(f'Shape after filtering unmapped cell types: {adata.shape}')
     
     # Show cell type distribution
-    print('\nCell type distribution:')
+    print('\nMajor cell type distribution:')
     print(adata.obs['cell_type'].value_counts())
+    
+    print(f'\nStandardized sub cell type distribution:')
+    print(adata.obs[SUB_CT_LABEL].value_counts())
     
     return adata
 
