@@ -11,9 +11,216 @@ import seaborn as sns
 import pandas as pd
 import anndata as ad
 import gc
-from hiara.src.config import get_config
+from hiara.src.config import get_config, SUB_CT_LABEL, MAJOR_CT_LABEL
 
+def format_columns_soundlife(adata):
+    """
+    Add standardized column names while keeping all original columns.
+    Maps SoundLife-specific columns to standard pipeline format.
+    """
+    print('Formatting columns for soundlife...')
+    
+    # Add standardized columns (keep originals)
+    adata.obs['donor_id'] = adata.obs['subject.subjectGuid'].astype(str)
+    adata.obs['age'] = pd.to_numeric(adata.obs['sample.subjectAgeAtDraw'], errors='coerce')
+    adata.obs['race'] = adata.obs['subject.ethnicity'].astype(str)
+    adata.obs['sex'] = adata.obs['subject.biologicalSex'].astype(str)
+    adata.obs['visitName'] = adata.obs['sample.visitName'].astype(str)
+    
+    # Map CMV status to condition
+    adata.obs['condition'] = adata.obs['subject.cmv'].apply(
+        lambda x: 'healthy' if x == 'Negative' else 'CMV'
+    )
+    
+    # Add dataset identifier
+    adata.obs['dataset'] = 'soundlife'
+    
+    # Create donor_age identifier (donor_id + age)
+    adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + '_' + adata.obs['age'].astype(str)
+    
+    # Map age_group from subject.ageGroup
+    # "Sound Life Young Adult" -> "young"
+    # "Sound Life Older Adult" -> "old"
+    adata.obs['age_group'] = adata.obs['subject.ageGroup'].apply(
+        lambda x: 'young' if 'Young' in str(x) else ('old' if 'Older' in str(x) else None)
+    )
+    
+    # Extract vaccinated, year, and day from sample.visitName
+    # Examples: "Flu Year 1 Day 0", "Immune Variation Day 7", "Flu Year 2 Stand-Alone"
+    # Study Timeline:
+    # - Flu Year 1 & 2: Vaccinated cohorts
+    #   - Day 0: PRE-vaccination baseline (vaccinated=False)
+    #   - Day 7: POST-vaccination (vaccinated=True)
+    #   - Day 90: POST-vaccination (vaccinated=True)
+    # - Immune Variation: Control cohort (never vaccinated, always False)
+    def parse_visit_name(visit_name):
+        visit_str = str(visit_name)
+        
+        import re
+        
+        # Extract day first (e.g., "Day 0", "Day 7", "Day 90", or None for "Stand-Alone")
+        day_match = re.search(r'Day (\d+)', visit_str)
+        day = day_match.group(1) if day_match else None
+        
+        # Determine vaccinated status based on cohort and day
+        if 'Flu Year' in visit_str:
+            # Flu Year cohort - extract year number
+            year_match = re.search(r'Flu Year (\d+)', visit_str)
+            year = year_match.group(1) if year_match else None
+            
+            # Day 0 is PRE-vaccination (baseline), Day 7 and Day 90 are POST-vaccination
+            if day == '0':
+                vaccinated = 0  # PRE-vaccination baseline
+            elif day in ['7', '90']:
+                vaccinated = 1  # POST-vaccination
+            else:
+                vaccinated = None  # Unknown day (e.g., Stand-Alone)
+        elif 'Immune Variation' in visit_str:
+            # Immune Variation cohort - never vaccinated
+            vaccinated = 0
+            year = None
+        else:
+            vaccinated = None
+            year = None
+        
+        return pd.Series({'vaccinated': vaccinated, 'year': year, 'day': day})
+    
+    # Apply parsing to all visitNames
+    parsed = adata.obs['visitName'].apply(parse_visit_name)
+    adata.obs['year'] = parsed['year'].astype(str)
+    adata.obs['day'] = parsed['day'].astype(str)
+    
+    # Assign vaccinated column (0 or 1)
+    adata.obs['vaccinated'] = parsed['vaccinated']
+    
+    # print(f'Added standardized columns. Total columns: {len(adata.obs.columns)}')
+    # print(f'Age group distribution:')
+    # print(adata.obs['age_group'].value_counts(dropna=False))
+    # print(f'Vaccinated distribution:')
+    # print(adata.obs['vaccinated'].value_counts(dropna=False))
+    # print(f'Year distribution:')
+    # print(adata.obs['year'].value_counts(dropna=False))
+    
+    return adata
+
+
+def map_cell_types_soundlife(adata):
+    """
+    Map AIFI_L2 annotations to major cell types and standardized sub cell types.
+    Sets cell_type (Major_CT) and Sub_CT columns with standardized nomenclature.
+    """
+    print('Mapping cell types from AIFI_L2...')
+    
+    # Define mapping from AIFI_L2 to major cell types
+    cell_type_mapping = {
+        # CD4T
+        'Memory CD4 T cell': 'CD4T',
+        'Naive CD4 T cell': 'CD4T',
+        'Treg': 'CD4T',
+        
+        # CD8T
+        'Memory CD8 T cell': 'CD8T',
+        'Naive CD8 T cell': 'CD8T',
+        'MAIT': 'CD8T',
+        'CD8aa': 'CD8T',
+        
+        # NK
+        'CD56bright NK cell': 'NK',
+        'CD56dim NK cell': 'NK',
+        'Proliferating NK cell': 'NK',
+        
+        # B cells
+        'Memory B cell': 'B',
+        'Naive B cell': 'B',
+        'Transitional B cell': 'B',
+        'Effector B cell': 'B',
+        'Plasma cell': 'B',
+        
+        # Monocytes
+        'CD14 monocyte': 'MONO',
+        'CD16 monocyte': 'MONO',
+        'Intermediate monocyte': 'MONO',
+    }
+    
+    # Define mapping from AIFI_L2 to standardized sub cell types
+    # This maps to the SUB_CTS defined in config.py
+    sub_cell_type_mapping = {
+        # CD4T subtypes
+        'Naive CD4 T cell': 'Tcm_Naive_CD4',
+        'Memory CD4 T cell': 'Tem_Effector_CD4',
+        'Treg': 'Treg',
+        
+        # CD8T subtypes
+        'Naive CD8 T cell': 'Tcm_Naive_CD8',
+        'Memory CD8 T cell': 'Tem_Trm_CD8',
+        'MAIT': 'MAIT',
+        'CD8aa': 'CD8a/a',
+        
+        # NK subtypes
+        'CD56bright NK cell': 'CD16_NK',
+        'CD56dim NK cell': 'CD16_NK',
+        'Proliferating NK cell': 'CD16_NK',
+        
+        # B cell subtypes
+        'Naive B cell': 'Naive_B',
+        'Memory B cell': 'Memory_B',
+        'Transitional B cell': 'Naive_B',
+        'Effector B cell': 'Memory_B',
+        'Plasma cell': 'Plasma_B',
+        
+        # Monocyte subtypes
+        'CD14 monocyte': 'Classic_MONO',
+        'CD16 monocyte': 'NonClassic_MONO',
+        'Intermediate monocyte': 'Classic_MONO',
+    }
+    
+    # Map major cell types
+    adata.obs['cell_type'] = adata.obs['AIFI_L2'].map(cell_type_mapping)
+    adata.obs[MAJOR_CT_LABEL] = adata.obs['cell_type']
+    
+    # Map standardized sub cell types
+    adata.obs[SUB_CT_LABEL] = adata.obs['AIFI_L2'].map(sub_cell_type_mapping)
+    
+    # Keep original AIFI_L2 for reference
+    adata.obs['AIFI_L2_original'] = adata.obs['AIFI_L2'].astype(str)
+    
+    # Count unmapped cells
+    unmapped_major = adata.obs['cell_type'].isna().sum()
+    unmapped_sub = adata.obs[SUB_CT_LABEL].isna().sum()
+    total = adata.shape[0]
+    
+    print(f'Unmapped major cell types: {unmapped_major:,} ({unmapped_major/total*100:.2f}%)')
+    print(f'Unmapped sub cell types: {unmapped_sub:,} ({unmapped_sub/total*100:.2f}%)')
+    
+    # Filter out unmapped cell types
+    adata = adata[~adata.obs['cell_type'].isna()].copy()
+    print(f'Shape after filtering unmapped cell types: {adata.shape}')
+    
+    # Show cell type distribution
+    print('\nMajor cell type distribution:')
+    print(adata.obs['cell_type'].value_counts())
+    
+    print(f'\nStandardized sub cell type distribution:')
+    print(adata.obs[SUB_CT_LABEL].value_counts())
+    
+    return adata
+
+def remove_attributes(adata):
+    for attr in ['uns', 'raw', 'layers', 'obsm', 'varm', 'varp']:
+        if hasattr(adata, attr):
+            delattr(adata, attr)
+    return adata
 def format_data(adata, dataset_name):
+    # Soundlife-specific formatting
+    if dataset_name == 'soundlife':
+        adata = format_columns_soundlife(adata)
+        # For soundlife, gene names are already in index, just standardize the column
+        adata.var.index.name = 'gene_name'
+        adata.var = adata.var.reset_index()[['gene_name']].set_index('gene_name')
+        adata.obs = adata.obs.astype('str')
+        print(adata.obs.head(), flush=True)
+        return adata
+    
     if dataset_name == 'op':
         adata.obs = adata.obs.rename(columns={'sm_name':'perturbation'})
         adata.obs['is_control'] = adata.obs['perturbation'].isin(['Dimethyl Sulfoxide'])
@@ -26,7 +233,6 @@ def format_data(adata, dataset_name):
         })
         # join metadata into obs
         adata.obs = adata.obs.merge(meta, left_on='donor_id', right_on='donor_id', how='left')
-        print(adata.obs)
 
     if 'gene_name' in adata.var.columns:
         gene_name = 'gene_name'
@@ -52,7 +258,7 @@ def format_data(adata, dataset_name):
     adata.obs.rename(columns={'orig.ident': 'dataset'}, inplace=True)
     adata.obs = adata.obs.astype('str')
     adata.obs['donor_age'] = adata.obs['age'].astype(str) + '_' + adata.obs['donor_id'].astype(str)
-    print(adata.obs.head(), flush=True)
+    adata = remove_attributes(adata)
     return adata
 
 ### QC Check
@@ -84,7 +290,17 @@ def qc_post_annotation(adata, par):
     assert adata.shape[0] > 0, "No cells left after QC filtering based on pseudobulk group and cell count threshold."
     return adata
 
-def annotate_celltypes(adata):
+def annotate_celltypes(adata, dataset):
+    
+    # Soundlife uses pre-existing AIFI_L2 annotations instead of CellTypist
+    if dataset == 'soundlife': 
+        print('Using pre-existing AIFI_L2 annotations for soundlife...')
+        adata.layers['counts'] = adata.X.copy()
+        adata = map_cell_types_soundlife(adata)
+        # Restore raw counts to X (map_cell_types expects and returns raw counts)
+        return adata
+    
+    # Standard CellTypist annotation for other datasets
     print('Annotating cell types...')
     adata.layers['counts'] = adata.X.copy()
     ### Celltype annotation via Celltypist:
