@@ -24,7 +24,7 @@ from hiara.src.feature_association.helper import (
     write_features_stats,
     wrapper_ct_freq,
     wrapper_ct_pol_dist,
-    wrapper_cc_communication
+    wrapper_ccc
 )
 
 warnings.filterwarnings("ignore")
@@ -47,7 +47,7 @@ def calculate_features(analysis_name, par):
     elif analysis_name == 'ct_pol_dist':
         wrapper_ct_pol_dist(par)
     elif analysis_name == 'ccc_sub_b':
-        wrapper_cc_communication(analysis_name, par, n_jobs=20)
+        wrapper_ccc(analysis_name, par, n_jobs=20)
     else:
         raise ValueError(f"Unknown analysis_name: {analysis_name}")
 
