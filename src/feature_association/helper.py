@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 import scanpy as sc
 import anndata as ad
 from statsmodels.stats.multitest import multipletests
-from hiara.src.config import get_config_fa, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
+from hiara.src.config import GRNS_DIR, get_config_fa, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
 from tqdm import tqdm
 from hiara.src.config import OUTPUT_DIR, FEATURES_DIR, CORR_THRESHOLD, TF_MIN_TARGET, FEATURE_TYPES, SUB_CT_LABEL, MAJOR_CT_LABEL
 from scipy.sparse import issparse
@@ -32,7 +32,8 @@ def write_features_stats(stats, analysis_name, multi_cohort=True, dataset=None, 
     stats.to_csv(file_name, index=False)
         
 
-def retrieve_stats(analysis_name, cell_type=None, dataset=None, multi_cohort=None, features_dir=None, suffix=''):
+def retrieve_stats(analysis_name, cell_type=None, dataset=None, multi_cohort=None, features_dir=None, suffix='', feature_props=[]):
+    feature_type = get_config_fa(analysis_name)['feature_type']
     # determine whether this is multi-cohort
     if dataset is None:
         multi_cohort = True
@@ -108,6 +109,29 @@ def retrieve_stats(analysis_name, cell_type=None, dataset=None, multi_cohort=Non
     mask_pvalue = stats[p_val_col] < 0.05
 
     stats["is_significant"] = mask_pvalue & mask_trend & mask_slope
+
+    if 'centrality' in feature_props:
+        for ct in stats['cell_type'].unique():
+            stats_ct = stats['cell_type'] == ct
+            grn = retrieve_net_consensus(cell_type=ct, grns_dir=GRNS_DIR)
+            assert grn.groupby(['source', 'target']).size().max() == 1, f"GRN for cell type {ct} has duplicate edges, cannot determine centrality. Please check the GRN data."
+            if feature_type == 'tf_activity':
+                feature_col = 'source' 
+            elif feature_type in 'gene_expression':
+                feature_col = 'target'
+            else:
+                raise ValueError(f'Unknown feature type {feature_type} for centrality calculation')
+            c = grn.groupby(feature_col).size().reset_index(name='centrality')
+            c.rename(columns={feature_col: 'gene'}, inplace=True)
+            
+            # Normalize centrality
+            c['centrality'] = c['centrality'] / c['centrality'].max()
+            
+            # Merge centrality into stats for this cell type
+            stats.loc[stats_ct, 'centrality'] = stats.loc[stats_ct, 'gene'].map(
+                c.set_index('gene')['centrality']
+            )
+
 
     return stats
 def retrieve_sig_stats_agg(**kwargs):

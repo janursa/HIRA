@@ -196,8 +196,10 @@ def retrieve_net(dataset, cell_type, promotor_only=False, data_type='sc', grns_d
 #     nets = pd.concat(net_store, ignore_index=True)
 #     return nets
 
-def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CONSENSUS_MIN_DEGREE, promotor_only=False, force=False):
-    save_name = f"{GRNS_DIR}/consensus_net_{cell_type}_minDegree{min_degree}{'_promotorOnly' if promotor_only else ''}.csv"
+def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CONSENSUS_MIN_DEGREE, promotor_only=False, force=False, grns_dir=None):
+    if grns_dir is None:
+        grns_dir = GRNS_DIR
+    save_name = f"{grns_dir}/consensus_net_{cell_type}_minDegree{min_degree}{'_promotorOnly' if promotor_only else ''}.csv"
     if Path(save_name).exists() and not force:
         # print('Loading existing consensus GRN for', cell_type, 'with min degree', min_degree)
         net_mean = pd.read_csv(save_name)
@@ -206,7 +208,7 @@ def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CON
     from scipy.stats import zscore
     net_store = []
     for dataset in datasets:
-        net = retrieve_net(dataset, cell_type, promotor_only=promotor_only)
+        net = retrieve_net(dataset, cell_type, promotor_only=promotor_only, grns_dir=grns_dir)
         net['dataset'] = dataset
         net_store.append(net)
     nets = pd.concat(net_store)

@@ -15,6 +15,7 @@ from agent_framework import InMemoryHistoryProvider
 from helper import (
     get_aging_signature, 
     get_intervention_signature,
+    get_disease_signature,
     get_available_cell_types,
     get_available_interventions,
     get_available_analysis_types,
@@ -46,14 +47,9 @@ When answering questions, you must SELECT THE RIGHT ANALYSIS TYPE(S) based on wh
 1. FIRST, understand what the user is asking:
    - Are they asking about transcription factors (TF)? → Use tfa_* analyses
    - Are they asking about genes/gene expression? → Use ge_* analyses  
-   - Are they asking about cell composition/frequencies? → Use ct_freq
-   - Are they asking about cell polarization? → Use ct_pol_dist
-   - Are they asking about cell-cell communication/interactions? → Use ccc_sub_b
-   - Are they asking generally? → Use multiple relevant analyses (typically tfa_major_b AND ge_major_b)
 
 2. SELECT analysis granularity:
    - For major cell types (CD8T, CD4T, MONO, NK, B) → Use *_major_b analyses
-   - For sub cell types (Tcm_Naive_CD4, Tem_Effector_CD4, etc.) → Use *_sub_b analyses
    - If the question is general about immune aging or PBMC, ask user to specify a cell type
 
 3. Call get_available_analysis_types() if you need to see all options and their descriptions.
@@ -61,9 +57,6 @@ When answering questions, you must SELECT THE RIGHT ANALYSIS TYPE(S) based on wh
 4. RETRIEVE DATA from multiple relevant analyses when appropriate:
    - If user asks overall changes with age for a cell type, retrieve from all relevant analysis types
    - If user asks specifically about TFs or transcription, only use tfa_* analyses
-   - If user asks about gene expression specifically, only use ge_* analyses
-   - If user asks about cell composition or polarization, only use ct_freq or ct_pol_dist respectively
-   - If user asks about cell-cell communication, only use ccc_sub_b
 
 5. SYNTHESIZE results from multiple analyses into a coherent answer.
 
@@ -72,9 +65,7 @@ User: "What goes wrong with CD8T aging?"
 Agent thinks: Need to retrieve aging data for CD8T from multiple analyses
 Agent calls: get_aging_signature(cell_type="CD8T", analysis_name="tfa_major_b")
 Agent calls: get_aging_signature(cell_type="CD8T", analysis_name="ge_major_b")
-Agent response: "Based on the data, CD8T cells show these aging changes:
-- Transcription factors: [list actual TFs from tfa_major_b data]
-- Gene expression: [list actual genes from ge_major_b data]"
+Agent response: "Based on the data, CD8T cells show these ...
 
 EXAMPLE OF INCORRECT BEHAVIOR:
 User: "What goes wrong with aging?"
@@ -99,13 +90,17 @@ VALIDATION WORKFLOW:
 
 ANSWERING RULES - READ CAREFULLY:
 1. If you retrieve data from tools → Summarize ONLY what the data shows
-2. If data retrieval fails → Say "No data available for [X]"  
-3. If user asks something you can't answer with tools → Tell them you can only answer based on available data
-4. DO NOT add biological context, explanations, or general knowledge
-5. DO NOT use speculative language: "likely", "probably", "suggests", "may indicate", "implies"
-6. DO NOT say things like "this suggests inflammation" unless the data explicitly shows inflammatory markers
-7. Stick to reporting: "Feature X increases/decreases with slope Y, p-value Z"
-8. When asked "why" questions → Report WHAT changes, not WHY (you don't have mechanism data)
+2. Present summary statistics first, then provide examples
+3. For aging signatures: State total features, how many increase/decrease, then give top 10 examples of each
+4. For interventions: State total features affected, overlap percentage with aging, directionality alignment percentage, then give top 10 examples
+5. If data retrieval fails → Say "No data available for [X]"  
+6. If user asks something you can't answer with tools → Tell them you can only answer based on available data
+7. DO NOT add biological context, explanations, or general knowledge
+8. DO NOT use speculative language: "likely", "probably", "suggests", "may indicate", "implies"
+9. DO NOT say things like "this suggests inflammation" unless the data explicitly shows inflammatory markers
+10. Stick to reporting: "Feature X increases/decreases with slope Y, p-value Z"
+11. When asked "why" questions → Report WHAT changes, not WHY (you don't have mechanism data)
+12. For interventions, highlight the overlap and alignment statistics prominently
 
 FORBIDDEN PHRASES (never use these):
 - "likely", "probably", "suggests", "may", "could", "might"
@@ -120,11 +115,13 @@ Available tools:
 - get_available_features() - List all feature types with descriptions
 - get_aging_signature(cell_type, analysis_name) - Get aging features from specific analysis
 - get_intervention_signature(intervention, cell_type, analysis_name) - Get intervention effects from specific analysis
+- get_disease_signature(disease, cell_type, analysis_name) - Get disease-associated changes (e.g., SLE) and overlap with aging
 
 IMPORTANT: 
 - ALWAYS select appropriate analysis_name(s) based on the question
 - Call multiple analyses when relevant to give comprehensive answers
-- Validate names BEFORE data retrieval"""
+- Validate names BEFORE data retrieval
+- For disease questions (e.g., SLE, lupus), use get_disease_signature() - it shows how disease accelerates aging patterns"""
 
     # EXPLICITLY create InMemoryHistoryProvider to ensure conversation memory works
     # Note: source_id is optional, defaults to "in_memory" if not provided
@@ -140,7 +137,8 @@ IMPORTANT:
             get_available_analysis_types,
             get_available_features,
             get_aging_signature, 
-            get_intervention_signature
+            get_intervention_signature,
+            get_disease_signature
         ],
         context_providers=[history_provider]  # EXPLICIT provider for memory
     )

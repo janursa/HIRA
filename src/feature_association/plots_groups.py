@@ -15,10 +15,10 @@ from hiara.src.feature_association.plots import (
     plot_features_vs_datasets, 
     plot_directional_consistency_scatter,
     plot_young_vs_aging,
-    plot_aging_overlap,
-    plot_ccc_lr_pairs_vs_datasets
+    plot_aging_overlap
+    
 )
-from hiara.src.feature_association.cc.plots import plot_ccc_directionality, plot_ccc_hub_analysis, plot_ccc_ligand_receptor_families, plot_ccc_sender_receiver_matrix, plot_ccc_top_pairs
+from hiara.src.feature_association.cc.plots import plot_ccc_lr_pairs_vs_datasets, plot_ccc_directionality, plot_ccc_hub_analysis, plot_ccc_ligand_receptor_families, plot_ccc_sender_receiver_matrix, plot_ccc_top_pairs
 from hiara import retrieve_sig_stats, retrieve_stats, mapping_minor_2_major
 from hiara.src.config import get_config_fa, get_config, MAJOR_CTS
 
@@ -191,7 +191,7 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
             plot_overview_heatmap(stats_sub, args)
         plot_directional_consistency_scatter(
             stats_sub[stats_sub['cell_type'].isin(['CD4T', 'CD8T'])], 
-            analysis_name=args.analysis_name,
+            stats_ref=retrieve_sig_stats(analysis_name='tfa_major_b'),
             save_suffix=args.dataset,
             x_label=f'SLE \n(significance)',
             y_label='Natural aging \n(significance)',

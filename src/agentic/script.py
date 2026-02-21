@@ -1,22 +1,22 @@
 """
-Two-Agent Pipeline: Data Retrieval → Biology Interpretation
-Combines the data-grounded agent with the biology interpreter agent.
+Two-Agent Pipeline: Data Retrieval → Context Interpretation
+Combines the data-grounded agent with the context agent.
 """
 
 import asyncio
 from agents.omics_agent import omics_agent
-from agents.biology_agent import biology_agent
+from agents.context_agent import context_agent
 
 
 class MainPipeline:
-    """Pipeline that chains data agent → biology interpreter."""
+    """Pipeline that chains data agent → context interpreter."""
     
     def __init__(self):
         """Initialize both agents."""
         self.data_agent = omics_agent()
-        self.biology_agent = biology_agent()
+        self.context_agent = context_agent()
         self.data_session = self.data_agent.create_session()
-        self.biology_session = self.biology_agent.create_session()
+        self.context_session = self.context_agent.create_session()
     
     async def ask(self, question: str, include_interpretation: bool = True) -> dict:
         """
@@ -47,18 +47,18 @@ class MainPipeline:
         
         if include_interpretation:
             # Step 2: Get biological interpretation
-            print("🧬 BIOLOGY INTERPRETER (adding context)...")
+            print("🧬 CONTEXT AGENT (adding biological context)...")
             print("-" * 80)
             
-            # Create prompt for biology agent
-            bio_prompt = f"""The following data was found for the question: "{question}"
+            # Create prompt for context agent
+            context_prompt = f"""The following data was found for the question: "{question}"
 
 DATA FINDINGS:
 {data_findings}
 
 Please provide biological interpretation of these findings."""
             
-            interpretation = await self.biology_agent.run(bio_prompt, session=self.biology_session)
+            interpretation = await self.context_agent.run(context_prompt, session=self.context_session)
             print(interpretation)
             result['interpretation'] = str(interpretation)
         
@@ -70,11 +70,13 @@ Please provide biological interpretation of these findings."""
         print("Main PIPELINE - Interactive Mode")
         print("="*80)
         print("\nThis pipeline combines:")
-        print("  1. DATA AGENT: Retrieves factual findings from your data")
-        print("  2. BIOLOGY INTERPRETER: Adds biological context and interpretation")
-        print("\nOptions:")
-        print("  - Type your question and press Enter")
-        print("  - Type 'data-only' to skip interpretation for next question")
+        print("  1. DATA AGENT: Retrieves factual findings from omics analysis")
+        print("  2. CONTEXT AGENT: Adds biological context and interpretation using manuscript knowledge")
+        print("\nWorkflow:")
+        print("  - Ask your question")
+        print("  - Get factual data results")
+        print("  - Choose whether to get interpretation/context")
+        print("\nCommands:")
         print("  - Type 'quit' or 'exit' to end session")
         print("="*80 + "\n")
         
@@ -92,19 +94,40 @@ Please provide biological interpretation of these findings."""
                 print("\nGoodbye!")
                 break
             
-            if user_input.lower() == 'data-only':
-                print("[Next question will be data-only]")
-                try:
-                    user_input = input("\nYou: ").strip()
-                    if not user_input:
-                        continue
-                    await self.ask(user_input, include_interpretation=False)
-                except Exception as e:
-                    print(f"\n[Error: {e}]")
-                continue
-            
             try:
-                await self.ask(user_input, include_interpretation=True)
+                # Step 1: Always show data first
+                print(f"\n{'='*80}")
+                print(f"QUESTION: {user_input}")
+                print(f"{'='*80}\n")
+                
+                print("🔬 DATA AGENT (retrieving factual findings)...")
+                print("-" * 80)
+                data_findings = await self.data_agent.run(user_input, session=self.data_session)
+                print(data_findings)
+                print()
+                
+                # Step 2: Ask if user wants interpretation
+                try:
+                    want_context = input("Would you like biological interpretation/context? (y/n): ").strip().lower()
+                except (KeyboardInterrupt, EOFError):
+                    print("\n\nExiting...")
+                    break
+                
+                if want_context in ['y', 'yes']:
+                    print("\n🧬 CONTEXT AGENT (adding biological context)...")
+                    print("-" * 80)
+                    
+                    context_prompt = f"""The following data was found for the question: "{user_input}"
+
+DATA FINDINGS:
+{data_findings}
+
+Please provide biological interpretation of these findings."""
+                    
+                    interpretation = await self.context_agent.run(context_prompt, session=self.context_session)
+                    print(interpretation)
+                    print()
+                
             except Exception as e:
                 print(f"\n[Error: {e}]")
 
