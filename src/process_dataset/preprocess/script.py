@@ -74,6 +74,11 @@ def main(par):
     file_name = par['input_file']
     adata = load_sc_data(file_name, dataset, par['run_test'])
     adata = basic_qc(adata, par['run_test'])
+
+    if True: # filter based on known genes
+        gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
+        adata = adata[:, adata.var_names.isin(gene_names)].copy()
+
     if intermediate_save:
         print(f"Saving intermediate QC result to {par['processed_files_dir']}/{dataset}.h5ad", flush=True)
         adata.write_h5ad(f"{par['processed_files_dir']}/{dataset}.h5ad", compression='gzip')

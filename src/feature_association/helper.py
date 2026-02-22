@@ -1187,7 +1187,7 @@ def wrapper_ccc(analysis_name, par, n_jobs=1):
     config = get_config_fa(analysis_name)
     granularity = config['granularity']
     data_type = config['data_type']
-    cell_types = config['cell_types']
+    cell_type = 'all'  # We will calculate communication across all subtypes, so we use 'all' as the cell_type key for output
     
     # Handle multiple conditions - convert to list if needed
     conditions = condition if isinstance(condition, list) else [condition]
@@ -1195,117 +1195,117 @@ def wrapper_ccc(analysis_name, par, n_jobs=1):
     for dataset in datasets:
         print(f'\nProcessing {dataset}...')
         # Load ALL data at once (all cell types, all subtypes)
-        for cell_type in cell_types:
-            # Process each condition separately and concatenate
-            condition_adatas = []
+    
+        # Process each condition separately and concatenate
+        condition_adatas = []
+        
+        for cond in conditions:
+            print(f'  Condition: {cond}')
+            adata = retrieve_adata(
+                dataset=dataset,
+                data_type=data_type,
+                condition=cond,
+                test_mode=par['test_mode'],
+                cell_type=cell_type,
+            )
             
-            for cond in conditions:
-                print(f'  Condition: {cond}')
-                adata = retrieve_adata(
-                    dataset=dataset,
-                    data_type=data_type,
-                    condition=cond,
-                    test_mode=par['test_mode'],
-                    cell_type=cell_type,
+            if adata.shape[0] == 0:
+                print(f'    No samples for {cell_type} in {dataset} with condition {cond}')
+                continue
+                
+            # Get all unique donors for this condition
+            all_donors = sorted(adata.obs['donor_age'].unique())
+            print(f'    Found {len(all_donors)} donors')
+            
+            # Dictionary to store communication scores per donor
+            # Key: feature_name (source_ligand_target_receptor)
+            # Value: Series indexed by donor_age
+            comm_scores_dict = {}
+            for donor_age in tqdm(all_donors, desc=f'{dataset} - {cond} - donors'):
+                adata_donor = adata[adata.obs['donor_age'] == donor_age].copy()
+                # Run LIANA rank_aggregate for this donor
+                lr_results = li.mt.rank_aggregate(
+                    adata_donor,
+                    groupby=granularity,   # Communication between subtypes
+                    resource_name="consensus",  # Uses consensus LR database
+                    n_jobs=n_jobs,
+                    expr_prop=0.1,  # Min expression proportion
+                    n_perms=None,  # Skip permutation test for speed
+                    verbose=False,
+                    use_raw=False,
+                    inplace=False
                 )
                 
-                if adata.shape[0] == 0:
-                    print(f'    No samples for {cell_type} in {dataset} with condition {cond}')
-                    continue
+                # Extract communication scores
+                # Use 'lrscore' as the main metric (LIANA's aggregate score)
+                for _, row in lr_results.iterrows():
+                    source = row['source']
+                    target = row['target']
+                    ligand = row['ligand_complex']
+                    receptor = row['receptor_complex']
+                    score = row['lrscore']  # Use LIANA's aggregate score
+                    assert np.isnan(score) == False, f'NaN score for {source} → {target} ({ligand} → {receptor}) in donor {donor_age}, skipping'
                     
-                # Get all unique donors for this condition
-                all_donors = sorted(adata.obs['donor_age'].unique())
-                print(f'    Found {len(all_donors)} donors')
-                
-                # Dictionary to store communication scores per donor
-                # Key: feature_name (source_ligand_target_receptor)
-                # Value: Series indexed by donor_age
-                comm_scores_dict = {}
-                for donor_age in tqdm(all_donors, desc=f'{dataset} - {cond} - donors'):
-                    adata_donor = adata[adata.obs['donor_age'] == donor_age].copy()
-                    # Run LIANA rank_aggregate for this donor
-                    lr_results = li.mt.rank_aggregate(
-                        adata_donor,
-                        groupby=SUB_CT_LABEL,   # Communication between subtypes
-                        resource_name="consensus",  # Uses consensus LR database
-                        n_jobs=n_jobs,
-                        expr_prop=0.1,  # Min expression proportion
-                        n_perms=None,  # Skip permutation test for speed
-                        verbose=False,
-                        use_raw=False,
-                        inplace=False
-                    )
+                    # Create feature name: source_ligand_target_receptor
+                    feature_name = f'{source}__{ligand}__{target}__{receptor}'
                     
-                    # Extract communication scores
-                    # Use 'lrscore' as the main metric (LIANA's aggregate score)
-                    for _, row in lr_results.iterrows():
-                        source = row['source']
-                        target = row['target']
-                        ligand = row['ligand_complex']
-                        receptor = row['receptor_complex']
-                        score = row['lrscore']  # Use LIANA's aggregate score
-                        assert np.isnan(score) == False, f'NaN score for {source} → {target} ({ligand} → {receptor}) in donor {donor_age}, skipping'
-                        
-                        # Create feature name: source_ligand_target_receptor
-                        feature_name = f'{source}__{ligand}__{target}__{receptor}'
-                        
-                        # Initialize if not exists
-                        if feature_name not in comm_scores_dict:
-                            comm_scores_dict[feature_name] = pd.Series(index=all_donors, dtype=float)
-                        
-                        # Store score for this donor
-                        comm_scores_dict[feature_name].loc[donor_age] = score
-                
-                if not comm_scores_dict:
-                    print(f'    No communication scores calculated for {dataset}, {cond}')
-                    continue
-                
-                # Create feature matrix (donors × L-R pairs)
-                comm_df = pd.DataFrame(comm_scores_dict)
-                
-                # Remove donors with all NaN (shouldn't happen, but safety check)
-                comm_df = comm_df.dropna(how='all')
-                
-                # Create AnnData object
-                # Get metadata from the full dataset
-                obs_metadata = adata.obs[adata.obs['donor_age'].isin(comm_df.index)].copy()
-                obs_metadata = obs_metadata.drop_duplicates(subset='donor_age').set_index('donor_age')
-                obs_metadata = obs_metadata.loc[comm_df.index]  # Ensure same order
-                
-                comm_adata = ad.AnnData(
-                    X=comm_df.values,
-                    obs=obs_metadata,
-                    var=pd.DataFrame(index=comm_df.columns)
-                )
-                
-                # Add dataset and condition info
-                comm_adata.obs['dataset'] = dataset
-                comm_adata.uns['dataset'] = dataset
-                comm_adata.obs[granularity] = cell_type
-                comm_adata.obs['condition'] = cond
-                
-                condition_adatas.append(comm_adata)
-                print(f'    ✓ {dataset} - {cond}: {comm_adata.shape[0]} donors × {comm_adata.shape[1]} L-R pairs')
+                    # Initialize if not exists
+                    if feature_name not in comm_scores_dict:
+                        comm_scores_dict[feature_name] = pd.Series(index=all_donors, dtype=float)
+                    
+                    # Store score for this donor
+                    comm_scores_dict[feature_name].loc[donor_age] = score
             
-            # Concatenate all conditions
-            if len(condition_adatas) == 0:
-                raise ValueError(f'No communication scores calculated for {dataset}, {cell_type} across all conditions')
-            elif len(condition_adatas) == 1:
-                comm_adata_combined = condition_adatas[0]
-            else:
-                # Concatenate with fill_value=np.nan (not 0) to preserve missing data structure
-                # This is important for proper variance calculation
-                comm_adata_combined = ad.concat(condition_adatas, join='outer', fill_value=np.nan)
-                # Make observation names unique by combining with condition
-                comm_adata_combined.obs_names = [
-                    f"{idx}__{row['condition']}" 
-                    for idx, row in comm_adata_combined.obs.iterrows()
-                ]
-                comm_adata_combined.obs_names_make_unique()
+            if not comm_scores_dict:
+                print(f'    No communication scores calculated for {dataset}, {cond}')
+                continue
             
-            # Write combined feature data
-            write_feature_data(comm_adata_combined, dataset=dataset, cell_type=cell_type, analysis_name=analysis_name)
-            print(f'  ✓ {dataset}: Combined {comm_adata_combined.shape[0]} donors × {comm_adata_combined.shape[1]} L-R pairs')
+            # Create feature matrix (donors × L-R pairs)
+            comm_df = pd.DataFrame(comm_scores_dict)
+            
+            # Remove donors with all NaN (shouldn't happen, but safety check)
+            comm_df = comm_df.dropna(how='all')
+            
+            # Create AnnData object
+            # Get metadata from the full dataset
+            obs_metadata = adata.obs[adata.obs['donor_age'].isin(comm_df.index)].copy()
+            obs_metadata = obs_metadata.drop_duplicates(subset='donor_age').set_index('donor_age')
+            obs_metadata = obs_metadata.loc[comm_df.index]  # Ensure same order
+            
+            comm_adata = ad.AnnData(
+                X=comm_df.values,
+                obs=obs_metadata,
+                var=pd.DataFrame(index=comm_df.columns)
+            )
+            
+            # Add dataset and condition info
+            comm_adata.obs['dataset'] = dataset
+            comm_adata.uns['dataset'] = dataset
+            comm_adata.obs[granularity] = cell_type
+            comm_adata.obs['condition'] = cond
+            
+            condition_adatas.append(comm_adata)
+            print(f'    ✓ {dataset} - {cond}: {comm_adata.shape[0]} donors × {comm_adata.shape[1]} L-R pairs')
+        
+        # Concatenate all conditions
+        if len(condition_adatas) == 0:
+            raise ValueError(f'No communication scores calculated for {dataset}, {cell_type} across all conditions')
+        elif len(condition_adatas) == 1:
+            comm_adata_combined = condition_adatas[0]
+        else:
+            # Concatenate with fill_value=np.nan (not 0) to preserve missing data structure
+            # This is important for proper variance calculation
+            comm_adata_combined = ad.concat(condition_adatas, join='outer', fill_value=np.nan)
+            # Make observation names unique by combining with condition
+            comm_adata_combined.obs_names = [
+                f"{idx}__{row['condition']}" 
+                for idx, row in comm_adata_combined.obs.iterrows()
+            ]
+            comm_adata_combined.obs_names_make_unique()
+        
+        # Write combined feature data
+        write_feature_data(comm_adata_combined, dataset=dataset, cell_type=cell_type, analysis_name=analysis_name)
+        print(f'  ✓ {dataset}: Combined {comm_adata_combined.shape[0]} donors × {comm_adata_combined.shape[1]} L-R pairs')
 
 
 def association_with_age(adata, association_type, gene_col='gene'):

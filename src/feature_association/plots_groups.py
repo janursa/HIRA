@@ -44,13 +44,13 @@ def wrapper_plots_tfa_sub_b_aging(args, stats_features, stats_features_sig, skip
     wrapper_sig_features_counts(args)
     plot_heatmap_overal(stats_features, analysis_name=args.analysis_name)
 
-    stats_features_ref = retrieve_stats(analysis_name='tfa_major_b', cell_type='CD8T')
+    stats_ref = retrieve_stats(analysis_name='tfa_major_b', cell_type='CD8T')
     stats_features_c = stats_features[stats_features['cell_type']=='Tcm_Naive_CD8'].copy()
     stats_features_c['cell_type'] = stats_features_c['cell_type'].map(mapping_minor_2_major)
     
     plot_directional_consistency_scatter(
         stats_features_c, 
-        stats_features_ref,
+        stats_ref,
         x_label='Tcm/Naive CD8 \n(significance)',
         y_label='CD8T \n(significance)',
         association_col='-log10_p_adj',
@@ -58,8 +58,7 @@ def wrapper_plots_tfa_sub_b_aging(args, stats_features, stats_features_sig, skip
         label_consistent='Consistent',
         label_opposing='Opposing',
         save_suffix='sub_vs_major_aging',
-        pvalue_col='meta_p_adj',
-        all_sig=True
+        pvalue_col='meta_p_adj'
     )
 
 
@@ -134,7 +133,7 @@ def wrapper_plots_ct_pol_dist_aging(args, stats_features, stats_features_sig, sk
     plot_scatter_feature_vs_age(analysis_name, cell_types=['CD8T', 'CD4T'], features=['pol_dist'], filter_for_sig=False)
 
 
-def wrapper_plots_ccc_sub_b_aging(args, stats_features, stats_features_sig, skip_pathway):
+def wrapper_plots_ccc_aging(args, stats_features, stats_features_sig, skip_pathway):
     """Plot group for ccc_sub_b analysis."""
     analysis_name = args.analysis_name    
     plot_scatter_feature_vs_age(analysis_name, cell_types=['all'], feature_selection_mode='top_sig', top_features=10)
@@ -220,7 +219,7 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
         config = get_config(dataset=args.dataset)
         plot_directional_consistency_scatter(
             stats_sig[stats_sig['cell_type'].isin(['CD4T', 'CD8T'])], 
-            analysis_name=args.analysis_name,
+            stats_ref=retrieve_sig_stats(analysis_name='tfa_major_b'),
             save_suffix=args.dataset,
             x_label=f'{config.treatment_groups[1]} \n(significance)',
             y_label='Natural aging \n(significance)',

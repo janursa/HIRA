@@ -170,6 +170,8 @@ def retrieve_adata(dataset,
         adata.X = adata.layers['lognorm'] if 'lognorm' in adata.layers else adata.layers['X_norm']
     else:
         if data_type == 'sc':
+            if 'log1p' in adata.uns:
+                del adata.uns['log1p']
             one_value = adata.X.data[0]
             res = one_value - int(one_value)
             assert res == 0, "adata.X should contain raw counts (integer values)"
@@ -182,12 +184,12 @@ def retrieve_adata(dataset,
     if True:
         if data_type == 'sc':
             n_cell_t = 10
-            granularity = get_config(dataset).granularity
+            # Use the granularity parameter passed to the function
             group = bulk_group + [granularity]
             adata.obs['group'] = adata.obs[group].astype(str).agg('_'.join, axis=1)
             sample_size = adata.obs.groupby('group', as_index=False).size()
             sample_size_p = sample_size[sample_size['size']>n_cell_t]
-            mask = adata.obs.set_index(pseudobulk_group).index.isin(sample_size_p.set_index(pseudobulk_group).index)
+            mask = adata.obs['group'].isin(sample_size_p['group'])
             adata = adata[mask]
     
     return adata
@@ -606,8 +608,9 @@ def test_mixed_effects(df, ctr, treatment, target_variable='predicted_age', conf
     # Fit mixed model
     try:
         model = smf.mixedlm(formula, df, groups=df[group_key])
-        result = model.fit()
+        result = model.fit(method='bfgs', maxiter=100, warn_convergence=False)
     except Exception as e:
+        print(f"DIAGNOSTIC: Model fitting failed with error: {str(e)}")
         print(formula, df[[group_key, condition_col, target_variable]])
         aaa
     

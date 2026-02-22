@@ -28,7 +28,17 @@ from hiara.src.feature_association.helper import (
 )
 
 warnings.filterwarnings("ignore")
-
+def define_cell_types(analysis_name, user_cell_types=None):
+    # If user provided cell types, use those
+    if user_cell_types is not None:
+        return user_cell_types
+    
+    # Otherwise, use defaults from config
+    cell_types = get_config_fa(analysis_name).get('cell_types', None)
+    granularity = get_config_fa(analysis_name)['granularity']
+    if cell_types is None:
+        cell_types = MAJOR_CTS if granularity==MAJOR_CT_LABEL else SUB_CTS
+    return cell_types
 
 def calculate_features(analysis_name, par):
     """Calculate features based on type."""
@@ -46,7 +56,7 @@ def calculate_features(analysis_name, par):
         wrapper_ct_freq(par)
     elif analysis_name == 'ct_pol_dist':
         wrapper_ct_pol_dist(par)
-    elif analysis_name == 'ccc_sub_b':
+    elif analysis_name in ['ccc_sub_b', 'ccc_major_b']:
         wrapper_ccc(analysis_name, par, n_jobs=20)
     else:
         raise ValueError(f"Unknown analysis_name: {analysis_name}")
@@ -72,6 +82,8 @@ def run_single_cohort_analysis(args):
 
     print("=" * 80 + "\n")
     
+
+    
     # Prepare parameters
     par = {
         **args.__dict__,
@@ -81,6 +93,7 @@ def run_single_cohort_analysis(args):
         'cell_types': define_cell_types(args.analysis_name, args.cell_types),
         'condition': config.treatment_groups if hasattr(config, 'treatment_groups') else None
     }
+
     
     # Step 1: Calculate features (if needed) - only once for all configs
     if not skip_features:  # ct_freq is fast to compute, no need to skip
@@ -108,17 +121,7 @@ def run_single_cohort_analysis(args):
         multi_cohort=False,
         dataset=dataset
     )
-def define_cell_types(analysis_name, user_cell_types=None):
-    # If user provided cell types, use those
-    if user_cell_types is not None:
-        return user_cell_types
-    
-    # Otherwise, use defaults from config
-    cell_types = get_config_fa(analysis_name).get('cell_types', None)
-    granularity = get_config_fa(analysis_name)['granularity']
-    if cell_types is None:
-        cell_types = MAJOR_CTS if granularity==MAJOR_CT_LABEL else SUB_CTS
-    return cell_types
+
 
 def run_multi_cohort_analysis(
     args
@@ -144,7 +147,7 @@ def run_multi_cohort_analysis(
     suffix = '_promotor' if args.promotor_only else ''
     
     # Prepare parameters
-    
+    print(args.analysis_name, args.cell_types, define_cell_types(args.analysis_name, args.cell_types))
     par = {
         **args.__dict__,
         'temp_dir': f'{FEATURES_DIR}/tmp/',

@@ -220,20 +220,18 @@ def format_data(adata, dataset_name):
     adata = remove_attributes(adata)
     adata.obs[bulk_group_col] = adata.obs[bulk_group].astype(str).agg('_'.join, axis=1)
     return adata
-
-### QC Check
 def basic_qc(adata, run_test):
     print('Shape before filtering:', adata.shape, flush=True)
     adata.var["mt"] = adata.var_names.str.startswith("MT-")
     sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
-    n_donors = adata.obs['donor_id'].nunique()
+    n_groups = adata.obs['bulk_group'].nunique()
     if run_test:
         min_cells = 2
         min_genes = 2
     else:
         min_genes = 100
-        min_cells_per_donor = 10 # - consider the number of donors
-        min_cells = int(n_donors * min_cells_per_donor)
+        min_cells_per_group = 10 # - consider the number of donors
+        min_cells = int(n_groups * min_cells_per_group)
         min_cells = max(min_cells, 10)
    
     sc.pp.filter_cells(adata, min_genes=min_genes)
@@ -395,7 +393,6 @@ def format_columns_parsebioscience(adata):
     adata.obs['age'] = adata.obs['donor_id'].map(donor_age_map)
     
     return adata
-
 
 def map_cell_types_parsebioscience(adata):
     """

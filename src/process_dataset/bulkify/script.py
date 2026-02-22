@@ -56,6 +56,7 @@ if __name__ == '__main__':
     adata_bulk_major_celltypes = bulkify_func(adata, covariates=covariate_major)
     adata_bulk_major_celltypes = normalize(adata_bulk_major_celltypes)
     adata_bulk_major_celltypes = qc_bulk(adata_bulk_major_celltypes, run_test=args.run_test)
+    print(f'Writing bulk data for major cell types {adata_bulk_major_celltypes.shape} to {args.bulk_all}', flush=True)
     adata_bulk_major_celltypes.write(args.bulk_all)
 
     # - bulk minor
@@ -64,6 +65,7 @@ if __name__ == '__main__':
     adata_bulk_minor_celltypes = bulkify_func(adata, covariates=covariates_minor)
     adata_bulk_minor_celltypes = normalize(adata_bulk_minor_celltypes)
     adata_bulk_minor_celltypes = qc_bulk(adata_bulk_minor_celltypes, run_test=args.run_test)
+    print(f'Writing bulk data for minor cell types {adata_bulk_minor_celltypes.shape} to {args.bulk_minor_celltype}', flush=True)
     adata_bulk_minor_celltypes.write(args.bulk_minor_celltype)
 
     print('DONE')

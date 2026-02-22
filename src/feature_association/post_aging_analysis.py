@@ -37,7 +37,7 @@ from hiara.src.feature_association.plots_groups import (
     wrapper_plots_tfa_peg_aging,
     wrapper_plots_ct_freq_aging,
     wrapper_plots_ct_pol_dist_aging,
-    wrapper_plots_ccc_sub_b_aging
+    wrapper_plots_ccc_aging
 )
 
 
@@ -80,7 +80,7 @@ if __name__ == "__main__":
         wrapper_plots_ct_freq_aging(args, stats_features, stats_features_sig, skip_pathway)
     elif analysis_name == 'ct_pol_dist':
         wrapper_plots_ct_pol_dist_aging(args, stats_features, stats_features_sig, skip_pathway)
-    elif analysis_name == 'ccc_sub_b':
-        wrapper_plots_ccc_sub_b_aging(args, stats_features, stats_features_sig, skip_pathway)
+    elif analysis_name in ['ccc_major_b', 'ccc_sub_b']:
+        wrapper_plots_ccc_aging(args, stats_features, stats_features_sig, skip_pathway)
     else:
         raise ValueError('Unknown feature type')
