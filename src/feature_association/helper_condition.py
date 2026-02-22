@@ -78,5 +78,6 @@ def get_condition_palette(analysis_type):
         palette = palette_trend
     else:
         raise ValueError(f"Unknown analysis type: {analysis_type}")
+    
     palette_all = {**palette_trend, **palette}
     return palette_all

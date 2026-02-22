@@ -83,6 +83,10 @@ def plot_overview_heatmap(stats, args):
     analysis_type = args.analysis_type
     output_dir = args.output_dir
 
+    if len(stats) == 0:
+        print(f"Warning: No significant results to plot. Skipping overview heatmap.")
+        return
+
     if 'comparison' in stats.columns:
         if len(stats['comparison'].unique()) > 1:
             raise ValueError("Overview heatmap only supports single comparison at a time.")
@@ -93,7 +97,6 @@ def plot_overview_heatmap(stats, args):
     slope_col = 'slope'  
     stats['cell_type'] = pd.Categorical(stats['cell_type'], categories=MAJOR_CTS, ordered=True)
     palette = get_condition_palette(analysis_type)
-
     heamap_overview_cell_types(
             stats, 
             slope_col=slope_col, 

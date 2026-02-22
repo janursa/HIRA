@@ -39,9 +39,10 @@ def retrieve_adata(dataset,
                    test_mode=False,
                    only_obs=False):    
 
-    gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
+    
     assert data_type in DATA_TYPES, f'Unknown type {data_type}'
     if test_mode:
+        print('Test mode: loading subset of data...', flush=True)
         adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/abf300.h5ad", backed='r')
     else:
         adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/{dataset}.h5ad", backed='r')
@@ -68,6 +69,7 @@ def retrieve_adata(dataset,
     assert bulk_group is not None, f'Bulk grouping not defined for dataset {dataset}'
     obs['bulk_group'] = obs[bulk_group].astype(str).agg('_'.join, axis=1)
 
+    gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
     mask_genes = adata.var_names.isin(gene_names)
     if only_net_genes:
         print('Filtering to only genes in the GRN network...')
@@ -210,8 +212,10 @@ def retrieve_net(dataset, cell_type, promotor_only=False, data_type='sc', grns_d
 #     nets = pd.concat(net_store, ignore_index=True)
 #     return nets
 
-def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CONSENSUS_MIN_DEGREE, promotor_only=False, force=False):
-    save_name = f"{GRNS_DIR}/consensus_net_{cell_type}_minDegree{min_degree}{'_promotorOnly' if promotor_only else ''}.csv"
+def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CONSENSUS_MIN_DEGREE, promotor_only=False, force=False, grns_dir=None):
+    if grns_dir is None:
+        grns_dir = GRNS_DIR
+    save_name = f"{grns_dir}/consensus_net_{cell_type}_minDegree{min_degree}{'_promotorOnly' if promotor_only else ''}.csv"
     if Path(save_name).exists() and not force:
         # print('Loading existing consensus GRN for', cell_type, 'with min degree', min_degree)
         net_mean = pd.read_csv(save_name)
@@ -220,7 +224,7 @@ def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CON
     from scipy.stats import zscore
     net_store = []
     for dataset in datasets:
-        net = retrieve_net(dataset, cell_type, promotor_only=promotor_only)
+        net = retrieve_net(dataset, cell_type, promotor_only=promotor_only, grns_dir=grns_dir)
         net['dataset'] = dataset
         net_store.append(net)
     nets = pd.concat(net_store)
@@ -594,8 +598,12 @@ def test_mixed_effects(df, ctr, treatment, target_variable='predicted_age', conf
     # replace feature_values with target_variable
     formula = formula.replace('feature_values', target_variable)
     # Fit mixed model
-    model = smf.mixedlm(formula, df, groups=df[group_key])
-    result = model.fit()
+    try:
+        model = smf.mixedlm(formula, df, groups=df[group_key])
+        result = model.fit()
+    except Exception as e:
+        print(formula, df[[group_key, condition_col, target_variable]])
+        aaa
     
     # Extract p-value and coefficient for main condition effect
     # The coefficient name depends on the formula and encoding

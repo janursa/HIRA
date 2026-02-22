@@ -11,7 +11,6 @@
 #SBATCH --mail-user=jalil.nourisa@gmail.com   
 
 set -e
-
 # echo "---------------------------------------------------------- Consensus networks -----------------------------------------------------------------"
 # python src/feature_association/consensus_nets.py
 
@@ -35,11 +34,12 @@ test_mode="" #--test-mode
 # python src/feature_association/run_analysis.py  --dataset parsebioscience   --analysis-name $analysis_name --association-type grouped 
 # python src/feature_association/post_condition_analysis.py --dataset parsebioscience --analysis-type perturbation --analysis-name $analysis_name   --agreement opposite --skip-pathway
 
-echo "---------------------------------------------------------- op -----------------------------------------------------------------"
-python src/feature_association/run_analysis.py  --dataset op   --analysis-name $analysis_name --association-type grouped
+# echo "---------------------------------------------------------- op -----------------------------------------------------------------"
+python src/feature_association/run_analysis.py  --dataset op  --cell-types CD4T --analysis-name $analysis_name --association-type grouped 
 python src/feature_association/post_condition_analysis.py --dataset op --analysis-type perturbation --analysis-name $analysis_name   --agreement opposite --skip-pathway
+
 # echo "---------------------------------------------------------- CXCL9 -----------------------------------------------------------------"
-# python src/feature_association/run_analysis.py --dataset CXCL9 --cell-types CD4T CD8T --analysis-name $analysis_name --association-type grouped 
+# python src/feature_association/run_analysis.py --dataset CXCL9  --analysis-name $analysis_name --association-type grouped 
 # python src/feature_association/post_condition_analysis.py --dataset CXCL9 --analysis-type perturbation --analysis-name $analysis_name --cell-types CD4T CD8T --agreement opposite --skip-overview --skip-pathway
 
 

@@ -1685,14 +1685,18 @@ def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", 
     ax.set_xlabel("Age")
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
 
-def heamap_overview_cell_types(stats_all, palette, 
-                                            map_names={}, 
-                                            slope_col='slope',
-                                            main_col='cell_type', 
-                                            figsize=(6, 8), sig_dots_y_offset = 0.5, 
-                                            annotate_x_ticks=True, dendrogram_visible=True,
-                                            show_legend=True,
-                                            show_dots=False):
+def heamap_overview_cell_types(stats_all, 
+                               palette, 
+                                map_names={}, 
+                                slope_col='slope',
+                                main_col='cell_type', 
+                                figsize=(6, 8), 
+                                sig_dots_y_offset = 0.5, 
+                                annotate_x_ticks=True, 
+                                dendrogram_visible=True,
+                                show_legend=True,
+                                show_dots=False
+                                ):
 
     from hiara.src.config import palette_major_cts, surrogate_names
     from matplotlib.colors import ListedColormap, BoundaryNorm
@@ -1717,6 +1721,10 @@ def heamap_overview_cell_types(stats_all, palette,
     trends = stats_all['trend'].unique()
     palette = {key: palette[key] for key in trends}
     palette_values = list(palette.values())
+    
+    if len(palette_values) < 2:
+        raise ValueError(f"Expected at least 2 trends for colormap, but got {len(palette_values)}: {trends}")
+    
     cmap = ListedColormap([palette_values[0], 'white', palette_values[1]])
     bounds = [-1.5, -0.5, 0.5, 1.5]
     norm = BoundaryNorm(bounds, cmap.N)

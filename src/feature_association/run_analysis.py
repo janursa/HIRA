@@ -78,7 +78,7 @@ def run_single_cohort_analysis(args):
         'association_type': args.association_type,
         'use_consensus_net': True,
         'promotor_only': args.promotor_only,
-        'cell_types': define_cell_types(args.analysis_name),
+        'cell_types': define_cell_types(args.analysis_name, args.cell_types),
         'condition': config.treatment_groups if hasattr(config, 'treatment_groups') else None
     }
     
@@ -108,7 +108,12 @@ def run_single_cohort_analysis(args):
         multi_cohort=False,
         dataset=dataset
     )
-def define_cell_types(analysis_name):
+def define_cell_types(analysis_name, user_cell_types=None):
+    # If user provided cell types, use those
+    if user_cell_types is not None:
+        return user_cell_types
+    
+    # Otherwise, use defaults from config
     cell_types = get_config_fa(analysis_name).get('cell_types', None)
     granularity = get_config_fa(analysis_name)['granularity']
     if cell_types is None:
@@ -145,7 +150,7 @@ def run_multi_cohort_analysis(
         'temp_dir': f'{FEATURES_DIR}/tmp/',
         'META_MIN_COHORT': META_MIN_COHORT,
         'condition': 'healthy',
-        'cell_types': define_cell_types(args.analysis_name),
+        'cell_types': define_cell_types(args.analysis_name, args.cell_types),
         'use_consensus_net': True
     }
    
@@ -233,6 +238,14 @@ def main():
         required=True,
         choices=['continous', 'grouped'],
         help='Type of analysis to perform: condition (disease/perturbation) or aging'
+    )
+    
+    parser.add_argument(
+        '--cell-types',
+        type=str,
+        nargs='+',
+        default=None,
+        help='List of cell types to analyze (e.g., CD4T CD8T). If not specified, uses all cell types based on analysis configuration.'
     )
     
     args = parser.parse_args()
