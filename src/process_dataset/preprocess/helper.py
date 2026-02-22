@@ -175,7 +175,6 @@ def format_data(adata, dataset_name):
         adata = format_columns_parsebioscience(adata)
         adata.var.index.name = 'gene_name'
         adata.var = adata.var.reset_index()[['gene_name']].set_index('gene_name')
-        
 
     elif dataset_name == 'op':
         adata.obs = adata.obs.rename(columns={'sm_name':'perturbation'})
@@ -189,29 +188,32 @@ def format_data(adata, dataset_name):
         })
         # join metadata into obs
         adata.obs = adata.obs.merge(meta, left_on='donor_id', right_on='donor_id', how='left')
-    else:
-        pass
+    
+    # Handle gene names for datasets that haven't been processed above
+    if dataset_name not in ['soundlife', 'parsebioscience']:
+        if 'gene_name' in adata.var.columns:
+            gene_name = 'gene_name'
+        elif 'Gene' in adata.var.columns:
+            gene_name = 'Gene'
+        elif 'gene_symbols' in adata.var.columns:
+            gene_name = 'gene_symbols'
+        elif 'feature_name' in adata.var.columns:
+            gene_name = 'feature_name'
+        elif 'features' in adata.var.columns:
+            gene_name = 'features'
+        elif dataset_name in ['abf300', 'op']:
+            gene_name = 'gene_name'
+            adata.var.index.name = gene_name
+            adata.var = adata.var.reset_index()
+        else:
+            print('\n',adata.var)
+            raise ValueError("No gene name column found in adata.var")
+        adata.var.rename(columns={gene_name: 'gene_name'}, inplace=True)
+        # only keep gene_name column
+        adata.var =  adata.var[['gene_name']].set_index('gene_name')
+    
+    # Common processing for all datasets
     adata.obs = adata.obs.astype('str')
-    if 'gene_name' in adata.var.columns:
-        gene_name = 'gene_name'
-    elif 'Gene' in adata.var.columns:
-        gene_name = 'Gene'
-    elif 'gene_symbols' in adata.var.columns:
-        gene_name = 'gene_symbols'
-    elif 'feature_name' in adata.var.columns:
-        gene_name = 'feature_name'
-    elif 'features' in adata.var.columns:
-        gene_name = 'features'
-    elif dataset_name in ['abf300', 'op']:
-        gene_name = 'gene_name'
-        adata.var.index.name = gene_name
-        adata.var = adata.var.reset_index()
-    else:
-        print('\n',adata.var)
-        raise ValueError("No gene name column found in adata.var")
-    adata.var.rename(columns={gene_name: 'gene_name'}, inplace=True)
-    # only keep gene_name column
-    adata.var =  adata.var[['gene_name']].set_index('gene_name')
     adata.obs.rename(columns={'perturbation':'condition', 'disease':'condition', 'treatment':'condition'}, inplace=True)
     adata.obs['dataset'] = dataset_name
     adata.obs['donor_age'] = adata.obs['age'].astype(str) + '_' + adata.obs['donor_id'].astype(str)
@@ -220,16 +222,21 @@ def format_data(adata, dataset_name):
     return adata
 
 ### QC Check
-def basic_qc(adata):
+def basic_qc(adata, run_test):
     print('Shape before filtering:', adata.shape, flush=True)
     adata.var["mt"] = adata.var_names.str.startswith("MT-")
     sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
     n_donors = adata.obs['donor_id'].nunique()
-    min_cells_per_donor = 10 # - consider the number of donors
-    min_cells = int(n_donors * min_cells_per_donor)
-    min_cells = max(min_cells, 10)
+    if run_test:
+        min_cells = 2
+        min_genes = 2
+    else:
+        min_genes = 100
+        min_cells_per_donor = 10 # - consider the number of donors
+        min_cells = int(n_donors * min_cells_per_donor)
+        min_cells = max(min_cells, 10)
    
-    sc.pp.filter_cells(adata, min_genes=100)
+    sc.pp.filter_cells(adata, min_genes=min_genes)
     sc.pp.filter_cells(adata, max_genes=5000)
     # Apply filters
     sc.pp.filter_genes(adata, min_cells=min_cells)

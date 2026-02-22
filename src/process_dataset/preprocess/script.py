@@ -59,7 +59,6 @@ def load_sc_data(file_name, dataset, run_test):
         adata = ad.read_h5ad(file_name, backed='r')
         adata = format_data(adata, dataset)
         if run_test: # test
-            print('Running in test mode, subsetting data...', flush=True)
             adata = subset_to_test(adata)
             print(f'Kept {adata.shape[0]} cells from groups', flush=True)
         else:
@@ -74,8 +73,7 @@ def main(par):
     par['dataset'] = dataset 
     file_name = par['input_file']
     adata = load_sc_data(file_name, dataset, par['run_test'])
-    if not par['run_test']:
-        adata = basic_qc(adata)
+    adata = basic_qc(adata, par['run_test'])
     if intermediate_save:
         print(f"Saving intermediate QC result to {par['processed_files_dir']}/{dataset}.h5ad", flush=True)
         adata.write_h5ad(f"{par['processed_files_dir']}/{dataset}.h5ad", compression='gzip')

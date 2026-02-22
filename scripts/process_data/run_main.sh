@@ -38,7 +38,7 @@ MAIN_DIR='/vol/projects/jnourisa/hiara/'
 
 
 # datasets to include -> preprocessing 
-datasets="data12" # data12 data7_allTPs_jalil data1 SLE op soundlife parsebioscience
+datasets="soundlife" # data12 data7_allTPs_jalil data1 SLE op soundlife parsebioscience
 
 for dataset in $datasets; do
         

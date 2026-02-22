@@ -195,8 +195,6 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
     if conditions is None:
         conditions = adata.obs[condition_col].unique()
     dataset = adata.obs['dataset'].unique()[0]
-    print(adata.obs.groupby('condition').value_counts())
-    aa
     name_mapping = {} if config is None else config.name_mapping if hasattr(config, 'name_mapping') else {}
     stats_all = []
     def stats_condition_vs_ctr(adata, condition):  
