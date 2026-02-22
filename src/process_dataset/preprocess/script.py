@@ -1,61 +1,30 @@
 
 import anndata as ad
 import gc
-from hiara.src.config import DATASET_NAME_MAPPING, get_config
+from hiara.src.config import DATASET_NAME_MAPPING, get_config, MAJOR_CT_LABEL
 import argparse
 import glob
 import os
 
-## VIASH START
-parser = argparse.ArgumentParser()
-
-parser.add_argument('--processed_files_dir', 
-    type=str,
-    required=True,
-    help="Processed files dir"
-    )
-    
-parser.add_argument('--input_file', 
-    type=str,
-    required=True,
-    help="Location of raw input_file"
-    )
-parser.add_argument('--run-test', 
-    action='store_true',
-    help="Whether to run in test mode (subset of data)"
-    )
-
-parser.add_argument('--n_cell_t', help='number of cells threshold', default=10) # optio
-parser.add_argument('--dataset', help='dataset to process', required=True)
-
-par = vars(parser.parse_args())
-run_test = par['run_test']
 
 ## VIASH END
 from hiara.src.process_dataset.preprocess.helper import annotate_celltypes, basic_qc, format_data, qc_post_annotation
 
-def all_preprocessing_steps(adata, dataset):
+def all_preprocessing_steps(adata, dataset, run_test, n_cell_t):
     print('Running QC...', flush=True)
     adata = basic_qc(adata)
     print('Running cell type annotation...', flush=True)
     adata = annotate_celltypes(adata, dataset)
     print('Cell type annotation done.', flush=True)
-    adata = qc_post_annotation(adata, par)
+    adata = qc_post_annotation(adata, n_cell_t)
     return adata
 
-def subset_to_test(adata, dataset):
+def subset_to_test(adata):
     print('Test mode: subsetting data', flush=True)
-    config = get_config(dataset)
-    pseudobulk_group = config.pseudobulk_group
-    pseudobulk_group = [col for col in pseudobulk_group if col != 'cell_type']
-    # Get unique groups and keep only first 2
-    groups = adata.obs.groupby(pseudobulk_group).size().reset_index()
-    groups_to_keep = groups.head(1)
-    # Create mask to filter adata
-    mask = adata.obs.set_index(pseudobulk_group).index.isin(groups_to_keep.set_index(pseudobulk_group).index)
-    adata = adata[mask].to_memory()
+    cell_indices = adata.obs.groupby('group_id').apply(lambda x: x.index[0]).values
+    adata = adata[cell_indices, :].to_memory()  
     return adata
-def load_sc_data(file_name, dataset):
+def load_sc_data(file_name, dataset, run_test):
     if dataset == 'soundlife': # Handle multi-file input for soundlife
         print(f'Soundlife: Processing multiple files from directory: {file_name}', flush=True)
         input_pattern = os.path.join(file_name, 'SoundLife_*.h5ad')
@@ -75,8 +44,8 @@ def load_sc_data(file_name, dataset):
             adata_temp = ad.read_h5ad(input_file, backed='r')
             adata_temp = format_data(adata_temp, dataset)
             if run_test:
-                # In test mode, take only first 1000 cells from each file
-                adata_temp = subset_to_test(adata_temp, dataset)
+                # In test mode, take only limited groups
+                adata_temp = subset_to_test(adata_temp)
             else:
                 adata_temp = adata_temp.to_memory()
 
@@ -102,8 +71,8 @@ def load_sc_data(file_name, dataset):
         adata = format_data(adata, dataset)
         if run_test: # test
             print('Running in test mode, subsetting data...', flush=True)
-            adata = subset_to_test(adata, dataset)
-            print(f'Kept {adata.shape[0]} cells from 2 groups', flush=True)
+            adata = subset_to_test(adata)
+            print(f'Kept {adata.shape[0]} cells from groups', flush=True)
         else:
             print('Reading to memory...', flush=True)
             adata = adata.to_memory()
@@ -115,9 +84,9 @@ def main(par):
     dataset = DATASET_NAME_MAPPING.get(dataset, dataset)
     par['dataset'] = dataset 
     file_name = par['input_file']
-    adata = load_sc_data(file_name, dataset)
+    adata = load_sc_data(file_name, dataset, par['run_test'])
     print('Running all preprocessing steps...', flush=True)
-    adata = all_preprocessing_steps(adata, dataset)
+    adata = all_preprocessing_steps(adata, dataset, par['run_test'], par['n_cell_t'])
     adata.obs['dataset'] = f"{dataset}"
     print(f"Writing processed data to {par['processed_files_dir']}/{dataset}.h5ad", flush=True)
     
@@ -126,7 +95,28 @@ def main(par):
     print(adata, flush=True)
 
 if __name__ == "__main__":
-    print(par)
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--processed_files_dir', 
+        type=str,
+        required=True,
+        help="Processed files dir"
+        )
+        
+    parser.add_argument('--input_file', 
+        type=str,
+        required=True,
+        help="Location of raw input_file"
+        )
+    parser.add_argument('--run-test', 
+        action='store_true',
+        help="Whether to run in test mode (subset of data)"
+        )
+
+    parser.add_argument('--n_cell_t', help='number of cells threshold', default=10) # optio
+    parser.add_argument('--dataset', help='dataset to process', required=True)
+
+    par = vars(parser.parse_args())
     main(par)
     
     

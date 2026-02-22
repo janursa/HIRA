@@ -211,6 +211,9 @@ def remove_attributes(adata):
             delattr(adata, attr)
     return adata
 def format_data(adata, dataset_name):
+    config = get_config(dataset_name)
+    pseudobulk_group = config.pseudobulk_group
+    adata.obs['group_id'] = adata.obs[pseudobulk_group].astype(str).agg('_'.join, axis=1)
     # Soundlife-specific formatting
     if dataset_name == 'soundlife':
         adata = format_columns_soundlife(adata)
@@ -218,7 +221,17 @@ def format_data(adata, dataset_name):
         adata.var.index.name = 'gene_name'
         adata.var = adata.var.reset_index()[['gene_name']].set_index('gene_name')
         adata.obs = adata.obs.astype('str')
-        print(adata.obs.head(), flush=True)
+        pseudobulk_group = config.pseudobulk_group
+        # print(adata.obs.head(), flush=True)
+        return adata
+    
+    # ParseBioscience-specific formatting
+    if dataset_name == 'parsebioscience':
+        adata = format_columns_parsebioscience(adata)
+        # For parsebioscience, gene names are already in index
+        adata.var.index.name = 'gene_name'
+        adata.var = adata.var.reset_index()[['gene_name']].set_index('gene_name')
+        adata.obs = adata.obs.astype('str')
         return adata
     
     if dataset_name == 'op':
@@ -279,15 +292,15 @@ def basic_qc(adata):
     print('Shape after filtering:', adata.shape)
     assert adata.shape[0] > 0, "No cells left after QC filtering."
     return adata
-def qc_post_annotation(adata, par):
-    config = get_config(par['dataset'])
-    pseudobulk_group = config.pseudobulk_group
-    sample_size = adata.obs.groupby(pseudobulk_group, as_index=False).size()
-    sample_size = sample_size[sample_size['size']>par['n_cell_t']]
-    mask = adata.obs.set_index(pseudobulk_group).index.isin(sample_size.set_index(pseudobulk_group).index)
+def qc_post_annotation(adata, n_cell_t):
+    sample_size = adata.obs.groupby('group_id', as_index=False).size()
+    sample_size_p = sample_size[sample_size['size']>n_cell_t]
+    mask = adata.obs.set_index(pseudobulk_group).index.isin(sample_size_p.set_index(pseudobulk_group).index)
     adata = adata[mask]
     print('size after filtering for donor sinlge cell count: ', adata.shape)
-    assert adata.shape[0] > 0, "No cells left after QC filtering based on pseudobulk group and cell count threshold."
+    if adata.shape[0] == 0:
+        print(sample_size.sort_values())
+        raise ValueError('No cells left after QC filtering based on pseudobulk group and cell count threshold.')
     return adata
 
 def annotate_celltypes(adata, dataset):
@@ -295,8 +308,14 @@ def annotate_celltypes(adata, dataset):
     # Soundlife uses pre-existing AIFI_L2 annotations instead of CellTypist
     if dataset == 'soundlife': 
         print('Using pre-existing AIFI_L2 annotations for soundlife...')
-        adata.layers['counts'] = adata.X.copy()
         adata = map_cell_types_soundlife(adata)
+        # Restore raw counts to X (map_cell_types expects and returns raw counts)
+        return adata
+    
+    # ParseBioscience uses pre-existing annotations instead of CellTypist
+    if dataset == 'parsebioscience':
+        print('Using pre-existing cell type annotations for parsebioscience...')
+        adata = map_cell_types_parsebioscience(adata)
         # Restore raw counts to X (map_cell_types expects and returns raw counts)
         return adata
     
@@ -412,3 +431,122 @@ def annotate_celltypes(adata, dataset):
 #     # age_groups = ['34-', '35_44', '45_54', '55_64', '65_75', '75+']  
 #     # obs['age_group'] = pd.cut(obs['age'], bins=bins, labels=age_groups, right=False)
 #     return obs
+
+def format_columns_parsebioscience(adata):
+    """
+    Add standardized column names while keeping all original columns.
+    Maps ParseBioscience-specific columns to standard pipeline format.
+    This is called BEFORE cell type annotation.
+    """
+    print('Formatting columns for parsebioscience...')
+    
+    # Basic metadata formatting
+    adata.obs['is_control'] = adata.obs['treatment'] == 'PBS'
+    adata.obs = adata.obs[['cell_type', 'cytokine', 'donor', 'is_control', 'bc1_well']]
+    adata.obs = adata.obs.rename({'donor': 'donor_id', 'cytokine': 'condition', 'bc1_well': 'well'}, axis=1)
+    
+    # Store original cell type annotation for later mapping
+    adata.obs['cell_type_original'] = adata.obs['cell_type'].astype(str)
+    
+    # Additional metadata
+    adata.obs['perturbation_type'] = 'cytokine'
+
+    # Create age mapping from the donor information
+    donor_age_map = {
+        'Donor1': 75,
+        'Donor2': 34,
+        'Donor3': 68,
+        'Donor4': 59,
+        'Donor5': 41,
+        'Donor6': 38,
+        'Donor7': 45,
+        'Donor8': 52,
+        'Donor9': 38,
+        'Donor10': 42,
+        'Donor11': 46,
+        'Donor12': 36
+    }
+
+    # Map the age to obs based on donor_id
+    adata.obs['age'] = adata.obs['donor_id'].map(donor_age_map)
+    
+    return adata
+
+
+def map_cell_types_parsebioscience(adata):
+    """
+    Map ParseBioscience annotations to major cell types and standardized sub cell types.
+    Sets cell_type (Major_CT) and Sub_CT columns with standardized nomenclature.
+    This is called AFTER basic formatting, similar to soundlife.
+    """
+    print('Mapping cell types from ParseBioscience original annotations...')
+    
+    # Define mapping to major cell types
+    major_cell_type_map = {
+        'B Intermediate/Memory': 'B',
+        'B Naive': 'B',
+        'CD14 Mono': 'MONO',
+        'CD16 Mono': 'MONO',
+        'CD4 Memory': 'CD4T',
+        'CD4 Naive': 'CD4T',
+        'Treg': 'CD4T',
+        'CD8 Memory': 'CD8T',
+        'CD8 Naive': 'CD8T',
+        'NK': 'NK',
+        'NK CD56bright': 'NK',
+        'NKT': 'NK',
+        'MAIT': 'CD8T',
+        'ILC': 'NK',
+        'Plasmablast': 'B',
+        'HSPC': None,
+        'cDC': None,
+        'pDC': None
+    }
+    
+    # Define mapping to standardized sub cell types (matching config.py SUB_CTS)
+    sub_cell_type_map = {
+        'B Intermediate/Memory': 'Memory_B',
+        'B Naive': 'Naive_B',
+        'CD14 Mono': 'Classic_MONO',
+        'CD16 Mono': 'NonClassic_MONO',
+        'CD4 Memory': 'Tem_Effector_CD4',
+        'CD4 Naive': 'Tcm_Naive_CD4',
+        'Treg': 'Treg',
+        'CD8 Memory': 'Tem_Trm_CD8',
+        'CD8 Naive': 'Tcm_Naive_CD8',
+        'NK': 'CD16_NK',
+        'NK CD56bright': 'CD16_NK',
+        'NKT': 'CD16_NK',
+        'MAIT': 'MAIT',
+        'ILC': 'CD16_NK',
+        'Plasmablast': 'Plasmablasts_B',
+        'HSPC': None,
+        'cDC': None,
+        'pDC': None
+    }
+    
+    # Map major and sub cell types
+    adata.obs[MAJOR_CT_LABEL] = adata.obs['cell_type_original'].map(major_cell_type_map)
+    adata.obs[SUB_CT_LABEL] = adata.obs['cell_type_original'].map(sub_cell_type_map)
+    adata.obs['cell_type'] = adata.obs[MAJOR_CT_LABEL]
+    
+    # Count unmapped cells
+    unmapped_major = adata.obs[MAJOR_CT_LABEL].isna().sum()
+    unmapped_sub = adata.obs[SUB_CT_LABEL].isna().sum()
+    total = adata.shape[0]
+    
+    print(f'Unmapped major cell types: {unmapped_major:,} ({unmapped_major/total*100:.2f}%)')
+    print(f'Unmapped sub cell types: {unmapped_sub:,} ({unmapped_sub/total*100:.2f}%)')
+    
+    # Filter out unmapped cell types (use .copy() to avoid view issues in backed mode)
+    adata = adata[~adata.obs['cell_type'].isna(), :].copy()
+    print(f'Shape after filtering unmapped cell types: {adata.shape}')
+    
+    # Show cell type distribution
+    print('\nMajor cell type distribution:')
+    print(adata.obs[MAJOR_CT_LABEL].value_counts())
+    
+    print(f'\nStandardized sub cell type distribution:')
+    print(adata.obs[SUB_CT_LABEL].value_counts())
+    
+    return adata

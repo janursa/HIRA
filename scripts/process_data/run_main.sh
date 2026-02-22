@@ -4,8 +4,8 @@
 #SBATCH --error=logs/%j.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
-#SBATCH --time=10:00:00
-#SBATCH --mem=500GB
+#SBATCH --time=20:00:00
+#SBATCH --mem=1000GB
 #SBATCH --partition=cpu
 #SBATCH --mail-type=END,FAIL      
 #SBATCH --mail-user=jalil.nourisa@gmail.com   
@@ -38,12 +38,14 @@ MAIN_DIR='/vol/projects/jnourisa/hiara/'
 
 
 # datasets to include -> preprocessing 
-datasets="soundlife" # data12 data7_allTPs_jalil data1 SLE 
+datasets="parsebioscience" # data12 data7_allTPs_jalil data1 SLE op soundlife parsebioscience
 
 for dataset in $datasets; do
         
         if [ "$dataset" = "soundlife" ]; then
                 input_file="/vol/projects/CIIM/soundlife/"  # DIRECTORY with multiple h5ad files
+        elif [ "$dataset" = "parsebioscience" ]; then
+                input_file='/vol/projects/CIIM/perturbation_data/Parse_10M_PBMC_cytokines.h5ad'
         elif [ "$dataset" = "op" ]; then
                 input_file="/vol/projects/jnourisa/genernbi/resources/datasets_raw/op_perturbation_sc_counts.h5ad"
         elif [ "$dataset" = "CXCL9" ]; then
