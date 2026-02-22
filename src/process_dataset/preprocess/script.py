@@ -5,9 +5,7 @@ from hiara.src.config import DATASET_NAME_MAPPING, get_config, MAJOR_CT_LABEL
 import argparse
 import glob
 import os
-
-
-## VIASH END
+import numpy as np
 from hiara.src.process_dataset.preprocess.helper import annotate_celltypes, basic_qc, format_data
 
 def subset_to_test(adata):
@@ -67,7 +65,6 @@ def load_sc_data(file_name, dataset, run_test):
         else:
             print('Reading to memory...', flush=True)
             adata = adata.to_memory()
-    print('Formatting data...', flush=True)
     return adata
 
 def main(par):
@@ -77,15 +74,22 @@ def main(par):
     par['dataset'] = dataset 
     file_name = par['input_file']
     adata = load_sc_data(file_name, dataset, par['run_test'])
-    print('Running QC...', flush=True)
     if not par['run_test']:
         adata = basic_qc(adata)
     if intermediate_save:
-        print(f"Saving intermediate QC result to {par['processed_files_dir']}/{dataset}_qc.h5ad", flush=True)
-        adata.write_h5ad(f"{par['processed_files_dir']}/{dataset}_qc.h5ad", compression='gzip')
-    print('Running cell type annotation...', flush=True)
+        print(f"Saving intermediate QC result to {par['processed_files_dir']}/{dataset}.h5ad", flush=True)
+        adata.write_h5ad(f"{par['processed_files_dir']}/{dataset}.h5ad", compression='gzip')
     adata = annotate_celltypes(adata, dataset)
     print(f"Writing processed data to {par['processed_files_dir']}/{dataset}.h5ad", flush=True)
+    # assert that there is no layers before wiring
+    assert not adata.layers, "adata should not have any layers before writing"
+    # assert that .X is sparse
+    assert not isinstance(adata.X, np.ndarray), "adata.X should be sparse before writing"
+    # assert that .X is raw counts
+    assert np.all(adata.X.data >= 0), "adata.X should contain raw counts (non-negative values)"
+    one_value = adata.X.data[0]
+    assert np.isclose(one_value % 1, 0), "adata.X should contain raw counts (integer values)"
+
     adata.write_h5ad(f"{par['processed_files_dir']}/{dataset}.h5ad", compression='gzip')
     print(adata, flush=True)
 

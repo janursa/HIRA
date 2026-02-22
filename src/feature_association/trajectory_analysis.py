@@ -51,20 +51,19 @@ def load_sc_data(dataset, cell_type, test_mode=False, min_cells_threshold=100):
         if len(failing_donors) > 5:
             print(f"  ... and {len(failing_donors) - 5} more")
     adata = adata[adata.obs['donor_age'].isin(passing_donors)].copy()
-    pseudobulk_group = get_config(dataset).pseudobulk_group
-    adata.obs['group_id'] = adata.obs[pseudobulk_group].astype(str).agg('_'.join, axis=1)
+
     return adata
 
 def compute_dpt(adata, leiden_resolution=10):
     if False:
         print('Assiginig all cells to one group for testing DPT...')
-        adata.obs['group_id'] = 'one_group'
-    unique_groups = adata.obs['group_id'].unique()
+        adata.obs['bulk_group'] = 'one_group'
+    unique_groups = adata.obs['bulk_group'].unique()
     adata.obs['dpt'] = np.nan
     adata.obs['leiden'] = 'unassigned'
     
     for group in unique_groups:
-        adata_sub = adata[adata.obs['group_id'] == group].copy()
+        adata_sub = adata[adata.obs['bulk_group'] == group].copy()
         sc.pp.neighbors(adata_sub)
         sc.tl.leiden(adata_sub, resolution=leiden_resolution, key_added='leiden')
         sc.tl.paga(adata_sub, groups='leiden')
@@ -103,8 +102,8 @@ def annotate(adata):
     
     adata.obs['ct_minor'] = 'unassigned'
     
-    for group_id in adata.obs['group_id'].unique():
-        adata_sub = adata[adata.obs['group_id'] == group_id].copy()
+    for group_id in adata.obs['bulk_group'].unique():
+        adata_sub = adata[adata.obs['bulk_group'] == group_id].copy()
         
         # Calculate scores with available genes
         for subtype, genes in markers.items():
@@ -140,10 +139,10 @@ def dpt_marker_correlation(adata):
     assert 'dpt' in adata.obs, "Pseudotime 'dpt' not found in adata.obs. Run compute_dpt() first."
     assert 'naive_score' in adata.obs, "Naive score not found in adata.obs. Run annotate() first."
     donor_correlations = []
-    group_ids = adata.obs['group_id'].unique()
+    group_ids = adata.obs['bulk_group'].unique()
     
     for group_id in group_ids:
-        adata_group = adata[adata.obs['group_id'] == group_id]
+        adata_group = adata[adata.obs['bulk_group'] == group_id]
         donor_id = adata_group.obs['donor_id'].unique()
         assert len(donor_id) == 1, "Multiple donor_ids found for the same group_id."
         donor_id = donor_id[0]
@@ -165,7 +164,7 @@ def dpt_marker_correlation(adata):
         age = age[0]
         
         donor_correlations.append({
-            'group_id': group_id,
+            'bulk_group': group_id,
             'donor_id': donor_id,
             'age': age,
             'n_cells': adata_group.n_obs,
@@ -203,7 +202,7 @@ def _run_association_model(adata_subset, tfs, factor_name, formula):
             'tfa': adata_subset.obsm['score_ulm'][tf].values,
             'dpt': adata_subset.obs['dpt'].values,
             'donor_id': adata_subset.obs['donor_id'].values,
-            'group_id': adata_subset.obs['group_id'].values
+            'bulk_group': adata_subset.obs['bulk_group'].values
         })
         
         # Add factor variable
@@ -363,12 +362,12 @@ def compute_tfa_peg_association(adata, target=SUB_CT_LABEL):
         adata.obs['traj_var'] = adata.obs['dpt']
     else:
         raise ValueError("target must be 'dpt' or SUB_CT_LABEL")
-    groups = adata.obs['group_id'].unique()
+    groups = adata.obs['bulk_group'].unique()
     corr_matrix = pd.DataFrame(index=tfs, columns=groups, dtype=float)
     pval_matrix = pd.DataFrame(index=tfs, columns=groups, dtype=float)
     print(f"Computing TF-Traj correlations for {len(tfs)} TFs across {len(groups)} groups..., using {target} as trajectory variable")
     for group in groups:
-        adata_group = adata[adata.obs['group_id'] == group]        
+        adata_group = adata[adata.obs['bulk_group'] == group]        
         if adata_group.n_obs < 10:
             print(f"Skipping {group}: insufficient cells ({adata_group.n_obs})")
             continue

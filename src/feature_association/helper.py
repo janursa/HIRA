@@ -174,7 +174,6 @@ def retrieve_feature_data(
 
 def write_feature_data(adata, dataset, cell_type, analysis_name, suffix=''):
     output_dir = f'{FEATURES_DIR}/{analysis_name}'
-    print('Saving feature data to: ', output_dir)
     os.makedirs(output_dir, exist_ok=True)
     adata.write_h5ad(f'{output_dir}/{dataset}_{cell_type}{suffix}.h5ad')
 
@@ -470,7 +469,13 @@ def wrapper_meta_analysis(analysis_name, stats_features, par):
     #- save
     return stats
 
-def wrapper_association_with_age_condition(analysis_name, par, association_type, features=None, test_type=None, condition='healthy', config=None):
+def wrapper_association_with_age_condition(analysis_name, 
+                                par, 
+                                association_type, 
+                                test_type=None, 
+                                condition='healthy', 
+                                features=None,
+                                config=None):
     """
     Wrapper function to compute association with age and condition.
     
@@ -480,8 +485,6 @@ def wrapper_association_with_age_condition(analysis_name, par, association_type,
     ----------
     par : dict
         Parameters containing datasets, feature_type, type, cell_types, etc.
-    features : list, optional
-        List of features to analyze
     condition : str
         Condition filter for loading data
     config : ConditionConfig, optional
@@ -498,8 +501,7 @@ def wrapper_association_with_age_condition(analysis_name, par, association_type,
     
     stats_store = []
     for cell_type in tqdm(cell_types, desc='cell types'):
-        for dataset in datasets:            
-            # Load data
+        for dataset in datasets:        
             adata = retrieve_feature_data(
                 dataset=dataset, 
                 cell_type=cell_type, 
@@ -509,19 +511,14 @@ def wrapper_association_with_age_condition(analysis_name, par, association_type,
             )
             # - sanity check
             cell_types_in_data = adata.obs[granularity].unique()
-            
             assert len(cell_types_in_data) == 1 and cell_types_in_data[0] == cell_type, f'Cell type mismatch in {dataset}, {cell_type}'
-
             adata = adata[:, adata.var_names.isin(features)] if features is not None else adata
-            
+            print(adata.shape, dataset, cell_type)
+
             # Filter by cell type
             if adata.shape[0] < 3:
                 raise ValueError(f'Not enough samples for {cell_type} in {dataset}, only {adata.shape[0]} samples')
             
-            # Subset features
-            genes = adata.var_names
-            adata = adata[:, adata.var_names.isin(genes)]
-
             if issparse(adata.X):
                 adata.X = adata.X.toarray()
             
@@ -985,16 +982,16 @@ def wrapper_ct_pol_dist(par):
             )
             
             if len(adata_naive) != len(adata_effector):
-                groups_a = adata_naive.obs['group_id'].unique()
-                groups_b = adata_effector.obs['group_id'].unique()
+                groups_a = adata_naive.obs['bulk_group'].unique()
+                groups_b = adata_effector.obs['bulk_group'].unique()
                 # keep only common donors
                 common_groups = np.intersect1d(groups_a, groups_b)
-                adata_naive = adata_naive[adata_naive.obs['group_id'].isin(common_groups)]
-                adata_effector = adata_effector[adata_effector.obs['group_id'].isin(common_groups)]
+                adata_naive = adata_naive[adata_naive.obs['bulk_group'].isin(common_groups)]
+                adata_effector = adata_effector[adata_effector.obs['bulk_group'].isin(common_groups)]
                 assert len(adata_naive) == len(adata_effector), f'After filtering to common donors, still mismatch in number of samples for {dataset}, {cell_type}'
             # Sort by donor_id
-            adata_naive = adata_naive[adata_naive.obs['group_id'].argsort()]
-            adata_effector = adata_effector[adata_effector.obs['group_id'].argsort()]
+            adata_naive = adata_naive[adata_naive.obs['bulk_group'].argsort()]
+            adata_effector = adata_effector[adata_effector.obs['bulk_group'].argsort()]
             
             # Get common TFs
             common_tfs = np.intersect1d(adata_naive.var_names, adata_effector.var_names)
@@ -1063,7 +1060,7 @@ def _wrapper_cell_cell_communication(analysis_name, par):
         print(f'  Found {len(all_subtypes)} subtypes: {list(all_subtypes)}')
         
         # Get all unique donors from the full dataset
-        all_donors = sorted(adata_all.obs['group_id'].unique())
+        all_donors = sorted(adata_all.obs['bulk_group'].unique())
         
         if len(all_donors) < 10:
             print(f'  Skipping {dataset} - only {len(all_donors)} donors')
@@ -1085,8 +1082,8 @@ def _wrapper_cell_cell_communication(analysis_name, par):
             for receiver_subtype, adata_receiver in subtype_adatas.items():
                 
                 # Find common donors between THIS sender-receiver pair
-                sender_donors = set(adata_sender.obs['group_id'].unique())
-                receiver_donors = set(adata_receiver.obs['group_id'].unique())
+                sender_donors = set(adata_sender.obs['bulk_group'].unique())
+                receiver_donors = set(adata_receiver.obs['bulk_group'].unique())
                 pair_common_donors = sorted(sender_donors & receiver_donors)
                 
                 if len(pair_common_donors) == 0:
@@ -1106,8 +1103,8 @@ def _wrapper_cell_cell_communication(analysis_name, par):
                         continue
                     
                     # Get expression per donor (mean across cells in each donor) for common donors only
-                    ligand_expr_per_donor = adata_sender[:, ligand].to_df().groupby(adata_sender.obs['group_id']).mean()[ligand]
-                    receptor_expr_per_donor = adata_receiver[:, receptor].to_df().groupby(adata_receiver.obs['group_id']).mean()[receptor]
+                    ligand_expr_per_donor = adata_sender[:, ligand].to_df().groupby(adata_sender.obs['bulk_group']).mean()[ligand]
+                    receptor_expr_per_donor = adata_receiver[:, receptor].to_df().groupby(adata_receiver.obs['bulk_group']).mean()[receptor]
                     
                     # Filter to common donors and ensure same order
                     ligand_expr_per_donor = ligand_expr_per_donor.loc[pair_common_donors]
@@ -1141,8 +1138,8 @@ def _wrapper_cell_cell_communication(analysis_name, par):
         
         # Create AnnData object
         # Get metadata from the full dataset
-        obs_metadata = adata_all.obs[adata_all.obs['group_id'].isin(comm_df.index)].copy()
-        obs_metadata = obs_metadata.drop_duplicates(subset='group_id').set_index('group_id')
+        obs_metadata = adata_all.obs[adata_all.obs['bulk_group'].isin(comm_df.index)].copy()
+        obs_metadata = obs_metadata.drop_duplicates(subset='bulk_group').set_index('bulk_group')
         obs_metadata = obs_metadata.loc[comm_df.index]  # Ensure same order
         
         comm_adata = ad.AnnData(

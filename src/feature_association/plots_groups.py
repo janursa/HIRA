@@ -15,8 +15,7 @@ from hiara.src.feature_association.plots import (
     plot_features_vs_datasets, 
     plot_directional_consistency_scatter,
     plot_young_vs_aging,
-    plot_aging_overlap,
-    plot_ccc_lr_pairs_vs_datasets
+    plot_aging_overlap
 )
 from hiara.src.feature_association.cc.plots import plot_ccc_directionality, plot_ccc_hub_analysis, plot_ccc_ligand_receptor_families, plot_ccc_sender_receiver_matrix, plot_ccc_top_pairs
 from hiara import retrieve_sig_stats, retrieve_stats, mapping_minor_2_major
