@@ -260,7 +260,7 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
             stats_sub = stats[stats['comparison']==comparison]
             plot_directional_consistency_scatter(
                 stats_sub[stats_sub['cell_type'].isin(['CD4T', 'CD8T'])], 
-                analysis_name=args.analysis_name,
+                stats_ref=retrieve_sig_stats(analysis_name='tfa_major_b'),
                 save_suffix=f"{args.dataset}_f_{comparison.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')}",
                 x_label=f'{comparison} \n(significance)',
                 y_label='Natural aging \n(significance)',

@@ -162,6 +162,9 @@ def retrieve_adata(dataset,
         adata.X = adata.layers['lognorm'] if 'lognorm' in adata.layers else adata.layers['X_norm']
     else:
         if data_type == 'sc':
+            one_value = adata.X.data[0]
+            res = one_value - int(one_value)
+            assert res == 0, "adata.X should contain raw counts (integer values)"
             adata.layers['counts'] = adata.X.copy()
             sc.pp.normalize_total(adata)
             sc.pp.log1p(adata)

@@ -26,24 +26,7 @@ def format_columns_soundlife(adata):
     adata.obs['race'] = adata.obs['subject.ethnicity'].astype(str)
     adata.obs['sex'] = adata.obs['subject.biologicalSex'].astype(str)
     adata.obs['visitName'] = adata.obs['sample.visitName'].astype(str)
-    
-    # Map CMV status to condition
-    adata.obs['condition'] = adata.obs['subject.cmv'].apply(
-        lambda x: 'healthy' if x == 'Negative' else 'CMV'
-    )
-    
-    # Add dataset identifier
-    adata.obs['dataset'] = 'soundlife'
-    
-    # Create donor_age identifier (donor_id + age)
-    adata.obs['donor_age'] = adata.obs['donor_id'].astype(str) + '_' + adata.obs['age'].astype(str)
-    
-    # Map age_group from subject.ageGroup
-    # "Sound Life Young Adult" -> "young"
-    # "Sound Life Older Adult" -> "old"
-    adata.obs['age_group'] = adata.obs['subject.ageGroup'].apply(
-        lambda x: 'young' if 'Young' in str(x) else ('old' if 'Older' in str(x) else None)
-    )
+
     
     # Extract vaccinated, year, and day from sample.visitName
     # Examples: "Flu Year 1 Day 0", "Immune Variation Day 7", "Flu Year 2 Stand-Alone"
@@ -89,18 +72,7 @@ def format_columns_soundlife(adata):
     parsed = adata.obs['visitName'].apply(parse_visit_name)
     adata.obs['year'] = parsed['year'].astype(str)
     adata.obs['day'] = parsed['day'].astype(str)
-    
-    # Assign vaccinated column (0 or 1)
     adata.obs['vaccinated'] = parsed['vaccinated']
-    
-    # print(f'Added standardized columns. Total columns: {len(adata.obs.columns)}')
-    # print(f'Age group distribution:')
-    # print(adata.obs['age_group'].value_counts(dropna=False))
-    # print(f'Vaccinated distribution:')
-    # print(adata.obs['vaccinated'].value_counts(dropna=False))
-    # print(f'Year distribution:')
-    # print(adata.obs['year'].value_counts(dropna=False))
-    
     return adata
 
 
@@ -175,34 +147,11 @@ def map_cell_types_soundlife(adata):
     }
     
     # Map major cell types
-    adata.obs['cell_type'] = adata.obs['AIFI_L2'].map(cell_type_mapping)
-    adata.obs[MAJOR_CT_LABEL] = adata.obs['cell_type']
-    
-    # Map standardized sub cell types
+    adata.obs[MAJOR_CT_LABEL] = adata.obs['AIFI_L2'].map(cell_type_mapping)
     adata.obs[SUB_CT_LABEL] = adata.obs['AIFI_L2'].map(sub_cell_type_mapping)
     
     # Keep original AIFI_L2 for reference
     adata.obs['AIFI_L2_original'] = adata.obs['AIFI_L2'].astype(str)
-    
-    # Count unmapped cells
-    unmapped_major = adata.obs['cell_type'].isna().sum()
-    unmapped_sub = adata.obs[SUB_CT_LABEL].isna().sum()
-    total = adata.shape[0]
-    
-    print(f'Unmapped major cell types: {unmapped_major:,} ({unmapped_major/total*100:.2f}%)')
-    print(f'Unmapped sub cell types: {unmapped_sub:,} ({unmapped_sub/total*100:.2f}%)')
-    
-    # Filter out unmapped cell types
-    adata = adata[~adata.obs['cell_type'].isna()].copy()
-    print(f'Shape after filtering unmapped cell types: {adata.shape}')
-    
-    # Show cell type distribution
-    print('\nMajor cell type distribution:')
-    print(adata.obs['cell_type'].value_counts())
-    
-    print(f'\nStandardized sub cell type distribution:')
-    print(adata.obs[SUB_CT_LABEL].value_counts())
-    
     return adata
 
 def remove_attributes(adata):
@@ -213,26 +162,22 @@ def remove_attributes(adata):
 def format_data(adata, dataset_name):
     config = get_config(dataset_name)
     bulk_group = config.bulk_group
-    adata.obs['bulk_group'] = adata.obs[bulk_group].astype(str).agg('_'.join, axis=1)
+    bulk_group_col = 'bulk_group'
+    
     # Soundlife-specific formatting
     if dataset_name == 'soundlife':
         adata = format_columns_soundlife(adata)
-        # For soundlife, gene names are already in index, just standardize the column
         adata.var.index.name = 'gene_name'
         adata.var = adata.var.reset_index()[['gene_name']].set_index('gene_name')
-        adata.obs = adata.obs.astype('str')
-        return adata
-    
+
     # ParseBioscience-specific formatting
-    if dataset_name == 'parsebioscience':
+    elif dataset_name == 'parsebioscience':
         adata = format_columns_parsebioscience(adata)
-        # For parsebioscience, gene names are already in index
         adata.var.index.name = 'gene_name'
         adata.var = adata.var.reset_index()[['gene_name']].set_index('gene_name')
-        adata.obs = adata.obs.astype('str')
-        return adata
-    
-    if dataset_name == 'op':
+        
+
+    elif dataset_name == 'op':
         adata.obs = adata.obs.rename(columns={'sm_name':'perturbation'})
         adata.obs['is_control'] = adata.obs['perturbation'].isin(['Dimethyl Sulfoxide'])
         adata.obs['is_positive_control'] = adata.obs['perturbation'].isin(['Dabrafenib', 'Belinostat'])
@@ -244,7 +189,9 @@ def format_data(adata, dataset_name):
         })
         # join metadata into obs
         adata.obs = adata.obs.merge(meta, left_on='donor_id', right_on='donor_id', how='left')
-
+    else:
+        pass
+    adata.obs = adata.obs.astype('str')
     if 'gene_name' in adata.var.columns:
         gene_name = 'gene_name'
     elif 'Gene' in adata.var.columns:
@@ -266,15 +213,15 @@ def format_data(adata, dataset_name):
     # only keep gene_name column
     adata.var =  adata.var[['gene_name']].set_index('gene_name')
     adata.obs.rename(columns={'perturbation':'condition', 'disease':'condition', 'treatment':'condition'}, inplace=True)
-    adata.obs.rename(columns={'orig.ident': 'dataset'}, inplace=True)
-    adata.obs = adata.obs.astype('str')
+    adata.obs['dataset'] = dataset_name
     adata.obs['donor_age'] = adata.obs['age'].astype(str) + '_' + adata.obs['donor_id'].astype(str)
     adata = remove_attributes(adata)
+    adata.obs[bulk_group_col] = adata.obs[bulk_group].astype(str).agg('_'.join, axis=1)
     return adata
 
 ### QC Check
 def basic_qc(adata):
-    print('Shape before filtering:', adata.shape)
+    print('Shape before filtering:', adata.shape, flush=True)
     adata.var["mt"] = adata.var_names.str.startswith("MT-")
     sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
     n_donors = adata.obs['donor_id'].nunique()
@@ -287,26 +234,11 @@ def basic_qc(adata):
     # Apply filters
     sc.pp.filter_genes(adata, min_cells=min_cells)
     sc.pp.filter_genes(adata, min_counts=1)
-    print('Shape after filtering:', adata.shape)
+    print('Shape after filtering:', adata.shape, flush=True)
     assert adata.shape[0] > 0, "No cells left after QC filtering."
     return adata
 
-def annotate_celltypes(adata, dataset):
-    
-    # Soundlife uses pre-existing AIFI_L2 annotations instead of CellTypist
-    if dataset == 'soundlife': 
-        print('Using pre-existing AIFI_L2 annotations for soundlife...')
-        adata = map_cell_types_soundlife(adata)
-        # Restore raw counts to X (map_cell_types expects and returns raw counts)
-        return adata
-    
-    # ParseBioscience uses pre-existing annotations instead of CellTypist
-    if dataset == 'parsebioscience':
-        print('Using pre-existing cell type annotations for parsebioscience...')
-        adata = map_cell_types_parsebioscience(adata)
-        # Restore raw counts to X (map_cell_types expects and returns raw counts)
-        return adata
-    
+def annotate_celltypist(adata):
     # Standard CellTypist annotation for other datasets
     print('Annotating cell types...')
     adata.layers['counts'] = adata.X.copy()
@@ -321,12 +253,11 @@ def annotate_celltypes(adata, dataset):
     models.download_models(force_update = True)
     model = models.Model.load(model = 'Immune_All_Low.pkl') #Immune_All_Low good for Major cell types and Immune_All_High for subtypes
     # Please note that the adata.X should be log-normalized data!
-    adata_for_celltypist = adata.copy()
+    obs_org = adata.obs.copy()
     # Annotate cell types using CellTypist
     print('Annotating cell types using CellTypist...')
-    print(adata_for_celltypist.shape)
     predictions = celltypist.annotate(
-        adata_for_celltypist,
+        adata,
         model=model,
         majority_voting=True,
         use_GPU=False
@@ -334,7 +265,6 @@ def annotate_celltypes(adata, dataset):
     print('Cell types annotated successfully!')
     # Update the AnnData object with predictions
     adata_for_celltypist = predictions.to_adata()
-
     ###Major CT
     mapping = {
         'Tcm/Naive helper T cells': 'CD4T',
@@ -397,28 +327,27 @@ def annotate_celltypes(adata, dataset):
         'Late erythroid': 'Late_Erythroid'
     }
     # Map Major and Sub cell types
-    adata_for_celltypist.obs['Major_CT'] = adata_for_celltypist.obs['majority_voting'].apply(lambda x: mapping.get(x, 'Others'))
+    adata_for_celltypist.obs[MAJOR_CT_LABEL] = adata_for_celltypist.obs['majority_voting'].apply(lambda x: mapping.get(x, 'Others'))
     adata_for_celltypist.obs[SUB_CT_LABEL] = adata_for_celltypist.obs['majority_voting'].apply(lambda x: mapping_sub.get(x, 'Others'))
     # - post process
-    adata.obs = adata.obs.join(adata_for_celltypist.obs[['Major_CT', SUB_CT_LABEL]])
+    obs_org = obs_org.join(adata_for_celltypist.obs[[MAJOR_CT_LABEL, SUB_CT_LABEL]])
+    adata.obs = obs_org
     adata.X = adata.layers["counts"]
     del adata.layers
-    adata.obs['cell_type'] = adata.obs['Major_CT']
-    major_cell_types = ["MONO", "NK", "B", "CD8T", "CD4T"]
-    adata = adata[adata.obs['cell_type'].isin(major_cell_types)]
+    return adata
+def annotate_celltypes(adata, dataset):
+    # Soundlife uses pre-existing AIFI_L2 annotations instead of CellTypist
+    if dataset == 'soundlife': 
+        print('Using pre-existing AIFI_L2 annotations for soundlife...')
+        adata = map_cell_types_soundlife(adata)
+    # ParseBioscience uses pre-existing annotations instead of CellTypist
+    elif dataset == 'parsebioscience':
+        print('Using pre-existing cell type annotations for parsebioscience...')
+        adata = map_cell_types_parsebioscience(adata)
+    else:
+        adata = annotate_celltypist(adata)
     
     return adata
-
-
-# def binarize_age(obs):
-#     obs = obs.copy()
-#     obs['donor_age'] = obs['age'].astype(str) + '_' + obs['donor_id'].astype(str)
-#     obs['age'] = pd.to_numeric(obs['age'], errors='coerce')
-#     # min_age = obs.age.min()
-#     # bins = [min_age, 35, 45, 55, 65, 75, 100]  
-#     # age_groups = ['34-', '35_44', '45_54', '55_64', '65_75', '75+']  
-#     # obs['age_group'] = pd.cut(obs['age'], bins=bins, labels=age_groups, right=False)
-#     return obs
 
 def format_columns_parsebioscience(adata):
     """

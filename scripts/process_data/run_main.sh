@@ -31,7 +31,7 @@ for k, v in DATASET_NAME_MAPPING.items():
 
 set -e
 # Define run flags
-RUN_TEST=true
+RUN_TEST=false
 RUN_PROCESS_DATASET=true
 RUN_PSEUDOBULK=true
 MAIN_DIR='/vol/projects/jnourisa/hiara/'
@@ -76,7 +76,6 @@ for dataset in $datasets; do
         else
                 mapped_name="$dataset"
         fi
-        
         PROCESSED_DATASET_FILE="${MAIN_DIR}/datasets/sc/${mapped_name}.h5ad"
         BULK_ALL="${MAIN_DIR}/datasets/bulk/${mapped_name}.h5ad"
         BULK_MINOR_CELLTYPE="${MAIN_DIR}/datasets/bulk_minor/${mapped_name}.h5ad"
