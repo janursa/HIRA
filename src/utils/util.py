@@ -64,9 +64,9 @@ def retrieve_adata(dataset,
     obs['donor_age'] = obs['donor_id'].astype(str) + '- age: ' + obs['age'].astype(str)
 
     cfg = get_config(dataset)
-    pseudobulk_group = cfg.pseudobulk_group
-    assert pseudobulk_group is not None, f'Pseudobulk group not defined for dataset {dataset}'
-    obs['group_id'] = obs[pseudobulk_group].astype(str).agg('_'.join, axis=1)
+    bulk_group = cfg.bulk_group
+    assert bulk_group is not None, f'Bulk grouping not defined for dataset {dataset}'
+    obs['bulk_group'] = obs[bulk_group].astype(str).agg('_'.join, axis=1)
 
     mask_genes = adata.var_names.isin(gene_names)
     if only_net_genes:
@@ -167,6 +167,17 @@ def retrieve_adata(dataset,
             sc.pp.log1p(adata)
     
     adata.uns['dataset'] = dataset
+
+    if True:
+        if data_type == 'sc':
+            n_cell_t = 10
+            granularity = get_config(dataset).granularity
+            group = bulk_group + [granularity]
+            adata.obs['group'] = adata.obs[group].astype(str).agg('_'.join, axis=1)
+            sample_size = adata.obs.groupby('group', as_index=False).size()
+            sample_size_p = sample_size[sample_size['size']>n_cell_t]
+            mask = adata.obs.set_index(pseudobulk_group).index.isin(sample_size_p.set_index(pseudobulk_group).index)
+            adata = adata[mask]
     
     return adata
 

@@ -212,8 +212,8 @@ def remove_attributes(adata):
     return adata
 def format_data(adata, dataset_name):
     config = get_config(dataset_name)
-    pseudobulk_group = config.pseudobulk_group
-    adata.obs['group_id'] = adata.obs[pseudobulk_group].astype(str).agg('_'.join, axis=1)
+    bulk_group = config.bulk_group
+    adata.obs['bulk_group'] = adata.obs[bulk_group].astype(str).agg('_'.join, axis=1)
     # Soundlife-specific formatting
     if dataset_name == 'soundlife':
         adata = format_columns_soundlife(adata)
@@ -221,8 +221,6 @@ def format_data(adata, dataset_name):
         adata.var.index.name = 'gene_name'
         adata.var = adata.var.reset_index()[['gene_name']].set_index('gene_name')
         adata.obs = adata.obs.astype('str')
-        pseudobulk_group = config.pseudobulk_group
-        # print(adata.obs.head(), flush=True)
         return adata
     
     # ParseBioscience-specific formatting
@@ -291,16 +289,6 @@ def basic_qc(adata):
     sc.pp.filter_genes(adata, min_counts=1)
     print('Shape after filtering:', adata.shape)
     assert adata.shape[0] > 0, "No cells left after QC filtering."
-    return adata
-def qc_post_annotation(adata, n_cell_t):
-    sample_size = adata.obs.groupby('group_id', as_index=False).size()
-    sample_size_p = sample_size[sample_size['size']>n_cell_t]
-    mask = adata.obs.set_index(pseudobulk_group).index.isin(sample_size_p.set_index(pseudobulk_group).index)
-    adata = adata[mask]
-    print('size after filtering for donor sinlge cell count: ', adata.shape)
-    if adata.shape[0] == 0:
-        print(sample_size.sort_values())
-        raise ValueError('No cells left after QC filtering based on pseudobulk group and cell count threshold.')
     return adata
 
 def annotate_celltypes(adata, dataset):

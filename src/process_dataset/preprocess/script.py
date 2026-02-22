@@ -8,20 +8,11 @@ import os
 
 
 ## VIASH END
-from hiara.src.process_dataset.preprocess.helper import annotate_celltypes, basic_qc, format_data, qc_post_annotation
-
-def all_preprocessing_steps(adata, dataset, run_test, n_cell_t):
-    print('Running QC...', flush=True)
-    adata = basic_qc(adata)
-    print('Running cell type annotation...', flush=True)
-    adata = annotate_celltypes(adata, dataset)
-    print('Cell type annotation done.', flush=True)
-    adata = qc_post_annotation(adata, n_cell_t)
-    return adata
+from hiara.src.process_dataset.preprocess.helper import annotate_celltypes, basic_qc, format_data
 
 def subset_to_test(adata):
     print('Test mode: subsetting data', flush=True)
-    cell_indices = adata.obs.groupby('group_id').apply(lambda x: x.index[0]).values
+    cell_indices = adata.obs.groupby('bulk_group').apply(lambda x: x.index[0]).values
     adata = adata[cell_indices, :].to_memory()  
     return adata
 def load_sc_data(file_name, dataset, run_test):
@@ -80,18 +71,22 @@ def load_sc_data(file_name, dataset, run_test):
     return adata
 
 def main(par):
+    intermediate_save = True
     dataset = par['dataset']
     dataset = DATASET_NAME_MAPPING.get(dataset, dataset)
     par['dataset'] = dataset 
     file_name = par['input_file']
     adata = load_sc_data(file_name, dataset, par['run_test'])
-    print('Running all preprocessing steps...', flush=True)
-    adata = all_preprocessing_steps(adata, dataset, par['run_test'], par['n_cell_t'])
-    adata.obs['dataset'] = f"{dataset}"
+    print('Running QC...', flush=True)
+    if not par['run_test']:
+        adata = basic_qc(adata)
+    if intermediate_save:
+        print(f"Saving intermediate QC result to {par['processed_files_dir']}/{dataset}_qc.h5ad", flush=True)
+        adata.write_h5ad(f"{par['processed_files_dir']}/{dataset}_qc.h5ad", compression='gzip')
+    print('Running cell type annotation...', flush=True)
+    adata = annotate_celltypes(adata, dataset)
     print(f"Writing processed data to {par['processed_files_dir']}/{dataset}.h5ad", flush=True)
-    
     adata.write_h5ad(f"{par['processed_files_dir']}/{dataset}.h5ad", compression='gzip')
-
     print(adata, flush=True)
 
 if __name__ == "__main__":
@@ -113,7 +108,6 @@ if __name__ == "__main__":
         help="Whether to run in test mode (subset of data)"
         )
 
-    parser.add_argument('--n_cell_t', help='number of cells threshold', default=10) # optio
     parser.add_argument('--dataset', help='dataset to process', required=True)
 
     par = vars(parser.parse_args())

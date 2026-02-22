@@ -256,7 +256,7 @@ class ConditionConfig:
     # Core identifiers
     name: str
     
-    pseudobulk_group: Optional[List[str]] = None
+    bulk_group: Optional[List[str]] = None
     # Data columns
     condition_column: Optional[str] = None # Column name in obs: 'condition', 'perturbation', 'Max_WHO_Group'
     
@@ -308,19 +308,19 @@ DATASET_CONFIGS = {
     # ========== Population aging ==========
     "aida": ConditionConfig(
         name="aida",
-        pseudobulk_group=['donor_id', 'cell_type', 'age']
+        bulk_group=['donor_id', 'age']
     ), 
     'zhang': ConditionConfig(
         name="zhang",
-        pseudobulk_group=['donor_id', 'cell_type', 'age']
+        bulk_group=['donor_id', 'age']
     ),
     'onek1k': ConditionConfig(
         name="onek1k",
-        pseudobulk_group=['donor_id', 'cell_type', 'age']
+        bulk_group=['donor_id', 'age']
     ),
     'abf300': ConditionConfig(
         name="abf300",
-        pseudobulk_group=['donor_id', 'cell_type', 'age']
+        bulk_group=['donor_id', 'age']
     ),
 
 
@@ -341,7 +341,7 @@ DATASET_CONFIGS = {
 
         # Clock analysis settings
         clock_test_type='unpaired',
-        pseudobulk_group=['donor_id', 'cell_type', 'age']
+        bulk_group=['donor_id', 'age']
        
     ),
     
@@ -370,7 +370,7 @@ DATASET_CONFIGS = {
             'Dimethyl Sulfoxide': 'DMSO',
             'Ruxolitinib vs DMSO': 'Ruxolitinib',
         },
-        pseudobulk_group=['cell_type', 'condition', 'donor_id']
+        bulk_group=['condition', 'donor_id']
     ),
     
     "CXCL9": ConditionConfig(
@@ -422,7 +422,7 @@ DATASET_CONFIGS = {
         #     'rejuvenating': {'figsize': (4, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
         #     'aging': {'figsize': (7, 3), 'margins': (0.12, 0.2), 'ha': 'right', 'bbox_to_anchor': (1, 1.2)},
         # },
-        pseudobulk_group=['cell_type', 'condition', 'donor_id']
+        bulk_group=['condition', 'donor_id']
     ),
     
     "parsebioscience": ConditionConfig(
@@ -432,7 +432,7 @@ DATASET_CONFIGS = {
         treatment_groups=['PBS', 'IL-10'], 
         test_type= 'mixed-effect',#'mixed-effect',
         mixed_effects_formula='feature_values ~ condition',
-        pseudobulk_group=['condition', 'donor_id', 'cell_type', 'well'],
+        bulk_group=['condition', 'donor_id', 'well'],
         mixed_effects_group='donor_id',
         display_name='Cytokines',
         # Clock analysis settings
@@ -458,7 +458,7 @@ DATASET_CONFIGS = {
     # ========== AGING DATASETS (Longitudinal) ==========
     "soundlife": ConditionConfig(
             name="soundlife",
-            pseudobulk_group=['cell_type', 'donor_id', 'visitName'],
+            bulk_group=['donor_id', 'visitName'],
         )
 }
 
