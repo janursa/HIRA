@@ -132,7 +132,6 @@ def retrieve_adata(dataset,
     age_t = 50
     obs['age_group'] = obs['age'].apply(lambda x: 'Young' if x < age_t else 'Old')
     
-    
     # If only_obs is True, return the processed obs dataframe without loading .X
     if only_obs:
         return obs
@@ -140,9 +139,16 @@ def retrieve_adata(dataset,
     # Otherwise, create AnnData object with .X
     if True: # experimental. new way to subset backed anndata
         obs_indices = obs.index
-        obs_positions = np.where(obs.index.isin(obs_indices))[0]
-        var_indices = np.where(mask_genes)[0]
         adata_backed = adata  # Keep reference to backed version
+        
+        # Find positions in the original adata that match the filtered obs indices
+        original_index = adata_backed.obs.index
+        # Use index.get_indexer for efficient position lookup
+        obs_positions = original_index.get_indexer(obs_indices)
+        if (obs_positions == -1).any():
+            raise ValueError("Some obs indices not found in original adata")
+        
+        var_indices = np.where(mask_genes)[0]
         X_subset = adata_backed.X[obs_positions, :][:, var_indices]
         var_subset = adata_backed.var.iloc[var_indices].copy()
         adata = ad.AnnData(
@@ -155,7 +161,7 @@ def retrieve_adata(dataset,
             adata.layers[layer_name] = adata_backed.layers[layer_name][obs_positions, :][:, var_indices]
     else:
         adata = adata[mask, mask_genes].to_memory()    
-        obs = obs[mask]
+        obs = obs[obs.index.isin(adata.obs.index)].copy()  # Ensure obs is in the same order as adata
         for c in obs.columns:
             adata.obs[c] = obs[c]
     
