@@ -84,7 +84,7 @@ def plot_overview_heatmap(stats, args):
     output_dir = args.output_dir
 
     if len(stats) == 0:
-        print(f"Warning: No significant results to plot. Skipping overview heatmap.")
+        print(f"Warning: No stats to plot. Skipping overview heatmap.")
         return
 
     if 'comparison' in stats.columns:

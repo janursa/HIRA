@@ -144,6 +144,9 @@ def plot_directional_consistency_scatter(
                                         pvalue_col='p_value_adj'
                                         ):
     
+    if len(stats) == 0:
+        print(f"Warning: No data to plot for directional consistency scatter. Skipping.")
+        return
 
     if stats['comparison'].nunique() != 1:
         raise ValueError(f"should only have one comparision but has : {stats['comparison'].unique()}")
