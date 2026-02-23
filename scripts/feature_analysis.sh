@@ -34,9 +34,9 @@ test_mode="" #--test-mode
 # python src/feature_association/run_analysis.py  --dataset parsebioscience --cell-types CD4T CD8T  --analysis-name $analysis_name --association-type grouped 
 # python src/feature_association/post_condition_analysis.py --dataset parsebioscience --analysis-type perturbation --analysis-name $analysis_name   --agreement opposite --skip-pathway
 
-# echo "---------------------------------------------------------- op -----------------------------------------------------------------"
-# python src/feature_association/run_analysis.py  --dataset op  --analysis-name $analysis_name --association-type grouped 
-# python src/feature_association/post_condition_analysis.py --dataset op --analysis-type perturbation --analysis-name $analysis_name   --agreement opposite --skip-pathway
+echo "---------------------------------------------------------- op -----------------------------------------------------------------"
+python src/feature_association/run_analysis.py  --dataset op  --analysis-name $analysis_name --association-type grouped 
+python src/feature_association/post_condition_analysis.py --dataset op --analysis-type perturbation --analysis-name $analysis_name   --agreement opposite --skip-pathway
 
 # echo "---------------------------------------------------------- CXCL9 -----------------------------------------------------------------"
 # python src/feature_association/run_analysis.py --dataset CXCL9  --cell-types CD4T CD8T  --analysis-name $analysis_name --association-type grouped 
