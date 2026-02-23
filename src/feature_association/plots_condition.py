@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from pandas.api.types import CategoricalDtype
-from hiara.src.config import surrogate_names, MAJOR_CTS
+from hiara.src.config import surrogate_names, MAJOR_CTS, SUB_CTS
 from hiara import retrieve_sig_stats, retrieve_stats, retrieve_feature_data
 from hiara.src.feature_association.plots import heatplot_age_trend, heamap_overview_cell_types, plot_tf_act_central_tfs
 from hiara.src.utils.util import retrieve_net_consensus
@@ -81,6 +81,7 @@ def plot_overview_heatmap(stats, args):
     
     dataset = args.dataset
     analysis_type = args.analysis_type
+    granularity = args.granularity
     output_dir = args.output_dir
 
     if len(stats) == 0:
@@ -95,7 +96,8 @@ def plot_overview_heatmap(stats, args):
             raise ValueError("Overview heatmap only supports single age group at a time.")
 
     slope_col = 'slope'  
-    stats['cell_type'] = pd.Categorical(stats['cell_type'], categories=MAJOR_CTS, ordered=True)
+    categories = MAJOR_CTS if 'major' in granularity else SUB_CTS
+    stats[granularity] = pd.Categorical(stats[granularity], categories=categories, ordered=True)
     palette = get_condition_palette(analysis_type)
     heamap_overview_cell_types(
             stats, 
@@ -167,21 +169,21 @@ def wrapper_plot_central_tfs_condition(stats, cell_types, group_col, args):
         print(f"    Saved: {output_path}")
 
 
-def plot_disease_case_tfs(args):
+def plot_disease_case_tfs(args, cell_type, case_tfs):
     """Plot healthy vs disease trends for specific genes."""
     # Determine condition column based on dataset
-    if not args.cell_type:
+    if not cell_type:
         print(" This function only supports single cell type at a time.")
         raise ValueError("Please specify a single cell type using --cell_type.")
     condition_col = 'condition'
    
-    for i, case_tf in enumerate(args.case_tfs):
+    for i, case_tf in enumerate(case_tfs):
         fig, ax = plt.subplots(1, 1, figsize=(2, .6), sharey=False, sharex=False)
         
         plot_healthy_disease_trend(
             dataset=args.dataset, 
             analysis_name=args.analysis_name, 
-            cell_type=args.cell_type, 
+            cell_type=cell_type, 
             case_tf=case_tf, 
             condition_col=condition_col, 
             ax=ax
@@ -191,7 +193,7 @@ def plot_disease_case_tfs(args):
         if i == 0:
             ax.set_xlabel('')
         
-        output_path = os.path.join(args.output_dir, f'healthy_disease_trend_{case_tf}_{args.cell_type}.png')
+        output_path = os.path.join(args.output_dir, f'healthy_disease_trend_{case_tf}_{cell_type}.png')
         plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
         print(f"  Saved: {output_path}")

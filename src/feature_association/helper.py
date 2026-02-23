@@ -180,8 +180,6 @@ def retrieve_feature_data(
     if condition is not None and 'condition' in adata.obs.columns:
         if condition not in adata.obs['condition'].unique():
             raise ValueError(f'Error in retrieving feature data: given condition "{condition}" not in {adata.obs["condition"].unique()}')
-        
-        
         adata = adata[adata.obs['condition'] == condition].copy()
         print(adata.obs['condition'].value_counts())
     
@@ -521,7 +519,6 @@ def wrapper_association_with_age_condition(analysis_name,
 
     analys_cfg = get_config_fa(analysis_name)
     granularity = analys_cfg['granularity']
-    
     stats_store = []
     for cell_type in tqdm(cell_types, desc='cell types'):
         for dataset in datasets:      
@@ -966,72 +963,72 @@ def wrapper_ct_pol_dist(par):
     For CD4T: Tcm_Naive_CD4 vs Tem_Effector_CD4
     """
     from hiara.src.config import mapping_major_2_minor
-    
     cell_types = par['cell_types']
     datasets = par['datasets']
+    condition = par['condition']
+    if not isinstance(condition, list):
+        condition = [condition]
     analysis_name = par['analysis_name']
-    
-    # Define naive-effector pairs
     pol_pairs = {
         'CD8T': ('Tcm_Naive_CD8', 'Tem_Temra_CD8'),
         'CD4T': ('Tcm_Naive_CD4', 'Tem_Effector_CD4')
     }
-    
-    print('Calculating cell type polarization distance using mean absolute TF activity difference...')
-    
     for cell_type in tqdm(cell_types, desc='cell types'):
         if cell_type not in pol_pairs:
             print(f'Skipping {cell_type} - no polarization pair defined')
             continue
-            
         naive_ct, effector_ct = pol_pairs[cell_type]
-        
         for dataset in datasets:
-            # Load TF activity for both subtypes
-            adata_naive = retrieve_feature_data(
-                analysis_name='tfa_sub_b',
-                dataset=dataset,
-                cell_type=naive_ct,
-                condition='healthy'
-            )
+            pol_adata_list = []
+            for c in condition:
+                adata_naive = retrieve_feature_data(
+                    analysis_name='tfa_sub_b',
+                    dataset=dataset,
+                    cell_type=naive_ct,
+                    condition=c
+                )
+                adata_effector = retrieve_feature_data(
+                    analysis_name='tfa_sub_b',
+                    dataset=dataset,
+                    cell_type=effector_ct,
+                    condition=c
+                )
+                
+                if len(adata_naive) != len(adata_effector):
+                    groups_a = adata_naive.obs['bulk_group'].unique()
+                    groups_b = adata_effector.obs['bulk_group'].unique()
+                    # keep only common donors
+                    common_groups = np.intersect1d(groups_a, groups_b)
+                    adata_naive = adata_naive[adata_naive.obs['bulk_group'].isin(common_groups)]
+                    adata_effector = adata_effector[adata_effector.obs['bulk_group'].isin(common_groups)]
+                    assert len(adata_naive) == len(adata_effector), f'After filtering to common donors, still mismatch in number of samples for {dataset}, {cell_type}'
+                # Sort by donor_id
+                adata_naive = adata_naive[adata_naive.obs['bulk_group'].argsort()]
+                adata_effector = adata_effector[adata_effector.obs['bulk_group'].argsort()]
+                
+                # Get common TFs
+                common_tfs = np.intersect1d(adata_naive.var_names, adata_effector.var_names)
+                adata_naive = adata_naive[:, common_tfs]
+                adata_effector = adata_effector[:, common_tfs]
+                
+                # Get dense matrices
+                X_naive = adata_naive.X.toarray() if issparse(adata_naive.X) else adata_naive.X
+                X_effector = adata_effector.X.toarray() if issparse(adata_effector.X) else adata_effector.X
+                
+                # Calculate mean absolute difference across all TFs per donor
+                pol_dist = np.mean(np.abs(X_effector - X_naive), axis=1)
+                
+                # Create new AnnData with single polarization distance feature
+                pol_adata = ad.AnnData(
+                    X=pol_dist.reshape(-1, 1),
+                    obs=adata_naive.obs.copy(),
+                    var=pd.DataFrame(index=['pol_dist'])
+                )
+                pol_adata.obs['condition'] = c
+                pol_adata_list.append(pol_adata)
             
-            adata_effector = retrieve_feature_data(
-                analysis_name='tfa_sub_b',
-                dataset=dataset,
-                cell_type=effector_ct,
-                condition='healthy'
-            )
-            
-            if len(adata_naive) != len(adata_effector):
-                groups_a = adata_naive.obs['bulk_group'].unique()
-                groups_b = adata_effector.obs['bulk_group'].unique()
-                # keep only common donors
-                common_groups = np.intersect1d(groups_a, groups_b)
-                adata_naive = adata_naive[adata_naive.obs['bulk_group'].isin(common_groups)]
-                adata_effector = adata_effector[adata_effector.obs['bulk_group'].isin(common_groups)]
-                assert len(adata_naive) == len(adata_effector), f'After filtering to common donors, still mismatch in number of samples for {dataset}, {cell_type}'
-            # Sort by donor_id
-            adata_naive = adata_naive[adata_naive.obs['bulk_group'].argsort()]
-            adata_effector = adata_effector[adata_effector.obs['bulk_group'].argsort()]
-            
-            # Get common TFs
-            common_tfs = np.intersect1d(adata_naive.var_names, adata_effector.var_names)
-            adata_naive = adata_naive[:, common_tfs]
-            adata_effector = adata_effector[:, common_tfs]
-            
-            # Get dense matrices
-            X_naive = adata_naive.X.toarray() if issparse(adata_naive.X) else adata_naive.X
-            X_effector = adata_effector.X.toarray() if issparse(adata_effector.X) else adata_effector.X
-            
-            # Calculate mean absolute difference across all TFs per donor
-            pol_dist = np.mean(np.abs(X_effector - X_naive), axis=1)
-            
-            # Create new AnnData with single polarization distance feature
-            pol_adata = ad.AnnData(
-                X=pol_dist.reshape(-1, 1),
-                obs=adata_naive.obs.copy(),
-                var=pd.DataFrame(index=['pol_dist'])
-            )
+            pol_adata = ad.concat(pol_adata_list)
+
             
             write_feature_data(pol_adata, dataset, cell_type, analysis_name=analysis_name)
 
@@ -1223,6 +1220,18 @@ def wrapper_ccc(analysis_name, par, n_jobs=1):
             comm_scores_dict = {}
             for donor_age in tqdm(all_donors, desc=f'{dataset} - {cond} - donors'):
                 adata_donor = adata[adata.obs['donor_age'] == donor_age].copy()
+                
+                # Check if we have at least 2 cell types with cells
+                cell_type_counts = adata_donor.obs[granularity].value_counts()
+                if len(cell_type_counts) < 2:
+                    print(f'    Skipping donor {donor_age}: only {len(cell_type_counts)} cell type(s) present')
+                    continue
+                
+                # Check if any cell type has 0 cells (shouldn't happen but safety check)
+                if (cell_type_counts == 0).any():
+                    print(f'    Skipping donor {donor_age}: some cell types have 0 cells')
+                    continue
+                
                 # Run LIANA rank_aggregate for this donor
                 lr_results = li.mt.rank_aggregate(
                     adata_donor,
@@ -1302,6 +1311,11 @@ def wrapper_ccc(analysis_name, par, n_jobs=1):
                 for idx, row in comm_adata_combined.obs.iterrows()
             ]
             comm_adata_combined.obs_names_make_unique()
+        
+        # Convert categorical/object columns to string to avoid h5ad write errors
+        for col in comm_adata_combined.obs.columns:
+            if comm_adata_combined.obs[col].dtype == 'object' or isinstance(comm_adata_combined.obs[col].dtype, pd.CategoricalDtype):
+                comm_adata_combined.obs[col] = comm_adata_combined.obs[col].astype(str)
         
         # Write combined feature data
         write_feature_data(comm_adata_combined, dataset=dataset, cell_type=cell_type, analysis_name=analysis_name)

@@ -96,7 +96,7 @@ def get_available_fa_analyses():
     """Get list of available feature analysis configurations."""
     return list(CONFIG_FA.keys())
 
-DISCOVERY_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle']
+DISCOVERY_COHORTS = ['aida', 'perez_sle', 'onek1k', 'abf300'] #
 # DISCOVERY_COHORTS = ['perez_sle', 'aida']
 AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife', 'zhang']
 ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife', 'zhang']

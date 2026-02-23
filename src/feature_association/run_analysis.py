@@ -63,28 +63,13 @@ def calculate_features(analysis_name, par):
 
 
 def run_single_cohort_analysis(args):
-
-    # Get configuration(s) - may be single or multiple
     dataset = args.datasets[0]
-    
     skip_features = args.skip_features
     config = get_config(dataset)
-    
-    # Validate analysis configuration exists
     try:
         _ = get_config_fa(args.analysis_name)
     except ValueError as e:
         raise ValueError(f"Unknown analysis name: {args.analysis_name}") from e
-    
-    print("\n" + "=" * 80)
-    print(f"Analysis type: {args.association_type}")
-    print(f"Analysis name: {args.analysis_name}")
-
-    print("=" * 80 + "\n")
-    
-
-    
-    # Prepare parameters
     par = {
         **args.__dict__,
         'association_type': args.association_type,
@@ -93,8 +78,6 @@ def run_single_cohort_analysis(args):
         'cell_types': define_cell_types(args.analysis_name, args.cell_types),
         'condition': config.treatment_groups if hasattr(config, 'treatment_groups') else None
     }
-
-    
     # Step 1: Calculate features (if needed) - only once for all configs
     if not skip_features:  # ct_freq is fast to compute, no need to skip
         print("\n[1/3] Calculating features...")

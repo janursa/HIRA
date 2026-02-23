@@ -275,8 +275,13 @@ def plot_ccc_lr_pairs_vs_datasets(analysis_name, datasets=None, top_n=15, filter
     stats_all['lr_pair'] = stats_all['gene'].apply(get_lr_pair)
     stats_all = stats_all[stats_all['lr_pair'].notna()]
     
-    # Count how many times each L-R pair appears across datasets and cell type combinations (centrality)
-    lr_counts = stats_all.groupby('lr_pair').size().reset_index(name='centrality')
+    # Extract source and target cell types
+    stats_all['source'] = stats_all['gene'].apply(lambda x: parse_ccc_feature_name(x)[0])
+    stats_all['target'] = stats_all['gene'].apply(lambda x: parse_ccc_feature_name(x)[2])
+    stats_all['cell_pair'] = stats_all['source'] + '_' + stats_all['target']
+    
+    # Count how many unique cell type pairs each L-R pair appears in (centrality)
+    lr_counts = stats_all.groupby('lr_pair')['cell_pair'].nunique().reset_index(name='centrality')
     lr_counts = lr_counts.sort_values('centrality', ascending=False)
     
     # Get top hub L-R pairs
@@ -365,7 +370,7 @@ def plot_ccc_lr_pairs_vs_datasets(analysis_name, datasets=None, top_n=15, filter
     )
     ax_centrality.set_yticks(range(len(top_lr_pairs)))
     ax_centrality.set_yticklabels([])  # No labels, shared with main plot
-    ax_centrality.set_xlabel('Centrality\n(# occurrences)', fontsize=10)
+    ax_centrality.set_xlabel('Centrality\n(# cell type pairs)', fontsize=10)
     ax_centrality.spines['right'].set_visible(False)
     ax_centrality.spines['top'].set_visible(False)
     ax_centrality.spines['left'].set_visible(False)

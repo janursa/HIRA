@@ -41,11 +41,7 @@ def retrieve_adata(dataset,
 
     
     assert data_type in DATA_TYPES, f'Unknown type {data_type}'
-    if test_mode:
-        print('Test mode: loading subset of data...', flush=True)
-        adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/abf300.h5ad", backed='r')
-    else:
-        adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/{dataset}.h5ad", backed='r')
+    adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/{dataset}.h5ad", backed='r')
 
     obs = adata.obs.copy()
     if dataset not in ['ibd']:
@@ -191,6 +187,11 @@ def retrieve_adata(dataset,
             sample_size_p = sample_size[sample_size['size']>n_cell_t]
             mask = adata.obs['group'].isin(sample_size_p['group'])
             adata = adata[mask]
+    mask_non = adata.obs[granularity].isna()
+    adata = adata[~mask_non]
+
+    # if (dataset == 'soundlife') & (data_type=='sc'):
+    #     adata = adata[adata.obs['visitName']=='Flu Year 1 Day 0']
     
     return adata
 

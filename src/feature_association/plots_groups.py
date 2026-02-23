@@ -171,10 +171,10 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
     
     if dataset == 'soundlife':
         plot_overview_heatmap(stats_sig, args)
-        plot_aging_overlap(args.analysis_name, stats_sig, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'], args=args)
+        plot_aging_overlap(analysis_name, stats_sig, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'], args=args)
         plot_directional_consistency_scatter(
             stats, 
-            analysis_name=args.analysis_name,
+            analysis_name=analysis_name,
             save_suffix=args.dataset,
             x_label='Validation analysis \n(significance)',
             y_label='Discovery analysis \n(significance)',
@@ -184,13 +184,14 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
         )
     
     elif dataset == 'perez_sle':
-        groups = stats_sig['age_group'].unique()
-        stats_sub = stats_sig[stats_sig['age_group'].isin(groups[0:1])]
+        age_group = 'Both age groups'
+        stats_sub = stats_sig[stats_sig['age_group']==age_group]
+        assert len(stats_sub['age_group'].unique()) == 1, "Expected only one age group in stats_sub"
         if not args.skip_overview:
             plot_overview_heatmap(stats_sub, args)
         plot_directional_consistency_scatter(
-            stats_sub[stats_sub['cell_type'].isin(['CD4T', 'CD8T'])], 
-            stats_ref=retrieve_sig_stats(analysis_name='tfa_major_b'),
+            stats_sub, 
+            stats_ref=retrieve_sig_stats(analysis_name=analysis_name),
             save_suffix=args.dataset,
             x_label=f'SLE \n(significance)',
             y_label='Natural aging \n(significance)',
@@ -198,10 +199,18 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
             label_consistent='Acceleration',
             label_opposing='Rejuvenation'
         )
-        wrapper_plot_central_tfs_condition(stats, group_col='age_group', cell_types=['CD4T', 'CD8T'], args=args)
-        args.cell_type = 'CD8T'
-        args.case_tfs = ['LEF1']
-        plot_disease_case_tfs(args)
+        if analysis_name == 'tfa_major_b':
+            cell_types = ['CD4T', 'CD8T']
+        else:
+            cell_types = None
+        wrapper_plot_central_tfs_condition(stats, group_col='age_group', cell_types=cell_types, args=args)
+        if analysis_name == 'tfa_major_b':
+            cell_type = 'CD8T'
+            case_tfs = ['LEF1']
+            plot_disease_case_tfs(args, cell_type=cell_type, case_tfs=case_tfs)
+            
+        else:
+            pass
         if not args.skip_pathway:
             plot_pathway_analysis(stats_sig, args)
     
@@ -277,7 +286,7 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
 
 def wrapper_plots_tfa_sub_b_condition(args, stats, stats_sig):
     """Plot group for tfa_sub_b condition analysis."""
-    raise ValueError(f'tfa_sub_b condition analysis not yet implemented')
+    wrapper_plots_tfa_major_b_condition(args, stats, stats_sig)
 
 
 def wrapper_plots_gene_expression_condition(args, stats, stats_sig):
