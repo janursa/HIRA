@@ -189,8 +189,15 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
         assert len(stats_sub['age_group'].unique()) == 1, "Expected only one age group in stats_sub"
         if not args.skip_overview:
             plot_overview_heatmap(stats_sub, args)
+        if 'major' in analysis_name:
+            cell_types = ['CD4T', 'CD8T']
+        elif 'sub' in analysis_name:
+            cell_types = ['Tcm_Naive_CD4', 'Tcm_Naive_CD8', 'MAIT']
+        else:
+            raise ValueError(f"Unexpected analysis name: {analysis_name}")
+
         plot_directional_consistency_scatter(
-            stats_sub, 
+            stats_sub[stats_sub['cell_type'].isin(cell_types)], 
             stats_ref=retrieve_sig_stats(analysis_name=analysis_name),
             save_suffix=args.dataset,
             x_label=f'SLE \n(significance)',
@@ -199,10 +206,7 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
             label_consistent='Acceleration',
             label_opposing='Rejuvenation'
         )
-        if analysis_name == 'tfa_major_b':
-            cell_types = ['CD4T', 'CD8T']
-        else:
-            cell_types = None
+        
         wrapper_plot_central_tfs_condition(stats, group_col='age_group', cell_types=cell_types, args=args)
         if analysis_name == 'tfa_major_b':
             cell_type = 'CD8T'

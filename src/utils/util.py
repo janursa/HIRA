@@ -51,6 +51,7 @@ def retrieve_adata(dataset,
         name_mapping = config.name_mapping
         if name_mapping is not None:
                 obs['condition'] = obs['condition'].map(lambda x: name_mapping.get(x, x))
+        obs['condition'] = obs['condition'].astype(str)
     else:
         obs['condition'] = 'healthy'
     # make donor names pretties

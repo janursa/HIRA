@@ -164,14 +164,31 @@ def plot_directional_consistency_scatter(
     label_consistent = label_consistent + ' \n ({} TFs)'
     label_opposing = label_opposing + ' \n ({} TFs)'
 
+    # Convert cell_type to string BEFORE groupby to avoid categorical issues
+    stats['cell_type'] = stats['cell_type'].astype(str)
+    stats_ref['cell_type'] = stats_ref['cell_type'].astype(str)
+    
     stats = stats.groupby(['cell_type', 'gene', 'comparison']).agg({'slope': 'mean', pvalue_col: 'max'}).reset_index()
     # Load reference aging genes (only significant)
     stats_ref = stats_ref.groupby(['cell_type', 'gene', 'comparison']).agg({'slope': 'mean', 'meta_p_adj': 'max'}).reset_index()
-    included_cell_types = stats['cell_type'].unique()
+    
+    # Determine the ordering based on whether we have major or sub cell types
+    unique_cell_types = stats['cell_type'].unique()
+    if any(ct in MAJOR_CTS for ct in unique_cell_types):
+        # Use MAJOR_CTS ordering
+        included_cell_types = [ct for ct in MAJOR_CTS if ct in unique_cell_types]
+    else:
+        # Use SUB_CTS ordering
+        included_cell_types = [ct for ct in SUB_CTS if ct in unique_cell_types]
+    
+    if len(included_cell_types) == 0:
+        print(f"  Warning: No cell types in stats. Skipping plot.")
+        return
+    
     all_cell_data = []
     for cell_type in included_cell_types:
-        if cell_type not in stats['cell_type'].unique():
-            print(f"  Warning: No data for {cell_type}")
+        if cell_type not in stats_ref['cell_type'].unique():
+            print(f"  Warning: No data for {cell_type} in reference stats. Skipping this cell type.")
             continue
         ref_ct = stats_ref[stats_ref['cell_type'] == cell_type].copy()
 
@@ -179,24 +196,14 @@ def plot_directional_consistency_scatter(
         if len(sl_ct) == 0:
             print(f"  Warning: No overlapping genes for {cell_type}")
             print(f"available cell types in stats: {stats['cell_type'].unique()}")
-            raise ValueError(f"No overlapping genes or cell types for {cell_type}")
-
-    
+            continue
+            # raise ValueError(f"No overlapping genes or cell types for {cell_type}")
         # Merge: keep only TFs that are significant in reference aging
         if pvalue_col == 'meta_p_adj':
             pvalue_col = f'meta_p_adj_sl'
             sl_ct.rename({'meta_p_adj': 'meta_p_adj_sl'}, axis=1, inplace=True)
         if True:
-            
             sl_ct['abs_log10_p_adj_sl'] = sl_ct[pvalue_col].apply(lambda x: -np.log10(x + 1e-300))
-            # print(f"\n  Top 5 TFs with positive slope:")
-            # top_5 = sl_ct[sl_ct['slope'] > 0].nlargest(5, 'abs_log10_p_adj_sl')
-            # names = ', '.join(top_5['gene'].tolist())
-            # print(f"    {cell_type}: {names}")
-            # print(f"\n  Top 5 TFs with negative slope:")
-            # top_5 = sl_ct[sl_ct['slope'] < 0].nlargest(5, 'abs_log10_p_adj_sl')
-            # names = ', '.join(top_5['gene'].tolist())
-            # print(f"    {cell_type}: {names}")
         merged = ref_ct.merge(
             sl_ct[['gene', 'slope', 'comparison' ,pvalue_col]],
             on='gene',
@@ -299,7 +306,8 @@ def plot_directional_consistency_scatter(
         # else:
         #     ax.set_ylabel('')
         
-        ax.set_title(f'{cell_type}', fontsize=12, pad=30)
+        cell_type_display = surrogate_names.get(cell_type, cell_type)
+        ax.set_title(f'{cell_type_display}', fontsize=12, pad=30)
         ax.grid(False)
 
         from matplotlib.lines import Line2D
@@ -1698,26 +1706,24 @@ def heamap_overview_cell_types(stats_all,
                                 annotate_x_ticks=True, 
                                 dendrogram_visible=True,
                                 show_legend=True,
-                                show_dots=False
+                                show_dots=False,
+                                palette_cols=palette_major_cts
                                 ):
 
-    from hiara.src.config import palette_major_cts, surrogate_names
+    from hiara.src.config import surrogate_names
     from matplotlib.colors import ListedColormap, BoundaryNorm
     from scipy.cluster.hierarchy import linkage
     from matplotlib.patches import Patch
 
     cell_types = stats_all[main_col].cat.categories
-
-    
     stats_all['trend_int'] = stats_all[slope_col].map(lambda value: 1 if value > 0 else (-1 if value < 0 else 0))
     pivot_df = stats_all.pivot(index='gene', columns=main_col, values='trend_int').fillna(0)
     
     pivot_df = pivot_df.reindex(columns=cell_types).fillna(0)
-
-
     # - color map
-    cols_names = pivot_df.columns.map(lambda name: mapping_minor_2_major.get(name, name))
-    col_colors = [palette_major_cts[name] for name in cols_names]
+    # cols_names = pivot_df.columns.map(lambda name: mapping_minor_2_major.get(name, name))
+
+    col_colors = [palette_cols[name] for name in cell_types]
 
     if 'trend' not in stats_all.columns:
         raise ValueError("The 'trend' column is missing in stats_all DataFrame.")
@@ -1780,28 +1786,37 @@ def heamap_overview_cell_types(stats_all,
                         color='black', ha='center', va='center', fontsize=8, fontweight='bold'
                     )
     if show_legend:
-        celltype_legend = [Patch(color=palette_major_cts[label], label=map_names.get(label, label)) for label in cell_types]
-        trend_legend = [Patch(color=color, label=label, alpha=.8) for label, color in palette.items()]
+        celltype_legend = [Patch(color=palette_cols[label], label=surrogate_names.get(map_names.get(label, label), map_names.get(label, label))) for label in cell_types]
+        trend_legend = [Patch(color=color, label=surrogate_names.get(label, label), alpha=.8) for label, color in palette.items()]
 
+        legend_font_size = 4
+        legend_title_font_size = 4.5
+        
         legend_celltypes = g.ax_heatmap.legend(
             handles=celltype_legend,
             title=map_names.get(main_col, main_col),
-            bbox_to_anchor=(1.1, 0.6),
+            bbox_to_anchor=(1.05, 0.8),
             loc='upper left',
-            fontsize=9,
-            title_fontsize=9,
-            frameon=False
+            fontsize=legend_font_size,
+            title_fontsize=legend_title_font_size,
+            frameon=False,
+            handlelength=0.6,
+            handleheight=0.6,
+            labelspacing=0.2
         )
         legend_celltypes.get_title().set_fontweight('bold') 
 
         legend_trend = g.ax_heatmap.legend(
             handles=trend_legend,
             title="Trend",
-            bbox_to_anchor=(1.1, 1),
+            bbox_to_anchor=(1.05, 1.1),
             loc='upper left',
-            fontsize=9,
-            title_fontsize=9,
-            frameon=False
+            fontsize=legend_font_size,
+            title_fontsize=legend_title_font_size,
+            frameon=False,
+            handlelength=0.6,
+            handleheight=0.6,
+            labelspacing=0.2
         )
         legend_trend.get_title().set_fontweight('bold')  
 

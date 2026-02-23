@@ -51,6 +51,7 @@ def retrieve_stats(analysis_name, cell_type=None, dataset=None, multi_cohort=Non
         stats = pd.read_csv(
             f"{features_dir}/{analysis_name}/stats/stats_{dataset}{suffix}.csv"
         )
+    stats['cell_type'] = stats['cell_type'].astype(str)
     # optional cell-type filtering
     if cell_type is not None:
         if cell_type not in stats["cell_type"].unique():

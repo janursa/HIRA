@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from pandas.api.types import CategoricalDtype
-from hiara.src.config import surrogate_names, MAJOR_CTS, SUB_CTS
+from hiara.src.config import surrogate_names, MAJOR_CTS, SUB_CTS, palette_major_cts, palette_sub_cts
 from hiara import retrieve_sig_stats, retrieve_stats, retrieve_feature_data
 from hiara.src.feature_association.plots import heatplot_age_trend, heamap_overview_cell_types, plot_tf_act_central_tfs
 from hiara.src.utils.util import retrieve_net_consensus
@@ -96,8 +96,19 @@ def plot_overview_heatmap(stats, args):
             raise ValueError("Overview heatmap only supports single age group at a time.")
 
     slope_col = 'slope'  
-    categories = MAJOR_CTS if 'major' in granularity else SUB_CTS
-    stats[granularity] = pd.Categorical(stats[granularity], categories=categories, ordered=True)
+    if 'Major' in granularity:
+        categories = MAJOR_CTS
+        palette_cols = palette_major_cts
+    elif 'Sub' in granularity:
+        categories = SUB_CTS
+        palette_cols = palette_sub_cts
+    else:
+        raise ValueError(f"Unexpected granularity: {granularity}. Expected 'Major' or 'Sub'.")
+    if not set(stats['cell_type'].unique()).issubset(set(categories)):
+        missing = set(stats['cell_type'].unique()) - set(categories)
+        print(f"Warning: The following cell types in stats are not in the expected categories and will be ignored: {missing}")
+        raise ValueError("Unexpected cell types found in stats.")
+    stats['cell_type'] = pd.Categorical(stats['cell_type'], categories=categories, ordered=True)
     palette = get_condition_palette(analysis_type)
     heamap_overview_cell_types(
             stats, 
@@ -106,9 +117,10 @@ def plot_overview_heatmap(stats, args):
             figsize=(2, 3), 
             sig_dots_y_offset=3, 
             annotate_x_ticks=False, 
-            # map_names={'cell_type': 'Sub type', 'major_cell_type': 'Cell type'},
+            map_names={'cell_type': 'Cell type'},
             dendrogram_visible=False, 
-            show_legend=False
+            show_legend=True,
+            palette_cols=palette_cols
         )    
     output_path = os.path.join(output_dir, f'overview_{dataset}.png')
     plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
