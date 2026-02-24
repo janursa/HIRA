@@ -633,106 +633,6 @@ def associate_with_condition(adata, config, test_type=None):
     return stats
 
 
-def wrapper_sub_celltype_markers(analysis_name, par):
-    """
-    Identify TF activity markers for each sub cell type within a major cell type.
-    Performs DE analysis between each sub cell type and all other sub cell types
-    within the same major cell type, across multiple datasets.
-    
-    """
-    from hiara.src.config import mapping_major_2_minor
-    
-    datasets = par['datasets']
-    major_cell_types = par['cell_types']
-    promotor_only = par.get('promotor_only', False)
-    suffix = '_promotor' if promotor_only else ''
-    
-    analys_cfg = get_config_fa(analysis_name)
-    granularity = analys_cfg['granularity']
-    
-    print(f'Major cell types: {major_cell_types}')
-    
-    stats_store = []
-    
-    for major_ct in tqdm(major_cell_types, desc='Major cell types'):
-        sub_cell_types = mapping_major_2_minor[major_ct]
-        print(f"\n{major_ct}: analyzing sub types {sub_cell_types}")
-        
-        for dataset in datasets:
-            print(f"  Dataset: {dataset}")
-            
-            # Load TF activity data for all sub cell types of this major type
-            adata_list = []
-            for ct in sub_cell_types:
-                adata = retrieve_feature_data(
-                        dataset=dataset,
-                        cell_type=ct,
-                        analysis_name='tfa_sub_b',  # Use existing TF activity data
-                        condition='healthy',
-                        suffix=suffix
-                        )
-                adata_list.append(adata)
-            adata = ad.concat(adata_list)
-            adata = adata[adata.obs[granularity].isin(sub_cell_types)].copy()     
-
-            if issparse(adata.X):
-                adata.X = adata.X.toarray()
-            
-            # For each sub cell type, perform DE analysis vs all others
-            for target_sub_ct in sub_cell_types:
-                    
-                # Create binary labels: target vs rest
-                mask_target = adata.obs[granularity] == target_sub_ct
-                mask_others = ~mask_target
-                
-                n_target = mask_target.sum()
-                n_others = mask_others.sum()
-                
-                
-                # Perform DE analysis for each TF
-                from scipy.stats import mannwhitneyu
-                
-                results = []
-                for gene in adata.var_names:
-                    values_target = adata[mask_target, gene].X
-                    values_others = adata[mask_others, gene].X
-                    # Mann-Whitney U test
-                    stat, pval = mannwhitneyu(values_target.flatten(), values_others.flatten(), alternative="two-sided")
-                    
-                    # Effect size (median difference)
-                    coef = np.median(values_target) - np.median(values_others)
-                    
-                    results.append({
-                        'gene': gene,
-                        'p_value': pval,
-                        'slope': coef,
-                        'sub_cell_type': target_sub_ct,
-                        'major_cell_type': major_ct,
-                        'n_target': n_target,
-                        'n_others': n_others
-                    })
-                
-                stats_df = pd.DataFrame(results)
-                # print(stats_df)
-                # aaa
-                
-                # FDR correction per sub cell type
-                
-                stats_df['dataset'] = dataset
-                stats_df['cell_type'] = target_sub_ct  # Use sub cell type as main cell_type for compatibility
-                stats_df['comparison'] = f'{target_sub_ct} vs others'
-                
-                stats_store.append(stats_df)
-                print(f"    {target_sub_ct}: {len(stats_df)} TFs analyzed")
-    
-    if len(stats_store) == 0:
-        raise ValueError("No marker statistics calculated. Check data availability.")
-    
-    stats_all = pd.concat(stats_store, ignore_index=True)
-    stats_all['condition'] = 'healthy'  # Add condition column for consistency
-    
-    return stats_all
-
 def wrapper_tf_activity(analysis_name, par):
     print('Loading data...')
     cell_types = par['cell_types']
@@ -1174,8 +1074,38 @@ def _wrapper_cell_cell_communication(analysis_name, par):
         # Write feature data - use 'all' as cell_type since it spans all cell types
         write_feature_data(comm_adata, dataset=dataset, cell_type='all', analysis_name=analysis_name)
         print(f'  ✓ {dataset}: {comm_adata.shape[0]} donors × {comm_adata.shape[1]} L-R pairs across all subtypes')
+def wrapper_ct_tf_markers(analysis_name, par):
+    print('Loading data...')
+    cell_types = par['cell_types']
+    datasets = par['datasets']
+    condition = par.get('condition', None)
+    promotor_only = par['promotor_only']
+    
+    print('Calculating TF activity...')
+    print(f'  - Promotor-based only: {promotor_only}')
 
-
+    config = get_config_fa(analysis_name)
+    data_type = config['data_type']
+    for dataset in datasets:
+        adata = retrieve_adata(dataset=dataset, data_type=data_type, condition=condition)
+        for cell_type in tqdm(cell_types, desc='cell types'):
+            print(dataset, data_type)
+            adata_t = adata[adata.obs[MAJOR_CT_LABEL] == cell_type].copy()
+            if len(adata_t) == 0:
+                print(f'No samples for {cell_type} in {dataset}, skipping TF activity calculation')
+                continue
+            if par['use_consensus_net']:
+                net = retrieve_net_consensus(cell_type=cell_type, promotor_only=promotor_only)
+            else:
+                net = retrieve_net(dataset=dataset, cell_type=cell_type, promotor_only=promotor_only)
+            if adata_t.shape[0] < 10:
+                continue
+            tf_acts = calculate_tf_activity(adata_t, net)
+            tf_acts.obs['dataset'] = dataset
+            tf_acts.uns['dataset'] = dataset
+            tf_acts = tf_acts[tf_acts.obs['age'].isna()==False] # there is a bug in the code that causes age to be NaN
+            write_feature_data(tf_acts, dataset=dataset, cell_type=cell_type, analysis_name=analysis_name, suffix='_promotor' if promotor_only else '')
+ 
 
 def wrapper_ccc(analysis_name, par, n_jobs=1): 
     import liana as li   

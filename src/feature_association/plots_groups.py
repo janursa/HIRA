@@ -68,8 +68,8 @@ def wrapper_plots_gene_expression_aging(args, stats_features, stats_features_sig
     plot_heatmap_overal(stats_features, analysis_name=args.analysis_name)
 
 
-def wrapper_plots_sub_tf_markers_aging(args, stats_features, stats_features_sig, skip_pathway):
-    """Plot group for sub_tf_markers analysis."""
+def wrapper_plots_ct_tf_markers_aging(args, stats_features, stats_features_sig, skip_pathway):
+    """Plot group for ct_tf_markers analysis."""
     analysis_name = args.analysis_name
     
     plot_heatmap_overal(stats_features, analysis_name=args.analysis_name)
@@ -298,9 +298,9 @@ def wrapper_plots_gene_expression_condition(args, stats, stats_sig):
     raise ValueError(f'gene_expression condition analysis not yet implemented')
 
 
-def wrapper_plots_sub_tf_markers_condition(args, stats, stats_sig):
-    """Plot group for sub_tf_markers condition analysis."""
-    raise ValueError(f'sub_tf_markers condition analysis not yet implemented')
+def wrapper_plots_ct_tf_markers_condition(args, stats, stats_sig):
+    """Plot group for ct_tf_markers condition analysis."""
+    raise ValueError(f'ct_tf_markers condition analysis not yet implemented')
 
 
 def wrapper_plots_tfa_peg_condition(args, stats, stats_sig):

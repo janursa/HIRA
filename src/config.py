@@ -67,9 +67,9 @@ MAJOR_CTS = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
 CONFIG_FA = {
     'tfa_major_b': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL}, 
     'tfa_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'tf_activity', 'granularity': SUB_CT_LABEL},
-    'sub_tf_markers': {'data_type': 'bulk_minor', 'feature_type': 'tf_activity', 'granularity': SUB_CT_LABEL, 
+    'ct_tf_markers': {'data_type': 'sc', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL, 
                         'trend_labels': ['Higher in this group', 'Lower in this group'],
-                        'cell_types': ['CD4T', 'CD8T']},
+                        'cell_types': ['CD4T', 'CD8T', 'B', 'MONO']},
     'ge_major_b': {'data_type': 'bulk', 'feature_type': 'gene_expression', 'granularity': MAJOR_CT_LABEL},
     'ge_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'gene_expression', 'granularity': SUB_CT_LABEL},
     'tfa_peg': {'data_type': 'sc', 'feature_type': 'tfa_peg', 'granularity': MAJOR_CT_LABEL, 'cell_types': ['CD8T']},
@@ -81,7 +81,7 @@ CONFIG_FA = {
 ANALYSIS_DEF = {
     'tfa_major_b': 'TF activity features from major cell type analysis',
     'tfa_sub_b': 'TF activity features from sub cell type analysis',
-    'sub_tf_markers': 'TF markers for each sub cell types',
+    'ct_tf_markers': 'TF markers for each sub cell types',
     'ge_major_b': 'Gene expression features from major cell type analysis',
     'ge_sub_b': 'Gene expression features from sub cell type analysis',
     'tfa_peg': 'TF activity association with progenitor-effector gradient',

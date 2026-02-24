@@ -15,6 +15,7 @@ import warnings
 from hiara.src.config import SUB_CTS, FEATURES_DIR, MAJOR_CTS, DISCOVERY_COHORTS, DATA_TYPES, FEATURE_TYPES, get_config, META_MIN_COHORT, get_config_fa, get_available_fa_analyses, MAJOR_CT_LABEL, SUB_CT_LABEL
 from hiara.src.feature_association.helper import (
     wrapper_tf_activity,
+    wrapper_ct_tf_markers,
     wrapper_tfa_peg,
     wrapper_aging_hallmarks,
     wrapper_genesets_scores,
@@ -58,6 +59,8 @@ def calculate_features(analysis_name, par):
         wrapper_ct_pol_dist(par)
     elif analysis_name in ['ccc_sub_b', 'ccc_major_b']:
         wrapper_ccc(analysis_name, par, n_jobs=20)
+    elif analysis_name == 'ct_tf_markers':
+        wrapper_tf_activity(analysis_name, par)
     else:
         raise ValueError(f"Unknown analysis_name: {analysis_name}")
 
@@ -141,7 +144,7 @@ def run_multi_cohort_analysis(
     }
    
     # Step 1: Calculate features
-    if not args.skip_features and args.analysis_name not in ['sub_tf_markers']:
+    if not args.skip_features:
         print("\n[1/3] Calculating features...")
         calculate_features(args.analysis_name, par)
         print("✓ Features calculated")
@@ -149,10 +152,10 @@ def run_multi_cohort_analysis(
         print("\n[1/3] Skipping feature calculation (using cached data)")
     
     # Step 2: Calculate association with age or identify markers
-    if args.analysis_name == 'sub_tf_markers':
+    if args.analysis_name == 'ct_tf_markers':
         print("\n[2/3] Identifying sub cell type markers...")
-        from hiara.src.feature_association.helper import wrapper_sub_celltype_markers
-        stats_features = wrapper_sub_celltype_markers(args.analysis_name, par)
+        from hiara.src.feature_association.helper import wrapper_ct_tf_markers
+        stats_features = wrapper_ct_tf_markers(args.analysis_name, par)
     else:
         print("\n[2/3] Computing associations with age...")
         stats_features = wrapper_association_with_age_condition(args.analysis_name, par, association_type=args.association_type)
