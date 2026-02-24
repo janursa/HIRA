@@ -40,7 +40,7 @@ mapping_major_2_minor = {
     'CD4T': ['Tcm_Naive_CD4', 'Tem_Effector_CD4'],
     'CD8T': ['Tcm_Naive_CD8', 'Tem_Trm_CD8', 'Tem_Temra_CD8', 'MAIT'],
     'MONO': [
-            # 'NonClassic_MONO', 
+            'NonClassic_MONO', 
              'Classic_MONO'
              ],
     'NK': ['CD16_NK']
@@ -57,7 +57,7 @@ mapping_minor_2_major = {
     
     'CD16_NK': 'NK',
     'Classic_MONO': 'MONO',
-    # 'NonClassic_MONO': 'MONO',
+    'NonClassic_MONO': 'MONO',
     
     'Naive_B': 'B',
     'Memory_B': 'B',
@@ -69,7 +69,7 @@ CONFIG_FA = {
     'tfa_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'tf_activity', 'granularity': SUB_CT_LABEL},
     'sub_tf_markers': {'data_type': 'bulk_minor', 'feature_type': 'tf_activity', 'granularity': SUB_CT_LABEL, 
                         'trend_labels': ['Higher in this group', 'Lower in this group'],
-                        'cell_types': ['CD4T', 'CD8T']},
+                        'cell_types': ['CD4T', 'CD8T', 'B', 'MONO']},
     'ge_major_b': {'data_type': 'bulk', 'feature_type': 'gene_expression', 'granularity': MAJOR_CT_LABEL},
     'ge_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'gene_expression', 'granularity': SUB_CT_LABEL},
     'tfa_peg': {'data_type': 'sc', 'feature_type': 'tfa_peg', 'granularity': MAJOR_CT_LABEL, 'cell_types': ['CD8T']},
