@@ -249,70 +249,134 @@ def basic_qc(adata, run_test):
 
 def annotate_celltypist_fast(adata, n_clusters=500):
     """
-    Fast CellTypist annotation using MiniBatchKMeans over-clustering.
-    Memory optimizations:
-    - Raw counts are backed up to a temp file instead of copying into layers.
-    - HVG uses 'seurat' flavor (no counts layer needed).
-    - MiniBatchKMeans on sparse HVG matrix replaces PCA+neighbors+Leiden:
-      works natively on sparse input, no densification, scales to 10M+ cells.
+    Memory-efficient CellTypist annotation via donor-chunked processing.
+
+    Processing is done one donor at a time to avoid holding the full normalized
+    matrix (e.g. 13M x 40k float32) in memory.  The key insight is that
+    MiniBatchKMeans.partial_fit is incremental, so we can train across all donors
+    without ever materialising a full normalised dataset.  CellTypist prediction
+    (majority_voting=False) is also run per donor chunk, and global majority voting
+    is performed at the end over the shared cluster labels.
+
+    Memory footprint at any point: one donor's normalised slice + the cluster
+    centre matrix (n_clusters x n_hvg x float32 ~ negligible).
     """
     import scipy.sparse as sp
     from sklearn.cluster import MiniBatchKMeans
-
-    print('Annotating cell types (fast mode: MiniBatchKMeans + CellTypist)...')
-    obs_org = adata.obs.copy()
-
-    # Back up raw counts to temp file (avoids doubling memory with layers['counts']).
-    # Use HIARA_SCRATCH env var if set (recommended on cluster nodes where /tmp may be small),
-    # otherwise fall back to /tmp/.
-    scratch_dir = os.environ.get('HIARA_SCRATCH', '/tmp')
     import uuid
-    tmp_counts = os.path.join(scratch_dir, f'counts_backup_{uuid.uuid4().hex}.npz')
-    print(f'Backing up raw counts to {tmp_counts}...', flush=True)
-    sp.save_npz(tmp_counts, adata.X)
-
-    # Normalize and log-transform in-place (sparse, no extra copy)
-    sc.pp.normalize_total(adata, target_sum=1e4)
-    sc.pp.log1p(adata)
-    # Cast to float32 to halve memory for large datasets (e.g. 9.5M cells)
-    if not adata.X.dtype == np.float32:
-        adata.X = adata.X.astype(np.float32)
-
-    # HVG: 'seurat' flavor only needs log-normalized X (no counts layer)
-    sc.pp.highly_variable_genes(adata, n_top_genes=3000, flavor='seurat')
-    X_hvg = adata[:, adata.var['highly_variable']].X
-    # sklearn MiniBatchKMeans requires int32 sparse indices; cast if needed
-    if hasattr(X_hvg, 'indices') and X_hvg.indices.dtype != np.int32:
-        X_hvg = X_hvg.astype(X_hvg.dtype, copy=False)
-        X_hvg.indices = X_hvg.indices.astype(np.int32)
-        X_hvg.indptr = X_hvg.indptr.astype(np.int32)
-
-    # MiniBatchKMeans: sparse-native, no PCA/neighbors/Leiden needed
-    n_clusters_actual = min(n_clusters, adata.n_obs)
-    print(f'MiniBatchKMeans clustering ({n_clusters_actual} clusters)...', flush=True)
-    kmeans = MiniBatchKMeans(n_clusters=n_clusters_actual, random_state=0, n_init=3, batch_size=10_000)
-    adata.obs['over_clustering'] = kmeans.fit_predict(X_hvg).astype(str)
-    n_actual = adata.obs['over_clustering'].nunique()
-    print(f'MiniBatchKMeans produced {n_actual} clusters', flush=True)
-    del X_hvg; gc.collect()
-
     import celltypist
     from celltypist import models
-    gc.collect()
+
+    print('Annotating cell types (donor-chunked MiniBatchKMeans + CellTypist)...', flush=True)
+    obs_org = adata.obs.copy()
+
+    # --- Back up raw counts to scratch disk ---
+    scratch_dir = os.environ.get('HIARA_SCRATCH', '/tmp')
+    tmp_counts = os.path.join(scratch_dir, f'counts_backup_{uuid.uuid4().hex}.npz')
+    print(f'Backing up raw counts to {tmp_counts}...', flush=True)
+    if not sp.issparse(adata.X):
+        adata.X = sp.csr_matrix(adata.X)
+    sp.save_npz(tmp_counts, adata.X.tocsr())
+
+    # --- Detect donor column (first available from standard names) ---
+    donor_col = next((c for c in ['donor_id', 'donor', 'sample', 'batch_info'] if c in adata.obs.columns), None)
+    if donor_col is None:
+        raise ValueError("No donor column found in adata.obs; cannot chunk by donor.")
+    donors = adata.obs[donor_col].unique().tolist()
+    print(f'Processing {len(donors)} donors as chunks...', flush=True)
+
+    # --- Pass 1: compute global HVGs on a random subsample (memory-cheap) ---
+    # Use at most 200k cells to determine HVGs, spread across donors.
+    subsample_per_donor = max(1, min(200_000 // len(donors), 5_000))
+    sub_indices = []
+    for d in donors:
+        idx = np.where(adata.obs[donor_col].values == d)[0]
+        chosen = idx[:subsample_per_donor]
+        sub_indices.append(chosen)
+    sub_indices = np.concatenate(sub_indices)
+    adata_sub = adata[sub_indices].copy()
+    sc.pp.normalize_total(adata_sub, target_sum=1e4)
+    sc.pp.log1p(adata_sub)
+    sc.pp.highly_variable_genes(adata_sub, n_top_genes=3000, flavor='seurat')
+    hvg_mask = adata_sub.var['highly_variable'].values
+    hvg_cols = np.where(hvg_mask)[0].astype(np.int32)
+    # Copy HVG flags back to main adata.var so downstream steps have them
+    adata.var['highly_variable'] = hvg_mask
+    del adata_sub; gc.collect()
+    print(f'HVGs determined: {len(hvg_cols)} genes', flush=True)
+
+    # --- Pass 2: incremental MiniBatchKMeans fit (per donor batch) ---
+    n_clusters_actual = min(n_clusters, adata.n_obs)
+    kmeans = MiniBatchKMeans(
+        n_clusters=n_clusters_actual, random_state=0, n_init=3,
+        batch_size=10_000, max_iter=100,
+    )
+
+    # Group donors into batches: accumulate until we have >= n_clusters_actual cells.
+    # This ensures each partial_fit call has enough samples, even in test mode.
+    def _donor_batches(donors, obs_donor_col, min_cells):
+        batch, batch_size = [], 0
+        for d in donors:
+            n = int((obs_donor_col == d).sum())
+            batch.append(d)
+            batch_size += n
+            if batch_size >= min_cells:
+                yield batch
+                batch, batch_size = [], 0
+        if batch:
+            yield batch
+
+    for i, batch_donors in enumerate(_donor_batches(donors, adata.obs[donor_col], n_clusters_actual)):
+        idx = np.where(adata.obs[donor_col].isin(batch_donors).values)[0]
+        chunk = adata[idx].copy()
+        sc.pp.normalize_total(chunk, target_sum=1e4)
+        sc.pp.log1p(chunk)
+        X_hvg = chunk.X[:, hvg_cols].tocsr().astype(np.float32)
+        if X_hvg.indices.dtype != np.int32:
+            X_hvg.indices = X_hvg.indices.astype(np.int32)
+            X_hvg.indptr  = X_hvg.indptr.astype(np.int32)
+        kmeans.partial_fit(X_hvg)
+        del chunk, X_hvg; gc.collect()
+    print(f'  MiniBatchKMeans fit done ({i+1} batches)', flush=True)
+
+    # --- Pass 3: predict cluster labels + CellTypist per donor batch ---
     models.download_models(force_update=False)
     model = models.Model.load(model='Immune_All_Low.pkl')
 
-    print('Running CellTypist with pre-computed MiniBatchKMeans clusters...', flush=True)
-    predictions = celltypist.annotate(
-        adata,
-        model=model,
-        majority_voting=True,
-        over_clustering='over_clustering',
-    )
-    print('Cell types annotated successfully!')
-    adata_for_celltypist = predictions.to_adata()
+    cluster_labels = pd.Series(index=adata.obs_names, dtype=str)
+    ct_labels      = pd.Series(index=adata.obs_names, dtype=str)
 
-    # Major CT mapping
+    for i, batch_donors in enumerate(_donor_batches(donors, adata.obs[donor_col], n_clusters_actual)):
+        idx = np.where(adata.obs[donor_col].isin(batch_donors).values)[0]
+        chunk = adata[idx].copy()
+        sc.pp.normalize_total(chunk, target_sum=1e4)
+        sc.pp.log1p(chunk)
+
+        # Cluster labels
+        X_hvg = chunk.X[:, hvg_cols].tocsr().astype(np.float32)
+        if X_hvg.indices.dtype != np.int32:
+            X_hvg.indices = X_hvg.indices.astype(np.int32)
+            X_hvg.indptr  = X_hvg.indptr.astype(np.int32)
+        labels = kmeans.predict(X_hvg).astype(str)
+        cluster_labels.iloc[idx] = labels
+        del X_hvg; gc.collect()
+
+        # CellTypist prediction (no majority voting yet — done globally below)
+        preds = celltypist.annotate(chunk, model=model, majority_voting=False)
+        ct_labels.iloc[idx] = preds.predicted_labels['predicted_labels'].values
+        del chunk, preds; gc.collect()
+
+        if (i + 1) % 10 == 0 or i == 0:
+            print(f'  CellTypist predict: batch {i+1} done', flush=True)
+
+    # --- Global majority voting: per cluster, pick the most common CT label ---
+    print('Running global majority voting...', flush=True)
+    tmp_df = pd.DataFrame({'cluster': cluster_labels, 'ct': ct_labels})
+    majority = tmp_df.groupby('cluster')['ct'].agg(lambda x: x.value_counts().index[0])
+    majority_labels = cluster_labels.map(majority)
+    print('Cell types annotated successfully!', flush=True)
+
+    # --- Apply Major/Sub CT mappings ---
     mapping = {
         'Tcm/Naive helper T cells': 'CD4T',
         'CD16+ NK cells': 'NK',
@@ -341,9 +405,8 @@ def annotate_celltypist_fast(adata, n_clusters=500):
         'ILC': 'ILC',
         'CD8a/a': 'CD8T',
         'Double-positive thymocytes': 'T',
-        'Late erythroid': 'Erythroid'
+        'Late erythroid': 'Erythroid',
     }
-    # Sub CT mapping
     mapping_sub = {
         'Tcm/Naive helper T cells': 'Tcm_Naive_CD4',
         'CD16+ NK cells': 'CD16_NK',
@@ -371,15 +434,13 @@ def annotate_celltypist_fast(adata, n_clusters=500):
         'ILC': 'ILC',
         'CD8a/a': 'CD8a/a',
         'Double-positive thymocytes': 'T',
-        'Late erythroid': 'Late_Erythroid'
+        'Late erythroid': 'Late_Erythroid',
     }
+    obs_org[MAJOR_CT_LABEL] = majority_labels.map(mapping).fillna('Others').values
+    obs_org[SUB_CT_LABEL]   = majority_labels.map(mapping_sub).fillna('Others').values
 
-    adata_for_celltypist.obs[MAJOR_CT_LABEL] = adata_for_celltypist.obs['majority_voting'].apply(lambda x: mapping.get(x, 'Others'))
-    adata_for_celltypist.obs[SUB_CT_LABEL] = adata_for_celltypist.obs['majority_voting'].apply(lambda x: mapping_sub.get(x, 'Others'))
-
-    obs_org = obs_org.join(adata_for_celltypist.obs[[MAJOR_CT_LABEL, SUB_CT_LABEL]])
+    # --- Restore raw counts ---
     adata.obs = obs_org
-    # Restore raw counts from temp file (no layers duplication)
     adata.X = sp.load_npz(tmp_counts)
     os.remove(tmp_counts)
     return adata
