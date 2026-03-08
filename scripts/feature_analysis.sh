@@ -14,9 +14,9 @@ set -e
 # echo "---------------------------------------------------------- Consensus networks -----------------------------------------------------------------"
 # python src/feature_association/consensus_nets.py
 
-analysis_name="sub_tf_markers" # tfa_major_b sub_tf_markers tfa_sub_b ge_major_b ct_freq ct_pol_dist tfa_peg ccc_major_b ccc_sub_b  
+analysis_name="ct_tf_markers" # tfa_major_b ct_tf_markers tfa_sub_b ge_major_b ct_freq ct_pol_dist tfa_peg ccc_major_b ccc_sub_b  
 # cell_types="Naive_B Memory_B Tcm_Naive_CD8 Tem_Trm_CD8 Tem_Temra_CD8 MAIT Tcm_Naive_CD4 Tem_Effector_CD4 NonClassic_MONO Classic_MONO CD16_NK" # "Tcm_Naive_CD4"
-test_mode="" #--test-mode
+test_mode="--test-mode" #--test-mode
 
 echo "---------------------------------------------------------- Aging -----------------------------------------------------------------"
 python src/feature_association/run_analysis.py --analysis-name $analysis_name --analysis-mode multi-cohort  --association-type continous  $test_mode 

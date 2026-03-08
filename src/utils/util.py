@@ -41,7 +41,11 @@ def retrieve_adata(dataset,
 
     
     assert data_type in DATA_TYPES, f'Unknown type {data_type}'
-    adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/{dataset}.h5ad", backed='r')
+    if test_mode:
+        adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/zhang.h5ad", backed='r')
+        adata.obs['dataset'] = dataset
+    else:
+        adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/{dataset}.h5ad", backed='r')
 
     obs = adata.obs.copy()
     if dataset not in ['ibd']:
@@ -170,8 +174,10 @@ def retrieve_adata(dataset,
             if 'log1p' in adata.uns:
                 del adata.uns['log1p']
             one_value = adata.X.data[0]
-            res = one_value - int(one_value)
-            assert res == 0, "adata.X should contain raw counts (integer values)"
+            # res should be close enough
+            res = np.isclose(one_value, np.int64(one_value))
+            if not res:
+                raise ValueError(f'Expected count data for sc dataset, but found non-integer value: {one_value}')
             adata.layers['counts'] = adata.X.copy()
             sc.pp.normalize_total(adata)
             sc.pp.log1p(adata)
@@ -193,7 +199,7 @@ def retrieve_adata(dataset,
 
     # if (dataset == 'soundlife') & (data_type=='sc'):
     #     adata = adata[adata.obs['visitName']=='Flu Year 1 Day 0']
-    
+
     return adata
 
 def retrieve_net(dataset, cell_type, promotor_only=False, data_type='sc', grns_dir=GRNS_DIR, prior_dir=PRIOR_DIR):      

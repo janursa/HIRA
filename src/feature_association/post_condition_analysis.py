@@ -19,7 +19,7 @@ from hiara.src.feature_association.plots_groups import (
     wrapper_plots_tfa_major_b_condition,
     wrapper_plots_tfa_sub_b_condition,
     wrapper_plots_gene_expression_condition,
-    wrapper_plots_sub_tf_markers_condition,
+    wrapper_plots_ct_tf_markers_condition,
     wrapper_plots_tfa_peg_condition,
     wrapper_plots_ct_freq_condition,
     wrapper_plots_ct_pol_dist_condition,
@@ -184,8 +184,8 @@ def main():
         wrapper_plots_tfa_sub_b_condition(args, stats, stats_sig)
     elif args.analysis_name == 'gene_expression':
         wrapper_plots_gene_expression_condition(args, stats, stats_sig)
-    elif args.analysis_name == 'sub_tf_markers':
-        wrapper_plots_sub_tf_markers_condition(args, stats, stats_sig)
+    elif args.analysis_name == 'ct_tf_markers':
+        wrapper_plots_ct_tf_markers_condition(args, stats, stats_sig)
     elif args.analysis_name == 'tfa_peg':
         wrapper_plots_tfa_peg_condition(args, stats, stats_sig)
     elif args.analysis_name == 'ct_freq':

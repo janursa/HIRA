@@ -146,16 +146,19 @@ def map_cell_types_soundlife(adata):
         'Intermediate monocyte': 'Classic_MONO',
     }
     
-    # Map major cell types
-    adata.obs[MAJOR_CT_LABEL] = adata.obs['AIFI_L2'].map(cell_type_mapping)
-    adata.obs[SUB_CT_LABEL] = adata.obs['AIFI_L2'].map(sub_cell_type_mapping)
-    
+    # Store original annotations under _original labels (CellTypist will set MAJOR_CT_LABEL/SUB_CT_LABEL)
+    adata.obs['Major_CT_original'] = adata.obs['AIFI_L2'].map(cell_type_mapping)
+    adata.obs['Sub_CT_original'] = adata.obs['AIFI_L2'].map(sub_cell_type_mapping)
+
     # Keep original AIFI_L2 for reference
     adata.obs['AIFI_L2_original'] = adata.obs['AIFI_L2'].astype(str)
     return adata
 
-def remove_attributes(adata):
-    for attr in ['uns', 'raw', 'layers', 'obsm', 'varm', 'varp']:
+def remove_attributes(adata, keep_layers=False):
+    attrs = ['uns', 'raw', 'obsm', 'varm', 'varp']
+    if not keep_layers:
+        attrs.append('layers')
+    for attr in attrs:
         if hasattr(adata, attr):
             delattr(adata, attr)
     return adata
@@ -217,7 +220,7 @@ def format_data(adata, dataset_name):
     adata.obs.rename(columns={'perturbation':'condition', 'disease':'condition', 'treatment':'condition'}, inplace=True)
     adata.obs['dataset'] = dataset_name
     adata.obs['donor_age'] = adata.obs['age'].astype(str) + '_' + adata.obs['donor_id'].astype(str)
-    adata = remove_attributes(adata)
+    adata = remove_attributes(adata, keep_layers=(dataset_name == 'op'))
     adata.obs[bulk_group_col] = adata.obs[bulk_group].astype(str).agg('_'.join, axis=1)
     return adata
 def basic_qc(adata, run_test):
@@ -243,34 +246,73 @@ def basic_qc(adata, run_test):
     assert adata.shape[0] > 0, "No cells left after QC filtering."
     return adata
 
-def annotate_celltypist(adata):
-    # Standard CellTypist annotation for other datasets
-    print('Annotating cell types...')
-    adata.layers['counts'] = adata.X.copy()
-    ### Celltype annotation via Celltypist:
-    import celltypist
-    from celltypist import models
-    ### Normalization
-    # Before normalization, we need to store the raw counts in the layers['counts'] metadata for later use in the differential expression analysis
-    gc.collect()
+
+def annotate_celltypist_fast(adata, n_clusters=500):
+    """
+    Fast CellTypist annotation using MiniBatchKMeans over-clustering.
+    Memory optimizations:
+    - Raw counts are backed up to a temp file instead of copying into layers.
+    - HVG uses 'seurat' flavor (no counts layer needed).
+    - MiniBatchKMeans on sparse HVG matrix replaces PCA+neighbors+Leiden:
+      works natively on sparse input, no densification, scales to 10M+ cells.
+    """
+    import scipy.sparse as sp
+    from sklearn.cluster import MiniBatchKMeans
+
+    print('Annotating cell types (fast mode: MiniBatchKMeans + CellTypist)...')
+    obs_org = adata.obs.copy()
+
+    # Back up raw counts to temp file (avoids doubling memory with layers['counts']).
+    # Use HIARA_SCRATCH env var if set (recommended on cluster nodes where /tmp may be small),
+    # otherwise fall back to /tmp/.
+    scratch_dir = os.environ.get('HIARA_SCRATCH', '/tmp')
+    import uuid
+    tmp_counts = os.path.join(scratch_dir, f'counts_backup_{uuid.uuid4().hex}.npz')
+    print(f'Backing up raw counts to {tmp_counts}...', flush=True)
+    sp.save_npz(tmp_counts, adata.X)
+
+    # Normalize and log-transform in-place (sparse, no extra copy)
     sc.pp.normalize_total(adata, target_sum=1e4)
     sc.pp.log1p(adata)
-    models.download_models(force_update = True)
-    model = models.Model.load(model = 'Immune_All_Low.pkl') #Immune_All_Low good for Major cell types and Immune_All_High for subtypes
-    # Please note that the adata.X should be log-normalized data!
-    obs_org = adata.obs.copy()
-    # Annotate cell types using CellTypist
-    print('Annotating cell types using CellTypist...')
+    # Cast to float32 to halve memory for large datasets (e.g. 9.5M cells)
+    if not adata.X.dtype == np.float32:
+        adata.X = adata.X.astype(np.float32)
+
+    # HVG: 'seurat' flavor only needs log-normalized X (no counts layer)
+    sc.pp.highly_variable_genes(adata, n_top_genes=3000, flavor='seurat')
+    X_hvg = adata[:, adata.var['highly_variable']].X
+    # sklearn MiniBatchKMeans requires int32 sparse indices; cast if needed
+    if hasattr(X_hvg, 'indices') and X_hvg.indices.dtype != np.int32:
+        X_hvg = X_hvg.astype(X_hvg.dtype, copy=False)
+        X_hvg.indices = X_hvg.indices.astype(np.int32)
+        X_hvg.indptr = X_hvg.indptr.astype(np.int32)
+
+    # MiniBatchKMeans: sparse-native, no PCA/neighbors/Leiden needed
+    n_clusters_actual = min(n_clusters, adata.n_obs)
+    print(f'MiniBatchKMeans clustering ({n_clusters_actual} clusters)...', flush=True)
+    kmeans = MiniBatchKMeans(n_clusters=n_clusters_actual, random_state=0, n_init=3, batch_size=10_000)
+    adata.obs['over_clustering'] = kmeans.fit_predict(X_hvg).astype(str)
+    n_actual = adata.obs['over_clustering'].nunique()
+    print(f'MiniBatchKMeans produced {n_actual} clusters', flush=True)
+    del X_hvg; gc.collect()
+
+    import celltypist
+    from celltypist import models
+    gc.collect()
+    models.download_models(force_update=False)
+    model = models.Model.load(model='Immune_All_Low.pkl')
+
+    print('Running CellTypist with pre-computed MiniBatchKMeans clusters...', flush=True)
     predictions = celltypist.annotate(
         adata,
         model=model,
         majority_voting=True,
-        use_GPU=False
+        over_clustering='over_clustering',
     )
     print('Cell types annotated successfully!')
-    # Update the AnnData object with predictions
     adata_for_celltypist = predictions.to_adata()
-    ###Major CT
+
+    # Major CT mapping
     mapping = {
         'Tcm/Naive helper T cells': 'CD4T',
         'CD16+ NK cells': 'NK',
@@ -283,9 +325,9 @@ def annotate_celltypist(adata):
         'Tem/Trm cytotoxic T cells': 'CD8T',
         'Memory B cells': 'B',
         'Non-classical monocytes': 'MONO',
-        'MAIT cells': 'CD8T',  # or 'MAIT' if you want to keep it separate
+        'MAIT cells': 'CD8T',
         'Regulatory T cells': 'CD4T',
-        'Cycling T cells' : 'CD4T',
+        'Cycling T cells': 'CD4T',
         'DC2': 'DC',
         'pDC': 'DC',
         'Intermediate macrophages': 'MONO',
@@ -301,7 +343,7 @@ def annotate_celltypist(adata):
         'Double-positive thymocytes': 'T',
         'Late erythroid': 'Erythroid'
     }
-    ###SubPopulation
+    # Sub CT mapping
     mapping_sub = {
         'Tcm/Naive helper T cells': 'Tcm_Naive_CD4',
         'CD16+ NK cells': 'CD16_NK',
@@ -314,7 +356,7 @@ def annotate_celltypist(adata):
         'Memory B cells': 'Memory_B',
         'B cells': 'Bcells',
         'Non-classical monocytes': 'NonClassic_MONO',
-        'MAIT cells': 'MAIT',  # or 'MAIT' if you want to keep it separate
+        'MAIT cells': 'MAIT',
         'Regulatory T cells': 'Treg',
         'DC2': 'DC2',
         'pDC': 'pDC',
@@ -331,28 +373,25 @@ def annotate_celltypist(adata):
         'Double-positive thymocytes': 'T',
         'Late erythroid': 'Late_Erythroid'
     }
-    # Map Major and Sub cell types
+
     adata_for_celltypist.obs[MAJOR_CT_LABEL] = adata_for_celltypist.obs['majority_voting'].apply(lambda x: mapping.get(x, 'Others'))
     adata_for_celltypist.obs[SUB_CT_LABEL] = adata_for_celltypist.obs['majority_voting'].apply(lambda x: mapping_sub.get(x, 'Others'))
-    # - post process
+
     obs_org = obs_org.join(adata_for_celltypist.obs[[MAJOR_CT_LABEL, SUB_CT_LABEL]])
     adata.obs = obs_org
-    adata.X = adata.layers["counts"]
-    del adata.layers
+    # Restore raw counts from temp file (no layers duplication)
+    adata.X = sp.load_npz(tmp_counts)
+    os.remove(tmp_counts)
     return adata
+
 def annotate_celltypes(adata, dataset):
-    # Soundlife uses pre-existing AIFI_L2 annotations instead of CellTypist
-    if dataset == 'soundlife': 
-        print('Using pre-existing AIFI_L2 annotations for soundlife...')
+    if dataset == 'soundlife':
+        print('Storing original AIFI_L2 annotations and running CellTypist for soundlife...')
         adata = map_cell_types_soundlife(adata)
-    # ParseBioscience uses pre-existing annotations instead of CellTypist
     elif dataset == 'parsebioscience':
-        print('Using pre-existing cell type annotations for parsebioscience...')
+        print('Storing original cell type annotations and running CellTypist for parsebioscience...')
         adata = map_cell_types_parsebioscience(adata)
-    else:
-        adata = annotate_celltypist(adata)
-    
-    return adata
+    return annotate_celltypist_fast(adata)
 
 def format_columns_parsebioscience(adata):
     """
@@ -446,14 +485,14 @@ def map_cell_types_parsebioscience(adata):
         'pDC': None
     }
     
-    # Map major and sub cell types
-    adata.obs[MAJOR_CT_LABEL] = adata.obs['cell_type_original'].map(major_cell_type_map)
-    adata.obs[SUB_CT_LABEL] = adata.obs['cell_type_original'].map(sub_cell_type_map)
-    adata.obs['cell_type'] = adata.obs[MAJOR_CT_LABEL]
+    # Map major and sub cell types to _original columns (CellTypist will set MAJOR_CT_LABEL/SUB_CT_LABEL)
+    adata.obs['Major_CT_original'] = adata.obs['cell_type_original'].map(major_cell_type_map)
+    adata.obs['Sub_CT_original'] = adata.obs['cell_type_original'].map(sub_cell_type_map)
+    adata.obs['cell_type'] = adata.obs['Major_CT_original']
     
     # Count unmapped cells
-    unmapped_major = adata.obs[MAJOR_CT_LABEL].isna().sum()
-    unmapped_sub = adata.obs[SUB_CT_LABEL].isna().sum()
+    unmapped_major = adata.obs['Major_CT_original'].isna().sum()
+    unmapped_sub = adata.obs['Sub_CT_original'].isna().sum()
     total = adata.shape[0]
     
     print(f'Unmapped major cell types: {unmapped_major:,} ({unmapped_major/total*100:.2f}%)')
@@ -464,10 +503,10 @@ def map_cell_types_parsebioscience(adata):
     print(f'Shape after filtering unmapped cell types: {adata.shape}')
     
     # Show cell type distribution
-    print('\nMajor cell type distribution:')
-    print(adata.obs[MAJOR_CT_LABEL].value_counts())
+    print('\nOriginal major cell type distribution:')
+    print(adata.obs['Major_CT_original'].value_counts())
     
-    print(f'\nStandardized sub cell type distribution:')
-    print(adata.obs[SUB_CT_LABEL].value_counts())
+    print(f'\nOriginal sub cell type distribution:')
+    print(adata.obs['Sub_CT_original'].value_counts())
     
     return adata
