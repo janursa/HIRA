@@ -74,8 +74,6 @@ def format_columns_soundlife(adata):
     adata.obs['day'] = parsed['day'].astype(str)
     adata.obs['vaccinated'] = parsed['vaccinated']
     return adata
-
-
 def map_cell_types_soundlife(adata):
     """
     Map AIFI_L2 annotations to major cell types and standardized sub cell types.
@@ -113,7 +111,6 @@ def map_cell_types_soundlife(adata):
         'CD16 monocyte': 'MONO',
         'Intermediate monocyte': 'MONO',
     }
-    
     # Define mapping from AIFI_L2 to standardized sub cell types
     # This maps to the SUB_CTS defined in config.py
     sub_cell_type_mapping = {

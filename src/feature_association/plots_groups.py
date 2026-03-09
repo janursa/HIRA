@@ -174,7 +174,7 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
         plot_aging_overlap(analysis_name, stats_sig, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'], args=args)
         plot_directional_consistency_scatter(
             stats, 
-            analysis_name=analysis_name,
+            stats_ref=retrieve_sig_stats(analysis_name=analysis_name),
             save_suffix=args.dataset,
             x_label='Validation analysis \n(significance)',
             y_label='Discovery analysis \n(significance)',

@@ -6,7 +6,7 @@ import argparse
 import glob
 import os
 import numpy as np
-from hiara.src.process_dataset.preprocess.helper import annotate_celltypes, basic_qc, format_data
+from hiara.src.process_data.preprocess.helper import annotate_celltypes, basic_qc, format_data
 
 def subset_to_test(adata):
     print('Test mode: subsetting data', flush=True)

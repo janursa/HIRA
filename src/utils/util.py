@@ -144,10 +144,15 @@ def retrieve_adata(dataset,
         
         # Find positions in the original adata that match the filtered obs indices
         original_index = adata_backed.obs.index
-        # Use index.get_indexer for efficient position lookup
-        obs_positions = original_index.get_indexer(obs_indices)
-        if (obs_positions == -1).any():
-            raise ValueError("Some obs indices not found in original adata")
+        # Use index.get_indexer for efficient position lookup (requires unique index)
+        if original_index.is_unique:
+            obs_positions = original_index.get_indexer(obs_indices)
+            if (obs_positions == -1).any():
+                raise ValueError("Some obs indices not found in original adata")
+        else:
+            # Fall back to positional lookup when the index has duplicates
+            index_to_pos = {idx: pos for pos, idx in enumerate(original_index)}
+            obs_positions = np.array([index_to_pos[idx] for idx in obs_indices])
         
         var_indices = np.where(mask_genes)[0]
         X_subset = adata_backed.X[obs_positions, :][:, var_indices]
