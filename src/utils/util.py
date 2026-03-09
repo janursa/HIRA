@@ -181,8 +181,8 @@ def retrieve_adata(dataset,
             one_value = adata.X.data[0]
             # res should be close enough
             res = np.isclose(one_value, np.int64(one_value))
-            
-            assert res == 0, "adata.X should contain raw counts (integer values)"
+            if not res:
+                raise ValueError(f'Expected count data for sc dataset, but found non-integer value: {one_value}')
             adata.layers['counts'] = adata.X.copy()
             sc.pp.normalize_total(adata)
             sc.pp.log1p(adata)

@@ -13,7 +13,7 @@ def subset_to_test(adata):
     cell_indices = adata.obs.groupby('bulk_group').apply(lambda x: x.index[0]).values
     adata = adata[cell_indices, :].to_memory()  
     return adata
-def load_sc_data(file_name, dataset, run_test):
+def load_sc_data(file_name, dataset, run_test, gene_names=None):
     if dataset == 'soundlife': # Handle multi-file input for soundlife
         print(f'Soundlife: Processing multiple files from directory: {file_name}', flush=True)
         input_pattern = os.path.join(file_name, 'SoundLife_*.h5ad')
@@ -33,8 +33,12 @@ def load_sc_data(file_name, dataset, run_test):
             adata_temp = ad.read_h5ad(input_file, backed='r')
             adata_temp = format_data(adata_temp, dataset)
             if run_test:
-                # In test mode, take only limited groups
+                # In test mode, subset rows first (fast, backed), then load into memory
                 adata_temp = subset_to_test(adata_temp)
+            elif gene_names is not None:
+                # Full run: filter to known genes before loading into memory (saves ~50% memory)
+                keep = adata_temp.var_names.isin(gene_names)
+                adata_temp = adata_temp[:, keep].to_memory()
             else:
                 adata_temp = adata_temp.to_memory()
 
@@ -64,24 +68,36 @@ def load_sc_data(file_name, dataset, run_test):
         else:
             print('Reading to memory...', flush=True)
             adata = adata.to_memory()
+        # op stores raw counts in layers['counts']; X is pre-normalized.
+        # Swap after to_memory() since backed objects are read-only.
+        # Cast to int32: counts are integers stored as float64; explicit cast
+        # ensures the integer-values assertion in main() passes cleanly.
+        if dataset == 'op' and 'counts' in adata.layers:
+            import scipy.sparse as sp
+            raw = adata.layers['counts']
+            raw = raw.tocsr() if sp.issparse(raw) else sp.csr_matrix(raw)
+            adata.X = raw.astype(np.int32)
+            del adata.layers['counts']
     return adata
 
+
+
 def main(par):
-    intermediate_save = True
     dataset = par['dataset']
     dataset = DATASET_NAME_MAPPING.get(dataset, dataset)
     par['dataset'] = dataset 
     file_name = par['input_file']
-    adata = load_sc_data(file_name, dataset, par['run_test'])
+
+    # Load gene names early so soundlife can filter per-file before to_memory()
+    gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
+    adata = load_sc_data(file_name, dataset, par['run_test'], gene_names=gene_names)
     adata = basic_qc(adata, par['run_test'])
 
-    if True: # filter based on known genes
-        gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
+    # For soundlife: per-file gene filter may leave small gene-set differences across files;
+    # enforce the known gene list here to ensure consistency after inner-join concat.
+    if dataset == 'soundlife':
         adata = adata[:, adata.var_names.isin(gene_names)].copy()
 
-    if intermediate_save:
-        print(f"Saving intermediate QC result to {par['processed_files_dir']}/{dataset}.h5ad", flush=True)
-        adata.write_h5ad(f"{par['processed_files_dir']}/{dataset}.h5ad", compression='gzip')
     adata = annotate_celltypes(adata, dataset)
     print(f"Writing processed data to {par['processed_files_dir']}/{dataset}.h5ad", flush=True)
     # assert that there is no layers before wiring

@@ -40,7 +40,7 @@ mapping_major_2_minor = {
     'CD4T': ['Tcm_Naive_CD4', 'Tem_Effector_CD4'],
     'CD8T': ['Tcm_Naive_CD8', 'Tem_Trm_CD8', 'Tem_Temra_CD8', 'MAIT'],
     'MONO': [
-            # 'NonClassic_MONO', 
+            'NonClassic_MONO', 
              'Classic_MONO'
              ],
     'NK': ['CD16_NK']
@@ -57,7 +57,7 @@ mapping_minor_2_major = {
     
     'CD16_NK': 'NK',
     'Classic_MONO': 'MONO',
-    # 'NonClassic_MONO': 'MONO',
+    'NonClassic_MONO': 'MONO',
     
     'Naive_B': 'B',
     'Memory_B': 'B',

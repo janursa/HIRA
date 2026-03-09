@@ -585,8 +585,6 @@ def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="C
         width = .25*len(order)+extra_space+1
         if len(order) < 5:
             width = 3
-        if len(order) < 2:
-            width = 2.5
         figsize = (width, 3)
     fig, ax = plt.subplots(figsize=figsize)
     # donors = sorted(df_plot['donor'].unique(), key=lambda x: int(x.split(' ')[1]))
