@@ -244,6 +244,186 @@ def basic_qc(adata, run_test):
     return adata
 
 
+def annotate_celltypist_subsample_knn(adata, subsample_n=150_000, leiden_resolution=5.0):
+    """
+    Fast CellTypist annotation preserving graph-based local neighborhood structure.
+
+    Strategy (Option 1 — subsample kNN + label transfer):
+    1. Subsample ~150k cells, run PCA → kNN graph → Leiden clustering.
+    2. Project all remaining cells into the same PCA space; assign each to its
+       nearest neighbor's cluster using an approximate kNN index (pynndescent).
+    3. Run CellTypist (majority_voting=False) per cluster on small chunks.
+    4. Global majority vote per cluster → final labels.
+
+    This preserves the manifold geometry that MiniBatchKMeans misses, at a
+    fraction of the memory/time cost of running kNN on the full dataset.
+    """
+    import scipy.sparse as sp
+    import uuid
+    import celltypist
+    from celltypist import models
+    from pynndescent import NNDescent
+
+    print('Annotating cell types (subsample kNN + label transfer + CellTypist)...', flush=True)
+    obs_org = adata.obs.copy()
+
+    # --- Back up raw counts ---
+    scratch_dir = os.environ.get('HIARA_SCRATCH', '/tmp')
+    tmp_counts = os.path.join(scratch_dir, f'counts_backup_{uuid.uuid4().hex}.npz')
+    print(f'Backing up raw counts to {tmp_counts}...', flush=True)
+    if not sp.issparse(adata.X):
+        adata.X = sp.csr_matrix(adata.X)
+    sp.save_npz(tmp_counts, adata.X.tocsr())
+
+    # --- Normalize + HVG on full data (in-place, sparse, no extra copy) ---
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    sc.pp.log1p(adata)
+    if adata.X.dtype != np.float32:
+        adata.X = adata.X.astype(np.float32)
+
+    # --- Subsample for graph construction ---
+    n_sub = min(subsample_n, adata.n_obs)
+    rng = np.random.default_rng(0)
+    sub_idx = rng.choice(adata.n_obs, size=n_sub, replace=False)
+    sub_idx.sort()
+    print(f'Subsampling {n_sub:,} cells for kNN+Leiden graph...', flush=True)
+
+    adata_sub = adata[sub_idx].copy()
+    sc.pp.highly_variable_genes(adata_sub, n_top_genes=3000, flavor='seurat')
+    hvg_mask = adata_sub.var['highly_variable'].values
+    adata.var['highly_variable'] = hvg_mask
+    hvg_idx = np.where(hvg_mask)[0].astype(np.int32)
+
+    # PCA on subsample via sklearn (stores mean + components for projection)
+    from sklearn.decomposition import PCA
+    X_sub_hvg = adata_sub[:, hvg_mask].X
+    if sp.issparse(X_sub_hvg):
+        X_sub_hvg = X_sub_hvg.toarray()
+    pca = PCA(n_components=50, random_state=0)
+    sub_pca = pca.fit_transform(X_sub_hvg).astype(np.float32)
+    del X_sub_hvg
+
+    # kNN + Leiden on subsample PCA embedding
+    adata_sub.obsm['X_pca'] = sub_pca
+    sc.pp.neighbors(adata_sub, n_neighbors=15, use_rep='X_pca')
+    sc.tl.leiden(adata_sub, resolution=leiden_resolution, key_added='over_clustering')
+    sub_clusters = adata_sub.obs['over_clustering'].values
+    n_clusters = adata_sub.obs['over_clustering'].nunique()
+    print(f'Leiden produced {n_clusters} clusters on subsample', flush=True)
+    del adata_sub; gc.collect()
+
+    # --- Project ALL cells into PCA space & transfer cluster labels ---
+    print('Projecting all cells to PCA space...', flush=True)
+    X_hvg_full = adata.X[:, hvg_idx]
+    if sp.issparse(X_hvg_full):
+        X_hvg_full = X_hvg_full.toarray()
+    full_pca = pca.transform(X_hvg_full).astype(np.float32)
+    del X_hvg_full, pca; gc.collect()
+
+    # Build approximate kNN index on subsample PCA, query all cells
+    print('Building approximate kNN index (pynndescent)...', flush=True)
+    index = NNDescent(sub_pca, n_neighbors=15, random_state=0, n_jobs=-1)
+    index.prepare()
+    print('Querying all cells against subsample index...', flush=True)
+    neighbors, _ = index.query(full_pca, k=1)
+    del full_pca, index; gc.collect()
+
+    # Each cell inherits the cluster of its nearest subsample neighbor
+    all_clusters = pd.Series(sub_clusters[neighbors[:, 0]], index=adata.obs_names, dtype=str)
+    # Subsample cells keep their own labels (authoritative)
+    all_clusters.iloc[sub_idx] = sub_clusters
+    print(f'Cluster label transfer done. {all_clusters.nunique()} unique clusters.', flush=True)
+
+    # --- CellTypist per cluster, then global majority vote ---
+    models.download_models(force_update=False)
+    model = models.Model.load(model='Immune_All_Low.pkl')
+
+    ct_labels = pd.Series(index=adata.obs_names, dtype=str)
+    unique_clusters = all_clusters.unique()
+    print(f'Running CellTypist on {len(unique_clusters)} clusters...', flush=True)
+    for i, cl in enumerate(unique_clusters):
+        idx = np.where(all_clusters.values == cl)[0]
+        chunk = adata[idx].copy()
+        preds = celltypist.annotate(chunk, model=model, majority_voting=False)
+        ct_labels.iloc[idx] = preds.predicted_labels['predicted_labels'].values
+        del chunk, preds; gc.collect()
+        if (i + 1) % 50 == 0:
+            print(f'  CellTypist: {i+1}/{len(unique_clusters)} clusters done', flush=True)
+
+    # Global majority vote per cluster
+    print('Running global majority voting...', flush=True)
+    tmp_df = pd.DataFrame({'cluster': all_clusters, 'ct': ct_labels})
+    majority = tmp_df.groupby('cluster')['ct'].agg(lambda x: x.value_counts().index[0])
+    majority_labels = all_clusters.map(majority)
+
+    mapping = {
+        'Tcm/Naive helper T cells': 'CD4T',
+        'CD16+ NK cells': 'NK',
+        'Classical monocytes': 'MONO',
+        'Tem/Temra cytotoxic T cells': 'CD8T',
+        'Tem/Effector helper T cells': 'CD4T',
+        'Tcm/Naive cytotoxic T cells': 'CD8T',
+        'B cells': 'B',
+        'Naive B cells': 'B',
+        'Tem/Trm cytotoxic T cells': 'CD8T',
+        'Memory B cells': 'B',
+        'Non-classical monocytes': 'MONO',
+        'MAIT cells': 'CD8T',
+        'Regulatory T cells': 'CD4T',
+        'Cycling T cells': 'CD4T',
+        'DC2': 'DC',
+        'pDC': 'DC',
+        'Intermediate macrophages': 'MONO',
+        'NK cells': 'NK',
+        'Plasma cells': 'B',
+        'HSC/MPP': 'HSC',
+        'Age-associated B cells': 'B',
+        'DC1': 'DC',
+        'Megakaryocytes/platelets': 'Megakaryocyte',
+        'Plasmablasts': 'B',
+        'ILC': 'ILC',
+        'CD8a/a': 'CD8T',
+        'Double-positive thymocytes': 'T',
+        'Late erythroid': 'Erythroid',
+    }
+    mapping_sub = {
+        'Tcm/Naive helper T cells': 'Tcm_Naive_CD4',
+        'CD16+ NK cells': 'CD16_NK',
+        'Classical monocytes': 'Classic_MONO',
+        'Tem/Temra cytotoxic T cells': 'Tem_Temra_CD8',
+        'Tem/Effector helper T cells': 'Tem_Effector_CD4',
+        'Tcm/Naive cytotoxic T cells': 'Tcm_Naive_CD8',
+        'Naive B cells': 'Naive_B',
+        'Tem/Trm cytotoxic T cells': 'Tem_Trm_CD8',
+        'Memory B cells': 'Memory_B',
+        'B cells': 'Bcells',
+        'Non-classical monocytes': 'NonClassic_MONO',
+        'MAIT cells': 'MAIT',
+        'Regulatory T cells': 'Treg',
+        'DC2': 'DC2',
+        'pDC': 'pDC',
+        'Intermediate macrophages': 'Int_Macrophage',
+        'NK cells': 'NK',
+        'Plasma cells': 'Plasma_B',
+        'HSC/MPP': 'HSC/MPP',
+        'Age-associated B cells': 'Aged_B',
+        'DC1': 'DC1',
+        'Megakaryocytes/platelets': 'Platelet',
+        'Plasmablasts': 'Plasmablasts_B',
+        'ILC': 'ILC',
+        'CD8a/a': 'CD8a/a',
+        'Double-positive thymocytes': 'T',
+        'Late erythroid': 'Late_Erythroid',
+    }
+    obs_org[MAJOR_CT_LABEL] = majority_labels.map(mapping).fillna('Others').values
+    obs_org[SUB_CT_LABEL]   = majority_labels.map(mapping_sub).fillna('Others').values
+
+    adata.obs = obs_org
+    adata.X = sp.load_npz(tmp_counts)
+    os.remove(tmp_counts)
+    return adata
+
+
 def annotate_celltypist_fast(adata, n_clusters=500):
     """
     Memory-efficient CellTypist annotation via donor-chunked processing.
@@ -535,9 +715,19 @@ def annotate_celltypes(adata, dataset):
         print('Storing original cell type annotations and running CellTypist for parsebioscience...')
         adata = map_cell_types_parsebioscience(adata)
 
+    # Env var override: allows testing alternative methods without code changes
+    method = os.environ.get('HIARA_ANNOTATE_METHOD', '')
+    if method == 'subsample_knn':
+        print(f'Using subsample kNN + label transfer annotation (HIARA_ANNOTATE_METHOD=subsample_knn).')
+        return annotate_celltypist_subsample_knn(adata)
+    if method == 'majority_voting':
+        print(f'Using CellTypist majority_voting=True (HIARA_ANNOTATE_METHOD=majority_voting).')
+        return _annotate_celltypist_majority_voting(adata)
+
     if dataset in DISCOVERY_COHORTS:
         print(f'Dataset {dataset!r} is a discovery cohort — using CellTypist majority_voting=True.')
         return _annotate_celltypist_majority_voting(adata)
+
     return annotate_celltypist_fast(adata)
 
 def format_columns_parsebioscience(adata):
