@@ -13,8 +13,8 @@
 declare -A dependencies
 
 dependencies=(
-    ["process_dataset"]="src/process_dataset/preprocess/script.py"
-    ["bulkify_code"]="src/process_dataset/bulkify/script.py"
+    ["process_dataset"]="src/process_data/preprocess/script.py"
+    ["bulkify_code"]="src/process_data/bulkify/script.py"
 )
 
 # Import dataset name mapping from config.py
@@ -38,7 +38,7 @@ MAIN_DIR='/vol/projects/jnourisa/hiara/'
 
 
 # datasets to include -> preprocessing 
-datasets=" soundlife" # data12 data7_allTPs_jalil data1 SLE op soundlife parsebioscience
+datasets="data1 data7_allTPs_jalil data13 SLE" # discovery cohorts: onek1k abf300 aida perez_sle
 
 for dataset in $datasets; do
         

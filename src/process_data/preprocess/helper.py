@@ -11,7 +11,7 @@ import seaborn as sns
 import pandas as pd
 import anndata as ad
 import gc
-from hiara.src.config import get_config, SUB_CT_LABEL, MAJOR_CT_LABEL
+from hiara.src.config import get_config, SUB_CT_LABEL, MAJOR_CT_LABEL, DISCOVERY_COHORTS
 
 def format_columns_soundlife(adata):
     """
@@ -442,6 +442,91 @@ def annotate_celltypist_fast(adata, n_clusters=500):
     os.remove(tmp_counts)
     return adata
 
+
+def _annotate_celltypist_majority_voting(adata):
+    """CellTypist annotation using its built-in majority_voting=True (simpler, for smaller datasets)."""
+    import celltypist
+    from celltypist import models
+
+    print('Annotating cell types (CellTypist majority_voting=True)...')
+    adata.layers['counts'] = adata.X.copy()
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    sc.pp.log1p(adata)
+    models.download_models(force_update=True)
+    model = models.Model.load(model='Immune_All_Low.pkl')
+    obs_org = adata.obs.copy()
+    predictions = celltypist.annotate(adata, model=model, majority_voting=True, use_GPU=False)
+    print('Cell types annotated successfully!')
+    adata_for_celltypist = predictions.to_adata()
+
+    mapping = {
+        'Tcm/Naive helper T cells': 'CD4T',
+        'CD16+ NK cells': 'NK',
+        'Classical monocytes': 'MONO',
+        'Tem/Temra cytotoxic T cells': 'CD8T',
+        'Tem/Effector helper T cells': 'CD4T',
+        'Tcm/Naive cytotoxic T cells': 'CD8T',
+        'B cells': 'B',
+        'Naive B cells': 'B',
+        'Tem/Trm cytotoxic T cells': 'CD8T',
+        'Memory B cells': 'B',
+        'Non-classical monocytes': 'MONO',
+        'MAIT cells': 'CD8T',
+        'Regulatory T cells': 'CD4T',
+        'Cycling T cells': 'CD4T',
+        'DC2': 'DC',
+        'pDC': 'DC',
+        'Intermediate macrophages': 'MONO',
+        'NK cells': 'NK',
+        'Plasma cells': 'B',
+        'HSC/MPP': 'HSC',
+        'Age-associated B cells': 'B',
+        'DC1': 'DC',
+        'Megakaryocytes/platelets': 'Megakaryocyte',
+        'Plasmablasts': 'B',
+        'ILC': 'ILC',
+        'CD8a/a': 'CD8T',
+        'Double-positive thymocytes': 'T',
+        'Late erythroid': 'Erythroid',
+    }
+    mapping_sub = {
+        'Tcm/Naive helper T cells': 'Tcm_Naive_CD4',
+        'CD16+ NK cells': 'CD16_NK',
+        'Classical monocytes': 'Classic_MONO',
+        'Tem/Temra cytotoxic T cells': 'Tem_Temra_CD8',
+        'Tem/Effector helper T cells': 'Tem_Effector_CD4',
+        'Tcm/Naive cytotoxic T cells': 'Tcm_Naive_CD8',
+        'Naive B cells': 'Naive_B',
+        'Tem/Trm cytotoxic T cells': 'Tem_Trm_CD8',
+        'Memory B cells': 'Memory_B',
+        'B cells': 'Bcells',
+        'Non-classical monocytes': 'NonClassic_MONO',
+        'MAIT cells': 'MAIT',
+        'Regulatory T cells': 'Treg',
+        'DC2': 'DC2',
+        'pDC': 'pDC',
+        'Intermediate macrophages': 'Int_Macrophage',
+        'NK cells': 'NK',
+        'Plasma cells': 'Plasma_B',
+        'HSC/MPP': 'HSC/MPP',
+        'Age-associated B cells': 'Aged_B',
+        'DC1': 'DC1',
+        'Megakaryocytes/platelets': 'Platelet',
+        'Plasmablasts': 'Plasmablasts_B',
+        'ILC': 'ILC',
+        'CD8a/a': 'CD8a/a',
+        'Double-positive thymocytes': 'T',
+        'Late erythroid': 'Late_Erythroid',
+    }
+    adata_for_celltypist.obs[MAJOR_CT_LABEL] = adata_for_celltypist.obs['majority_voting'].apply(lambda x: mapping.get(x, 'Others'))
+    adata_for_celltypist.obs[SUB_CT_LABEL] = adata_for_celltypist.obs['majority_voting'].apply(lambda x: mapping_sub.get(x, 'Others'))
+    obs_org = obs_org.join(adata_for_celltypist.obs[[MAJOR_CT_LABEL, SUB_CT_LABEL]])
+    adata.obs = obs_org
+    adata.X = adata.layers['counts']
+    del adata.layers
+    return adata
+
+
 def annotate_celltypes(adata, dataset):
     if dataset == 'soundlife':
         print('Storing original AIFI_L2 annotations and running CellTypist for soundlife...')
@@ -449,6 +534,10 @@ def annotate_celltypes(adata, dataset):
     elif dataset == 'parsebioscience':
         print('Storing original cell type annotations and running CellTypist for parsebioscience...')
         adata = map_cell_types_parsebioscience(adata)
+
+    if dataset in DISCOVERY_COHORTS:
+        print(f'Dataset {dataset!r} is a discovery cohort — using CellTypist majority_voting=True.')
+        return _annotate_celltypist_majority_voting(adata)
     return annotate_celltypist_fast(adata)
 
 def format_columns_parsebioscience(adata):
