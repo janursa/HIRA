@@ -76,6 +76,11 @@ def retrieve_adata(dataset,
         print('Filtering to only genes in the GRN network...')
         net = retrieve_net_consensus(cell_type=cell_type)
         mask_genes &= adata.var_names.isin(net['target'].unique())
+    # For datasets with pre-mapped labels, use them instead of CellTypist-assigned Major_CT
+    # if dataset in ['soundlife', 'parsebioscience'] and 'Major_CT_original' in obs.columns:
+    #     print('Remove meeee - using original major cell type labels for soundlife and parsebioscience')
+    #     obs[MAJOR_CT_LABEL] = obs['Major_CT_original']
+
     # Cell type filtering
     if data_type in ['sc', 'bulk_minor']:
         obs = obs[obs[SUB_CT_LABEL].isin(SUB_CTS)].copy()

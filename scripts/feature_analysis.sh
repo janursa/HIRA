@@ -22,17 +22,17 @@ test_mode="" #--test-mode
 # python src/feature_association/run_analysis.py --analysis-name $analysis_name --analysis-mode multi-cohort  --association-type continous  $test_mode 
 # python src/feature_association/post_aging_analysis.py --analysis-name $analysis_name --skip-pathway
 
-echo "---------------------------------------------------------- Soundlife -----------------------------------------------------------------"
-python src/feature_association/run_analysis.py --analysis-mode single-cohort --datasets soundlife   --analysis-name $analysis_name --association-type continous  $test_mode 
-python src/feature_association/post_condition_analysis.py --dataset soundlife --analysis-type aging --analysis-name $analysis_name    --skip-pathway
+# echo "---------------------------------------------------------- Soundlife -----------------------------------------------------------------"
+# python src/feature_association/run_analysis.py --analysis-mode single-cohort --datasets soundlife   --analysis-name $analysis_name --association-type continous  $test_mode 
+# python src/feature_association/post_condition_analysis.py --dataset soundlife --analysis-type aging --analysis-name $analysis_name    --skip-pathway
 
 # echo "---------------------------------------------------------- SLE -----------------------------------------------------------------"
 # python src/feature_association/run_analysis.py  --datasets "perez_sle"   --analysis-name $analysis_name --association-type grouped
 # python src/feature_association/post_condition_analysis.py --dataset "perez_sle" --analysis-type disease --analysis-name $analysis_name   --skip-pathway
 
 # echo "---------------------------------------------------------- parsebioscience -----------------------------------------------------------------"
-# python src/feature_association/run_analysis.py  --dataset parsebioscience --cell-types CD4T CD8T  --analysis-name $analysis_name --association-type grouped 
-# python src/feature_association/post_condition_analysis.py --dataset parsebioscience --analysis-type perturbation --analysis-name $analysis_name   --agreement opposite --skip-pathway
+python src/feature_association/run_analysis.py  --dataset parsebioscience --cell-types CD4T CD8T  --analysis-name $analysis_name --association-type grouped 
+python src/feature_association/post_condition_analysis.py --dataset parsebioscience --analysis-type perturbation --analysis-name $analysis_name   --agreement opposite --skip-pathway
 
 # echo "---------------------------------------------------------- op -----------------------------------------------------------------"
 # python src/feature_association/run_analysis.py  --dataset op  --analysis-name $analysis_name --association-type grouped 

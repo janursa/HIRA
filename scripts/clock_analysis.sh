@@ -22,11 +22,11 @@ set -e
 echo "--------------------------------------------------------------comparision: parsebioscience --------------------------------------------------------------"
 python src/clock/clock_analysis.py --dataset parsebioscience --analysis-type perturbation --cell-types CD4T CD8T
 
-# echo "--------------------------------------------------------------comparision: op --------------------------------------------------------------"
-# python src/clock/clock_analysis.py --dataset op --analysis-type perturbation --cell-types CD4T CD8T 
+echo "--------------------------------------------------------------comparision: op --------------------------------------------------------------"
+python src/clock/clock_analysis.py --dataset op --analysis-type perturbation --cell-types CD4T CD8T 
 
-# echo "--------------------------------------------------------------comparision: CLCX9 --------------------------------------------------------------"
-# python src/clock/clock_analysis.py --dataset CXCL9 --analysis-type perturbation --cell-types CD4T CD8T
+echo "--------------------------------------------------------------comparision: CLCX9 --------------------------------------------------------------"
+python src/clock/clock_analysis.py --dataset CXCL9 --analysis-type perturbation --cell-types CD4T CD8T
 
 
 # echo "--------------------------------------------------------------comparision: soundlife --------------------------------------------------------------"

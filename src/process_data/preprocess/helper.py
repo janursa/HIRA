@@ -709,11 +709,17 @@ def _annotate_celltypist_majority_voting(adata):
 
 def annotate_celltypes(adata, dataset):
     if dataset == 'soundlife':
-        print('Storing original AIFI_L2 annotations and running CellTypist for soundlife...')
+        print('Using original AIFI_L2 annotations for soundlife (skipping CellTypist)...')
         adata = map_cell_types_soundlife(adata)
+        adata.obs[MAJOR_CT_LABEL] = adata.obs['Major_CT_original']
+        adata.obs[SUB_CT_LABEL] = adata.obs['Sub_CT_original']
+        return adata
     elif dataset == 'parsebioscience':
-        print('Storing original cell type annotations and running CellTypist for parsebioscience...')
+        print('Using original cell type annotations for parsebioscience (skipping CellTypist)...')
         adata = map_cell_types_parsebioscience(adata)
+        adata.obs[MAJOR_CT_LABEL] = adata.obs['Major_CT_original']
+        adata.obs[SUB_CT_LABEL] = adata.obs['Sub_CT_original']
+        return adata
 
     # Env var override: allows testing alternative methods without code changes
     method = os.environ.get('HIARA_ANNOTATE_METHOD', '')
@@ -724,11 +730,7 @@ def annotate_celltypes(adata, dataset):
         print(f'Using CellTypist majority_voting=True (HIARA_ANNOTATE_METHOD=majority_voting).')
         return _annotate_celltypist_majority_voting(adata)
 
-    if dataset in DISCOVERY_COHORTS:
-        print(f'Dataset {dataset!r} is a discovery cohort — using CellTypist majority_voting=True.')
-        return _annotate_celltypist_majority_voting(adata)
-
-    return annotate_celltypist_fast(adata)
+    return _annotate_celltypist_majority_voting(adata)
 
 def format_columns_parsebioscience(adata):
     """
