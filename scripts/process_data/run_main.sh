@@ -40,7 +40,7 @@ for k, v in DATASET_NAME_MAPPING.items():
 set -e
 # Define run flags
 RUN_TEST=false
-RUN_PROCESS_DATASET=true
+RUN_PROCESS_DATASET=false
 RUN_PSEUDOBULK=true
 MAIN_DIR='/vol/projects/jnourisa/hiara/'
 
