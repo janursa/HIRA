@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 def plot_pathway_gsea(res_pathways, palette):
-    from hiara.src.feature_association.plots import dotplot_category_color
+    from hiara.src.network_analysis.plots import dotplot_category_color
     
 
     n_terms = res_pathways['Term'].nunique()

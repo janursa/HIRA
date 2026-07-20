@@ -13,7 +13,7 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import subprocess
 
-from hiara.src.config import MAJOR_CTS, minor_cell_types, PRIOR_DIR
+from hiara.src.config import MAJOR_CTS, PRIOR_DIR
 from hiara.src.grn_inference.inference import main as main_inference
 from task_grn_inference.src.utils.util import basic_qc
 from hiara import get_config
@@ -27,7 +27,7 @@ def wrapper_grn(task, par):
     # adata = ad.read_h5ad(par['dataset_file'], backed='r')
     adata = retrieve_adata(dataset=par['dataset'], data_type=par['data_type'], condition='healthy', cell_type=cell_type)
     config = get_config(dataset=par['dataset'])
-    pseudobulk_group = config.pseudobulk_group
+    pseudobulk_group = config.bulk_group
     # for each pseudobulk_group, select only 5000 single cells
     print('Shape before sampling: ', adata.shape, flush=True)
     sampled_indices = []
