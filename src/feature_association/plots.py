@@ -1096,7 +1096,7 @@ def plot_features_vs_datasets(cell_type,
     stats_t = stats_t[stats_t['dataset'].isin(datasets)]
 
     if filter_significant:
-        stats_sig = retrieve_sig_stats(analysis_name=analysis_name, cell_type=cell_type).drop_duplicates(subset=['gene', 'cell_type'])
+        stats_sig = retrieve_sig_stats(analysis_name=analysis_name, cell_type=cell_type, features_dir=features_dir).drop_duplicates(subset=['gene', 'cell_type'])
         sig_genes = stats_sig['gene'].unique()
         stats_t = stats_t[stats_t['gene'].isin(sig_genes)]
     

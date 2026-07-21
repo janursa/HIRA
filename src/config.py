@@ -12,6 +12,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from collections import OrderedDict
 import warnings
 import platform
+import os
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 
@@ -134,13 +135,13 @@ DATASET_NAME_MAPPING = {
 }
 
 if platform.system() == 'Linux':
-    HIARA_DIR = '/home/jnourisa/projs/ongoing/hira/'
-    base_dir = '/vol/projects/jnourisa/hira/'
-    TASK_GRN_BENCHMARK_DIR = '/home/jnourisa/projs/ongoing/task_grn_inference/'
+    HIARA_DIR = os.environ.get('HIARA_DIR', '/home/jnourisa/projs/ongoing/hira/')
+    base_dir = os.environ.get('HIRA_BASE_DIR', '/vol/projects/jnourisa/hira/')
+    TASK_GRN_BENCHMARK_DIR = os.environ.get('TASK_GRN_BENCHMARK_DIR', '/home/jnourisa/projs/ongoing/task_grn_inference/')
 else:
-    HIARA_DIR = '/Users/jno24/Documents/projs/ongoing/hira/'
-    base_dir = '/Users/jno24/Documents/projs/ongoing/hira/base_folder'
-    TASK_GRN_BENCHMARK_DIR = '/Users/jno24/Documents/projs/ongoing/task_grn_inference/'
+    HIARA_DIR = os.environ.get('HIARA_DIR', '/Users/jno24/Documents/projs/ongoing/hira/')
+    base_dir = os.environ.get('HIRA_BASE_DIR', '/Users/jno24/Documents/projs/ongoing/hira/base_folder')
+    TASK_GRN_BENCHMARK_DIR = os.environ.get('TASK_GRN_BENCHMARK_DIR', '/Users/jno24/Documents/projs/ongoing/task_grn_inference/')
 
 DATA_DIR = f'{base_dir}/datasets/'
 PRIOR_DIR = f'{base_dir}/prior/'
