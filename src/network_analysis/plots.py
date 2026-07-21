@@ -17,18 +17,18 @@ from scipy.cluster.hierarchy import linkage
 from matplotlib.patches import Patch
 import networkx as nx
 
-from hiara.src.config import GRNS_DIR, PRIOR_DIR, MAJOR_CTS, OUTPUT_DIR, PLOTS_DIR, get_config, colors_blind, DISCOVERY_COHORTS, \
+from hira.src.config import GRNS_DIR, PRIOR_DIR, MAJOR_CTS, OUTPUT_DIR, PLOTS_DIR, get_config, colors_blind, DISCOVERY_COHORTS, \
     surrogate_names, palette_datasets, mapping_minor_2_major, \
     palette_trend_2, palette_major_cts, palette_datasets, palette_trend_2, colors_blind, \
         get_config_fa, cmap_trend
-from hiara.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data, \
+from hira.src.feature_association.helper import calculate_tf_activity, bin_feature_values, retrieve_feature_data, \
                                                     retrieve_sig_stats, retrieve_stats
-from hiara.src.utils.util import retrieve_net, retrieve_adata, retrieve_net_consensus
+from hira.src.utils.util import retrieve_net, retrieve_adata, retrieve_net_consensus
 
 class ModularizedNetPlot:
     @staticmethod
     def prepare_net_only_tfs(cell_type, race, data_type, min_degree=3):
-        from hiara.src.feature_association.helper import retrieve_nets, retrieve_sig_stats
+        from hira.src.feature_association.helper import retrieve_nets, retrieve_sig_stats
 
         stats_sig = retrieve_sig_stats(race=race, data_type=data_type).drop_duplicates(subset=['cell_type', 'gene'])
         stats_sig_t = stats_sig[stats_sig['cell_type'] == cell_type].set_index(['gene'])
@@ -110,7 +110,7 @@ class ModularizedNetPlot:
         return collapsed_net
     @staticmethod
     def add_trend_to_collapsed_net_only_tfs(collapsed_net, data_type, race, cell_type):
-        from hiara.src.feature_association.helper import retrieve_sig_stats
+        from hira.src.feature_association.helper import retrieve_sig_stats
         # - sumarize the trends for the collapsed net
         stats_sig = retrieve_sig_stats(race=race, data_type=data_type).drop_duplicates(subset=['cell_type', 'gene'])
         stats_sig_t = stats_sig[stats_sig['cell_type'] == cell_type].set_index(['gene'])

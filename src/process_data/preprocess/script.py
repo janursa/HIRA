@@ -1,12 +1,12 @@
 
 import anndata as ad
 import gc
-from hiara.src.config import DATASET_NAME_MAPPING, get_config, MAJOR_CT_LABEL, PRIOR_DIR
+from hira.src.config import DATASET_NAME_MAPPING, get_config, MAJOR_CT_LABEL, PRIOR_DIR
 import argparse
 import glob
 import os
 import numpy as np
-from hiara.src.process_data.preprocess.helper import annotate_celltypes, basic_qc, format_data
+from hira.src.process_data.preprocess.helper import annotate_celltypes, basic_qc, format_data
 
 def subset_to_test(adata):
     print('Test mode: subsetting data', flush=True)

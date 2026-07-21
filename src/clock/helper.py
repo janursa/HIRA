@@ -6,8 +6,8 @@ import numpy as np
 from scipy import sparse
 import pandas as pd
 from anndata import AnnData
-from hiara.src.utils.util import retrieve_adata
-from hiara.src.config import (
+from hira.src.utils.util import retrieve_adata
+from hira.src.config import (
     CLOCKS_DIR,
     USE_LOCAL_CLOCK, 
     CLOCK_V

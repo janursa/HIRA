@@ -35,13 +35,13 @@ pd.set_option('display.max_columns', 100)
 plt.rcParams["font.family"] = "Arial"
 
 # Local imports
-from hiara import retrieve_feature_data, retrieve_sig_stats
-from hiara import OUTPUT_DIR, PRIOR_DIR, PLOTS_DIR, CLOCKS_DIR, MAJOR_CTS, surrogate_names, colors_blind, palette_major_cts, palette_datasets, palette_datasets_pretty, palette_genders, AGING_COHORTS
-from hiara import retrieve_adata, retrieve_net, retrieve_net_consensus
-from hiara import get_config
+from hira import retrieve_feature_data, retrieve_sig_stats
+from hira import OUTPUT_DIR, PRIOR_DIR, PLOTS_DIR, CLOCKS_DIR, MAJOR_CTS, surrogate_names, colors_blind, palette_major_cts, palette_datasets, palette_datasets_pretty, palette_genders, AGING_COHORTS
+from hira import retrieve_adata, retrieve_net, retrieve_net_consensus
+from hira import get_config
 from geneRNBI.src.helper import load_env
 from task_grn_inference import normalize_func, bulkify_func
-from hiara.src.trajectory_analysis.helper import (
+from hira.src.trajectory_analysis.helper import (
     compute_tf_activity_per_donor, cluster, annotate, 
     association_analysis_dpt, association_analysis_marker,
     write_traj_stats,

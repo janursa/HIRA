@@ -14,8 +14,8 @@ import numpy as np
 import seaborn as sns
 from matplotlib.lines import Line2D
 
-from hiara import retrieve_stats
-from hiara.src.config import (
+from hira import retrieve_stats
+from hira.src.config import (
     PLOTS_DIR, 
     OUTPUT_DIR,
     MAJOR_CTS,
@@ -23,7 +23,7 @@ from hiara.src.config import (
     get_config_fa,
     get_available_fa_analyses
 )
-from hiara.src.config import get_config
+from hira.src.config import get_config
 
 warnings.filterwarnings("ignore")
 plt.rcParams["figure.dpi"] = 150

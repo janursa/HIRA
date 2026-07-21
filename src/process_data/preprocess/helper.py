@@ -11,7 +11,7 @@ import seaborn as sns
 import pandas as pd
 import anndata as ad
 import gc
-from hiara.src.config import get_config, SUB_CT_LABEL, MAJOR_CT_LABEL, DISCOVERY_COHORTS
+from hira.src.config import get_config, SUB_CT_LABEL, MAJOR_CT_LABEL, DISCOVERY_COHORTS
 
 def format_columns_soundlife(adata):
     """

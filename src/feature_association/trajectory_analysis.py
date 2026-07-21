@@ -15,9 +15,9 @@ pd.set_option('display.max_columns', 100)
 plt.rcParams["font.family"] = "Arial"
 
 # Local imports
-from hiara import SUB_CT_LABEL, OUTPUT_DIR
-from hiara import retrieve_adata
-from hiara import get_config
+from hira import SUB_CT_LABEL, OUTPUT_DIR
+from hira import retrieve_adata
+from hira import get_config
 
 
 def write_traj_stats(results, dataset, cell_type):
@@ -354,7 +354,7 @@ def compute_tfa_peg_association(adata, target=SUB_CT_LABEL):
     Stores results in adata.varm['tfa_peg_corr'] and adata.varm['tfa_peg_pval'].
     """
     
-    from hiara import SUB_CTS
+    from hira import SUB_CTS
     tfs = adata.obsm['score_ulm'].columns.tolist()
     if target == SUB_CT_LABEL:
         adata.obs['traj_var'] = adata.obs[SUB_CT_LABEL].astype('category').cat.set_categories(SUB_CTS, ordered=True).cat.codes

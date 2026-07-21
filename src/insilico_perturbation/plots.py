@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from scipy import stats
 
-from hiara.src.config import OUTPUT_DIR, surrogate_names, palette_datasets_pretty
+from hira.src.config import OUTPUT_DIR, surrogate_names, palette_datasets_pretty
 
     
 def wrapper_plot_age_acceleration_for_tf_perturbation(
@@ -14,7 +14,7 @@ def wrapper_plot_age_acceleration_for_tf_perturbation(
                     features=None, 
                     value_col='signed_neg_log10_pval',
                     figsize = (3, 5)):
-    from hiara.src.config import OUTPUT_DIR, surrogate_names, palette_datasets_pretty, colors_blind, palette_trend_2
+    from hira.src.config import OUTPUT_DIR, surrogate_names, palette_datasets_pretty, colors_blind, palette_trend_2
     
 
     # Sort TFs by signed mean_diff for plotting

@@ -1,7 +1,7 @@
 
 ## Identify sig networks
 def plot_sig_networks(data_type = 'bulk'):
-    from hiara.src.feature_association.helper import determine_sig_network
+    from hira.src.feature_association.helper import determine_sig_network
     if False:
         if True:
             determine_sig_network(data_type, min_degree=3)

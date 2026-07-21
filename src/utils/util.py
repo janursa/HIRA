@@ -7,7 +7,7 @@ from sklearn.preprocessing import StandardScaler
 import scanpy as sc
 from pathlib import Path
 from scipy import stats
-from hiara.src.config import DATA_TYPES, MAJOR_CT_LABEL, SUB_CTS, DISCOVERY_COHORTS, mapping_minor_2_major, CONSENSUS_MIN_DEGREE, \
+from hira.src.config import DATA_TYPES, MAJOR_CT_LABEL, SUB_CTS, DISCOVERY_COHORTS, mapping_minor_2_major, CONSENSUS_MIN_DEGREE, \
      SUB_CT_LABEL, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR, NET_WEIGHT_THRESHOLD, NET_MAX_SIZE
 
 # increase width of output display

@@ -1,9 +1,9 @@
 
-# from hiara.src.clock.train import wrapper_build_model_cell_type
+# from hira.src.clock.train import wrapper_build_model_cell_type
 import os
 from pathlib import Path
 from grnimmuneclock import train_aging_clock
-from hiara import MAJOR_CTS, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK
+from hira import MAJOR_CTS, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK
     
 
 # def wrapper_build_model_all(par):

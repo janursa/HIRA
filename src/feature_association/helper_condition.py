@@ -5,8 +5,8 @@ Helper functions for condition analysis.
 
 import pandas as pd
 from collections import defaultdict
-from hiara.src.config import surrogate_names, palette_trend, palette_disease_effect, palette_treatment
-from hiara import retrieve_feature_data
+from hira.src.config import surrogate_names, palette_trend, palette_disease_effect, palette_treatment
+from hira import retrieve_feature_data
 
 
 def format_tf_activity_for_disease_trend_plot(dataset, analysis_name, cell_type, tf, age_limit=[20, 75], condition_col='disease'):

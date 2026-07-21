@@ -6,12 +6,12 @@ from scipy.stats import ttest_ind
 import numpy as np
 from pandas.api.types import CategoricalDtype
 from statsmodels.stats.multitest import multipletests
-from hiara import surrogate_names, MAJOR_CTS, palette_genders
+from hira import surrogate_names, MAJOR_CTS, palette_genders
 
 palette_disease = {'Healthy': '#56B4E9', 'SLE': '#F0E442', 'Mild': '#2ca02c', 'Severe': '#e377c2'}
 
 def plot_scatter_age_vs_predictedAge(df, dataset='', ax=None, hue='sex', palette={},  s=50, alpha=0.5):
-    # from hiara.src.clock.helper import evaluate_groupwise_median
+    # from hira.src.clock.helper import evaluate_groupwise_median
     if ax is None:
         fig, ax = plt.subplots(figsize=(4, 4))
     sns.scatterplot(data=df, x='age', y='predicted_age', s=s, alpha=alpha, ax=ax, palette=palette, hue=hue)

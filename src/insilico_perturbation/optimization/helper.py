@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-from hiara.src.config import colors_blind
+from hira.src.config import colors_blind
 
 def plot_greedy_tf_selection(df_results, figsize=(3, 2)):
     fig, ax1 = plt.subplots(figsize=figsize)
@@ -119,9 +119,9 @@ def run_greedy_tf_optimization_parallel(
 def obtimize_function(tfs, cell_type='CD8T', n_jobs=20, genefc_threshold=2.2,
                         age_shift_scale=10,
                         genescore_shift_scale=1):
-    from hiara.src.config import par_simulation, DISCOVERY_COHORTS
-    from hiara.src.insilico_perturbation.helper import wrapper_in_silico_perturbation
-    from hiara.src.insilico_perturbation.biological_analysis.helper import summarize_pathway_scores, summarize_essential_genes_shift
+    from hira.src.config import par_simulation, DISCOVERY_COHORTS
+    from hira.src.insilico_perturbation.helper import wrapper_in_silico_perturbation
+    from hira.src.insilico_perturbation.biological_analysis.helper import summarize_pathway_scores, summarize_essential_genes_shift
     par = par_simulation
     par['tfs'] = tfs
 

@@ -5,13 +5,13 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from scipy import stats
 
-from hiara.src.config import OUTPUT_DIR, surrogate_names, palette_datasets_pretty
-from hiara.src.feature_association.helper import retrieve_sig_stats
-from hiara.src.config import DISCOVERY_COHORTS
-from hiara.src.utils.util import get_genesets, retrieve_net_consensus
+from hira.src.config import OUTPUT_DIR, surrogate_names, palette_datasets_pretty
+from hira.src.feature_association.helper import retrieve_sig_stats
+from hira.src.config import DISCOVERY_COHORTS
+from hira.src.utils.util import get_genesets, retrieve_net_consensus
 import warnings
-from hiara.src.feature_association.helper import retrieve_feature_data 
-from hiara.src.utils.util import calculate_genes_scores
+from hira.src.feature_association.helper import retrieve_feature_data 
+from hira.src.utils.util import calculate_genes_scores
 
 warnings.filterwarnings('ignore')
 
@@ -177,9 +177,9 @@ import anndata as ad
 import pandas as pd
 import numpy as np
 
-from hiara.src.feature_association.helper import retrieve_sig_stats
-from hiara.src.clock.helper import predict_age
-from hiara.src.config import OUTPUT_DIR
+from hira.src.feature_association.helper import retrieve_sig_stats
+from hira.src.clock.helper import predict_age
+from hira.src.config import OUTPUT_DIR
 
 import warnings
 
@@ -400,7 +400,7 @@ def run_in_silico(
     return result
 
 def wrapper_in_silico_perturbation(par, cell_types, datasets, n_jobs=10):
-    from hiara.src.config import OUTPUT_DIR
+    from hira.src.config import OUTPUT_DIR
     # ---- Parallel Execution ----
     from joblib import Parallel, delayed
 
@@ -432,7 +432,7 @@ def wrapper_in_silico_perturbation(par, cell_types, datasets, n_jobs=10):
     
     return df_all
 def wrapper_in_silico_single_perturbation(tfs, par, cell_types, datasets, n_jobs=10):
-    from hiara.src.config import OUTPUT_DIR
+    from hira.src.config import OUTPUT_DIR
     # ---- Parallel Execution ----
     from joblib import Parallel, delayed
 

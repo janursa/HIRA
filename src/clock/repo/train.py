@@ -127,7 +127,7 @@ def build_model(reg_type, adata, tune_model, temp_dir):
         from tabpfn import TabPFNRegressor 
         model = TabPFNRegressor()  
     elif reg_type == 'NN':
-        from hiara.src.clock.NN.NN import VAEAgeModel, seed_all
+        from hira.src.clock.NN.NN import VAEAgeModel, seed_all
         max_epochs = 100
         model_kwargs = {'n_latent': 100, 'n_hidden': 128, 'n_batch_emb':10 ,'dropout': .2}
 
@@ -187,8 +187,8 @@ def build_model(reg_type, adata, tune_model, temp_dir):
 def wrapper_build_model_cell_type(cell_type, par):
     import anndata as ad
     from scipy.sparse import issparse
-    from hiara.src.clock.helper import save_function, merge_adata
-    from hiara.src.config import OUTPUT_DIR
+    from hira.src.clock.helper import save_function, merge_adata
+    from hira.src.config import OUTPUT_DIR
     import pandas as pd
     import numpy as np
     # - prepare the data

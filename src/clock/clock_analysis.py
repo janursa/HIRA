@@ -22,7 +22,7 @@ import anndata as ad
 from statsmodels.stats.multitest import multipletests
 
 # Import common utilities and configuration
-from hiara.src.config import (
+from hira.src.config import (
     PLOTS_DIR, 
     OUTPUT_DIR,
     MAJOR_CTS as default_cell_types,
@@ -30,9 +30,9 @@ from hiara.src.config import (
     colors_blind
 )
 
-from hiara.src.config import get_config
-from hiara.src.utils.util import test_mixed_effects, test_paired, test_unpaired
-from hiara.src.clock.plots import (
+from hira.src.config import get_config
+from hira.src.utils.util import test_mixed_effects, test_paired, test_unpaired
+from hira.src.clock.plots import (
     wrapper_age_acceleration_disease,
     wrapper_plot_age_acceleration_disease_bins,
     plot_group_strip,
@@ -40,7 +40,7 @@ from hiara.src.clock.plots import (
     plot_scatter_age_vs_predictedAge
 )
 
-from hiara.src.clock.helper import wrapper_clock_predictions
+from hira.src.clock.helper import wrapper_clock_predictions
 
 warnings.filterwarnings("ignore")
 

@@ -135,12 +135,12 @@ DATASET_NAME_MAPPING = {
 }
 
 if platform.system() == 'Linux':
-    HIARA_DIR = '/home/jnourisa/projs/ongoing/hiara/'
-    base_dir = '/vol/projects/jnourisa/hiara/'
+    HIARA_DIR = '/home/jnourisa/projs/ongoing/hira/'
+    base_dir = '/vol/projects/jnourisa/hira/'
     TASK_GRN_BENCHMARK_DIR = '/home/jnourisa/projs/ongoing/task_grn_inference/'
 else:
-    HIARA_DIR = '/Users/jno24/Documents/projs/ongoing/hiara/'
-    base_dir = '/Users/jno24/Documents/projs/ongoing/hiara/base_folder'
+    HIARA_DIR = '/Users/jno24/Documents/projs/ongoing/hira/'
+    base_dir = '/Users/jno24/Documents/projs/ongoing/hira/base_folder'
     TASK_GRN_BENCHMARK_DIR = '/Users/jno24/Documents/projs/ongoing/task_grn_inference/'
 
 DATA_DIR = f'{base_dir}/datasets/'

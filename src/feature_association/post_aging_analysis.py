@@ -17,7 +17,7 @@ from pandas.api.types import CategoricalDtype
 pd.set_option("display.max_columns", None)
 
 # Import common utilities and configuration
-from hiara.src.config import (
+from hira.src.config import (
     PLOTS_DIR, 
     MAJOR_CTS, 
     DISCOVERY_COHORTS,
@@ -26,10 +26,10 @@ from hiara.src.config import (
     get_config_fa,
     get_available_fa_analyses
 )
-from hiara import retrieve_net_consensus
+from hira import retrieve_net_consensus
 
-from hiara import retrieve_sig_stats, retrieve_stats, mapping_minor_2_major
-from hiara.src.feature_association.plots_groups import (
+from hira import retrieve_sig_stats, retrieve_stats, mapping_minor_2_major
+from hira.src.feature_association.plots_groups import (
     wrapper_plots_tfa_major_b_aging,
     wrapper_plots_tfa_sub_b_aging,
     wrapper_plots_gene_expression_aging,
