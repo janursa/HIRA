@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 def plot_pathway_gsea(res_pathways, palette):
-    from hiara.src.network_analysis.plots import dotplot_category_color
+    from hira.src.network_analysis.plots import dotplot_category_color
     
 
     n_terms = res_pathways['Term'].nunique()
@@ -47,7 +47,7 @@ def plot_pathway_kde(
     import numpy as np
     import matplotlib.pyplot as plt
     from scipy.stats import gaussian_kde
-    from hiara.src.pathway_analysis.util import get_genesets
+    from hira.src.pathway_analysis.util import get_genesets
     genesets=get_genesets(pathway='hallmark')
     # Helper for significance stars
     def p_to_star(p):

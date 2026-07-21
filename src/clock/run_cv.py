@@ -3,9 +3,9 @@ import pandas as pd
 from scipy.stats import spearmanr
 import matplotlib.pyplot as plt
 import seaborn as sns
-from hiara.src.clock.plots import plot_scatter_age_vs_predictedAge
+from hira.src.clock.plots import plot_scatter_age_vs_predictedAge
 from sklearn.metrics import r2_score
-from hiara import CLOCK_TEST_COHORTS, wrapper_clock_predictions, PLOTS_DIR, MAJOR_CTS, surrogate_names, palette_datasets_pretty, colors_blind
+from hira import CLOCK_TEST_COHORTS, wrapper_clock_predictions, PLOTS_DIR, MAJOR_CTS, surrogate_names, palette_datasets_pretty, colors_blind
 
 obs = wrapper_clock_predictions(MAJOR_CTS, CLOCK_TEST_COHORTS, condition='healthy')
 

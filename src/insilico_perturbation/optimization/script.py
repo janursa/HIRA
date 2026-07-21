@@ -3,9 +3,9 @@ import random
 import pandas as pd
 
 import numpy as np
-from hiara.src.insilico_perturbation.optimization.helper import obtimize_function
-from hiara.src.insilico_perturbation.optimization.helper import run_greedy_tf_optimization_parallel
-from hiara.src.config import OUTPUT_DIR
+from hira.src.insilico_perturbation.optimization.helper import obtimize_function
+from hira.src.insilico_perturbation.optimization.helper import run_greedy_tf_optimization_parallel
+from hira.src.config import OUTPUT_DIR
 
 if __name__ == "__main__":
     tfs = np.loadtxt(f"{OUTPUT_DIR}/candidate_tfs.txt", dtype=str)

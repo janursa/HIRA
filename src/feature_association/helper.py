@@ -10,11 +10,11 @@ import gc
 import scanpy as sc
 import anndata as ad
 from statsmodels.stats.multitest import multipletests
-from hiara.src.config import GRNS_DIR, get_config_fa, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
+from hira.src.config import GRNS_DIR, get_config_fa, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
 from tqdm import tqdm
-from hiara.src.config import OUTPUT_DIR, FEATURES_DIR, CORR_THRESHOLD, TF_MIN_TARGET, FEATURE_TYPES, SUB_CT_LABEL, MAJOR_CT_LABEL
+from hira.src.config import OUTPUT_DIR, FEATURES_DIR, CORR_THRESHOLD, TF_MIN_TARGET, FEATURE_TYPES, SUB_CT_LABEL, MAJOR_CT_LABEL
 from scipy.sparse import issparse
-from hiara.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net
+from hira.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net
 import warnings
 from scipy.sparse import issparse
 from scipy.stats import mannwhitneyu
@@ -291,7 +291,7 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
                     'condition': condition
                 }
             elif test_type == 'mixed-effect':
-                from hiara.src.utils.util import test_mixed_effects
+                from hira.src.utils.util import test_mixed_effects
                 
                 obs_ctr = adata.obs.loc[mask_ctr, :].copy()
                 obs_ctr['feature_values'] = values_control
@@ -668,7 +668,7 @@ def wrapper_tf_activity(analysis_name, par):
             write_feature_data(tf_acts, dataset=dataset, cell_type=cell_type, analysis_name=analysis_name, suffix='_promotor' if promotor_only else '')
 
 def wrapper_genesets_scores(par):
-    from hiara.src.utils.util import get_genesets
+    from hira.src.utils.util import get_genesets
     # --------- load data
     cell_types = par['cell_types']
     datasets = par['datasets']
@@ -743,7 +743,7 @@ def df_2_adata(df, obs):
     return df_adata
 
 def wrapper_ct_freq(par):
-    from hiara.src.feature_association.trajectory_analysis import load_sc_data
+    from hira.src.feature_association.trajectory_analysis import load_sc_data
     # --------- load data
     datasets = par['datasets']
     analysis_name = par['analysis_name']
@@ -796,7 +796,7 @@ def wrapper_ct_freq(par):
         
 
 def wrapper_tfa_peg(par):
-    from hiara.src.feature_association.trajectory_analysis import load_sc_data, compute_tfa_peg_association
+    from hira.src.feature_association.trajectory_analysis import load_sc_data, compute_tfa_peg_association
     # --------- load data
     cell_types = par['cell_types']
     datasets = par['datasets']
@@ -818,7 +818,7 @@ def wrapper_tfa_peg(par):
             write_feature_data(corr_adata, dataset, cell_type, analysis_name=analysis_name, suffix='')
 
 def wrapper_aging_hallmarks(par):
-    from hiara.src.config import PRIOR_DIR
+    from hira.src.config import PRIOR_DIR
     # --------- load data
     cell_types = par['cell_types']
     datasets = par['datasets']
@@ -863,7 +863,7 @@ def wrapper_ct_pol_dist(par):
     For CD8T: Tcm_Naive_CD8 vs Tem_Temra_CD8
     For CD4T: Tcm_Naive_CD4 vs Tem_Effector_CD4
     """
-    from hiara.src.config import mapping_major_2_minor
+    from hira.src.config import mapping_major_2_minor
     cell_types = par['cell_types']
     datasets = par['datasets']
     condition = par['condition']

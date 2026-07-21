@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from scipy import stats
 
-from hiara.src.config import OUTPUT_DIR, surrogate_names, palette_datasets_pretty
-from hiara.src.feature_association.helper import retrieve_sig_stats
-from hiara.src.feature_association.helper import retrieve_net_consensus
-from hiara.src.config import  colors_blind
-from hiara.src.utils.util import get_genesets
+from hira.src.config import OUTPUT_DIR, surrogate_names, palette_datasets_pretty
+from hira.src.feature_association.helper import retrieve_sig_stats
+from hira.src.feature_association.helper import retrieve_net_consensus
+from hira.src.config import  colors_blind
+from hira.src.utils.util import get_genesets
 import warnings
 from matplotlib.patches import Patch
 warnings.filterwarnings('ignore')
@@ -36,7 +36,7 @@ def barplot_yvalue_tfs(pivot_df, ax=None, color=colors_blind[1], x='tf', y='valu
 
 def heatplot_perturbation_effect(pivot_df, ax, gene_score_shift_col):
     from matplotlib.colors import LinearSegmentedColormap
-    from hiara.src.config import palette_trend_2, surrogate_names
+    from hira.src.config import palette_trend_2, surrogate_names
 
     custom_cmap = LinearSegmentedColormap.from_list(
         'aging_effect_cmap',
@@ -283,7 +283,7 @@ def plot_all(score_shift_summary, gene_score_shift_col, cell_type, ordered_tfs,
             ageshift_depmap=True,
             temp_dir=None
             ):
-    from hiara.src.utils.util import get_genesets
+    from hira.src.utils.util import get_genesets
 
     score_shift_summary = score_shift_summary[score_shift_summary['cell_type'] == cell_type]
     score_shift_summary['tf'] = pd.Categorical(score_shift_summary['tf'], categories=ordered_tfs, ordered=True)

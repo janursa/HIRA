@@ -8,11 +8,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from pandas.api.types import CategoricalDtype
-from hiara.src.config import surrogate_names, MAJOR_CTS, SUB_CTS, palette_major_cts, palette_sub_cts
-from hiara import retrieve_sig_stats, retrieve_stats, retrieve_feature_data
-from hiara.src.feature_association.plots import heatplot_age_trend, heamap_overview_cell_types, plot_tf_act_central_tfs
-from hiara.src.utils.util import retrieve_net_consensus
-from hiara.src.feature_association.helper_condition import format_tf_activity_for_disease_trend_plot, get_condition_palette
+from hira.src.config import surrogate_names, MAJOR_CTS, SUB_CTS, palette_major_cts, palette_sub_cts
+from hira import retrieve_sig_stats, retrieve_stats, retrieve_feature_data
+from hira.src.feature_association.plots import heatplot_age_trend, heamap_overview_cell_types, plot_tf_act_central_tfs
+from hira.src.utils.util import retrieve_net_consensus
+from hira.src.feature_association.helper_condition import format_tf_activity_for_disease_trend_plot, get_condition_palette
 
 
 def plot_healthy_disease_trend(dataset, analysis_name, cell_type, case_tf, condition_col, ax=None, normalize=False):
@@ -374,8 +374,8 @@ def plot_pathway_analysis(stats_sig, args):
     dataset = args.dataset
     output_dir = args.output_dir
     # Choose pathway analysis method based on analysis type
-    from hiara.src.pathway_analysis.util import gsea_func
-    from hiara.src.pathway_analysis.plots import plot_pathway_gsea
+    from hira.src.pathway_analysis.util import gsea_func
+    from hira.src.pathway_analysis.plots import plot_pathway_gsea
     
     print("\n  Running GSEA enrichment analysis...")
     trends = stats_sig['trend'].unique()

@@ -1,5 +1,5 @@
 
-# from hiara.src.clock.train import wrapper_build_model_cell_type
+# from hira.src.clock.train import wrapper_build_model_cell_type
 import os
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -7,10 +7,10 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import anndata as ad
-from hiara import MAJOR_CTS, PLOTS_DIR, PRIOR_DIR, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK, palette_major_cts, USE_LOCAL_CLOCK, DISCOVERY_COHORTS
-from hiara import retrieve_net_consensus
-from hiara.src.feature_association.plots import dotplot_category_color
-from hiara.src.config import surrogate_names
+from hira import MAJOR_CTS, PLOTS_DIR, PRIOR_DIR, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK, palette_major_cts, USE_LOCAL_CLOCK, DISCOVERY_COHORTS
+from hira import retrieve_net_consensus
+from hira.src.feature_association.plots import dotplot_category_color
+from hira.src.config import surrogate_names
 
 def features_stats():
     features_dict = {}
@@ -85,8 +85,8 @@ def gsea(features_dict):
     plt.savefig(file_name, dpi=300, transparent=True, bbox_inches='tight')
 
 def plot_feature_values(cell_type, features, feature_type, dataset='data1', ax=None, show_cbar=True, data_type='bulk', show_ylabels=True):
-    from hiara.src.feature_association.helper import retrieve_feature_data, bin_feature_values
-    from hiara.src.feature_association.plots import heatplot_age_trend
+    from hira.src.feature_association.helper import retrieve_feature_data, bin_feature_values
+    from hira.src.feature_association.plots import heatplot_age_trend
        
     adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, data_type=data_type, feature_type=feature_type) 
     # print(features)
@@ -160,7 +160,7 @@ def wrapper_trend(top_features_dict, top_feature_values_dict, feature_type, data
 
         # plot these tfs in natural aging
         if feature_type == 'tf_activity':
-            from hiara.src.feature_association.plots import plot_features_vs_datasets
+            from hira.src.feature_association.plots import plot_features_vs_datasets
             aa = plot_features_vs_datasets(cell_type=cell_type, features=features, feature_type=feature_type, sizes=(90, 100))
 def plot_coeff():
     from grnimmuneclock import retrieve_function

@@ -17,14 +17,14 @@ from scipy.cluster.hierarchy import linkage
 from matplotlib.patches import Patch
 
 
-from hiara.src.config import FEATURES_DIR, MAJOR_CT_LABEL, PRIOR_DIR, MAJOR_CTS, SUB_CTS , PLOTS_DIR, colors_blind, DISCOVERY_COHORTS, \
+from hira.src.config import FEATURES_DIR, MAJOR_CT_LABEL, PRIOR_DIR, MAJOR_CTS, SUB_CTS , PLOTS_DIR, colors_blind, DISCOVERY_COHORTS, \
     surrogate_names, palette_datasets, palette_trend, palette_datasets_pretty, mapping_minor_2_major, \
     palette_trend_2, palette_major_cts, palette_sub_cts, palette_datasets, palette_trend_2, colors_blind, \
         get_config_fa, cmap_trend
-from hiara.src.feature_association.helper import bin_feature_values, retrieve_feature_data, \
+from hira.src.feature_association.helper import bin_feature_values, retrieve_feature_data, \
                                                     retrieve_sig_stats, retrieve_stats
-from hiara.src.utils.util import retrieve_net, retrieve_adata, retrieve_net_consensus
-from hiara.src.utils.plots import dotplot
+from hira.src.utils.util import retrieve_net, retrieve_adata, retrieve_net_consensus
+from hira.src.utils.plots import dotplot
 
 def categorize_granularity(df, granularity):
     categories = MAJOR_CTS if granularity == MAJOR_CT_LABEL else SUB_CTS
@@ -572,7 +572,7 @@ def plot_young_vs_aging(analysis_name, cell_type,
     plt.close()
 
 def gsea_analysis(stats_sig):
-    from hiara.src.pathway_analysis.util import get_genesets, pathway_kde_func, get_hallmark, gsea_func, wrapper_gsea
+    from hira.src.pathway_analysis.util import get_genesets, pathway_kde_func, get_hallmark, gsea_func, wrapper_gsea
 
     wrapper_gsea(stats_sig)
     file_name = f"{PLOTS_DIR}/gsea_tf_activity.png"
@@ -673,7 +673,7 @@ def plot_interaction_of_features_between_cell_types(args):
                                     sizes=(90, 100), analysis_name=args.analysis_name
                                     )
     if False: ### Shared sig TFs between CD8T and CD4T
-        from hiara.src.feature_association.plots import plot_joint_scatter
+        from hira.src.feature_association.plots import plot_joint_scatter
         ttypes = ['CD8T', 'CD4T']
         mask = interaction_main_df[ttypes].sum(axis=1)==len(ttypes)
         features = mask[mask].index
@@ -686,7 +686,7 @@ def plot_interaction_of_features_between_cell_types(args):
         ax.margins(x=0.1, y=0.1)
 
 def plot_case_tf(args):
-    from hiara.src.feature_association.plots import plot_feature_values_all_datasets
+    from hira.src.feature_association.plots import plot_feature_values_all_datasets
     selected_cell_types = ['CD8T', 'CD4T', 'NK'] # ['CD8T', 'CD4T', 'NK'] #Tcm_Naive_CD8
     datasets = DISCOVERY_COHORTS
     plot_genexpression = True
@@ -740,7 +740,7 @@ def sig_features_counts(df, figsize=None, palette=None, ax=None):
 
 def plot_feature_values_per_datasets(cell_type, features, data_type, datasets, feature_type='gene_expression', age_limit=[20, 75], cluster=False, figsize=None):
     import matplotlib.pyplot as plt
-    from hiara.src.config import surrogate_names
+    from hira.src.config import surrogate_names
 
     n_datasets = len(datasets)
     n_features = len(features)
@@ -795,7 +795,7 @@ def plot_feature_values_all_datasets(cell_type, feature,
                                     analysis_name,
                                     datasets, ax=None, show_cbar=True,
                                     age_limit=[20, 80], show_ylabels=True):
-    from hiara.src.feature_association.helper import retrieve_feature_data, bin_feature_values
+    from hira.src.feature_association.helper import retrieve_feature_data, bin_feature_values
 
     mean_expr_store = []
     for dataset in datasets:
@@ -1082,7 +1082,7 @@ def plot_features_vs_datasets(cell_type,
                               features_dir=None,
                               show_size_legend=False,
                               plots_dir=PLOTS_DIR,
-                              
+                              grns_dir=None,
                               ):
 
     feature_type = get_config_fa(analysis_name)['feature_type']
@@ -1096,12 +1096,12 @@ def plot_features_vs_datasets(cell_type,
     stats_t = stats_t[stats_t['dataset'].isin(datasets)]
 
     if filter_significant:
-        stats_sig = retrieve_sig_stats(analysis_name=analysis_name, cell_type=cell_type).drop_duplicates(subset=['gene', 'cell_type'])
+        stats_sig = retrieve_sig_stats(analysis_name=analysis_name, cell_type=cell_type, features_dir=features_dir).drop_duplicates(subset=['gene', 'cell_type'])
         sig_genes = stats_sig['gene'].unique()
         stats_t = stats_t[stats_t['gene'].isin(sig_genes)]
     
     # - get centrality measure
-    net = retrieve_net_consensus(cell_type=cell_type)
+    net = retrieve_net_consensus(cell_type=cell_type, grns_dir=grns_dir)
     group_col = 'target' if feature_type == 'gene_expression' else 'source'
     c = net.groupby([group_col]).size()
     c = c / c.max()
@@ -1427,8 +1427,8 @@ def plot_tf_interactions_plus_target_stats(net, ax=None, show_legend=True, sizes
 
 
 def wrapper_flesh_out_tf_interactions(datasets, cell_type, tf, data_type='bulk', n_top=10, keep_sig_only=False, sizes=(20, 100), ax=None, show_legend=True):
-    from hiara.src.feature_association.helper import retrieve_stats
-    from hiara.src.feature_association.plots import plot_tf_interactions_plus_target_stats
+    from hira.src.feature_association.helper import retrieve_stats
+    from hira.src.feature_association.plots import plot_tf_interactions_plus_target_stats
     # - get the net for different datasets
     top_targets = []
     net_store = []
@@ -1710,7 +1710,7 @@ def heamap_overview_cell_types(stats_all,
                                 palette_cols=palette_major_cts
                                 ):
 
-    from hiara.src.config import surrogate_names
+    from hira.src.config import surrogate_names
     from matplotlib.colors import ListedColormap, BoundaryNorm
     from scipy.cluster.hierarchy import linkage
     from matplotlib.patches import Patch

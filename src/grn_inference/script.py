@@ -5,7 +5,7 @@ from tqdm import tqdm
 import argparse
 import anndata as ad
 import pandas as pd
-from hiara.src.utils.util import retrieve_adata
+from hira.src.utils.util import retrieve_adata
 import scanpy as sc 
 import numpy as np 
 from scipy.stats import spearmanr
@@ -13,10 +13,10 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import subprocess
 
-from hiara.src.config import MAJOR_CTS, PRIOR_DIR
-from hiara.src.grn_inference.inference import main as main_inference
+from hira.src.config import MAJOR_CTS, PRIOR_DIR
+from hira.src.grn_inference.inference import main as main_inference
 from task_grn_inference.src.utils.util import basic_qc
-from hiara import get_config
+from hira import get_config
 
 def wrapper_grn(task, par):
     '''

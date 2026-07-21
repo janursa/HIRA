@@ -12,8 +12,8 @@ import argparse
 import sys
 import warnings
 
-from hiara.src.config import SUB_CTS, FEATURES_DIR, MAJOR_CTS, DISCOVERY_COHORTS, DATA_TYPES, FEATURE_TYPES, get_config, META_MIN_COHORT, get_config_fa, get_available_fa_analyses, MAJOR_CT_LABEL, SUB_CT_LABEL
-from hiara.src.feature_association.helper import (
+from hira.src.config import SUB_CTS, FEATURES_DIR, MAJOR_CTS, DISCOVERY_COHORTS, DATA_TYPES, FEATURE_TYPES, get_config, META_MIN_COHORT, get_config_fa, get_available_fa_analyses, MAJOR_CT_LABEL, SUB_CT_LABEL
+from hira.src.feature_association.helper import (
     wrapper_tf_activity,
     wrapper_ct_tf_markers,
     wrapper_tfa_peg,
@@ -154,7 +154,7 @@ def run_multi_cohort_analysis(
     # Step 2: Calculate association with age or identify markers
     if args.analysis_name == 'ct_tf_markers':
         print("\n[2/3] Identifying sub cell type markers...")
-        from hiara.src.feature_association.helper import wrapper_ct_tf_markers
+        from hira.src.feature_association.helper import wrapper_ct_tf_markers
         stats_features = wrapper_ct_tf_markers(args.analysis_name, par)
     else:
         print("\n[2/3] Computing associations with age...")

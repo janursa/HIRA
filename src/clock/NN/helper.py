@@ -1,4 +1,4 @@
-from hiara.src.config import OUTPUT_DIR
+from hira.src.config import OUTPUT_DIR
 import scanpy as sc
 
 

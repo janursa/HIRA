@@ -4,7 +4,7 @@ Plot group wrappers for different aging and condition analyses.
 Each wrapper contains the plotting logic for a specific analysis type.
 """
 
-from hiara.src.feature_association.plots import (
+from hira.src.feature_association.plots import (
     wrapper_sig_features_counts, 
     plot_heatmap_overal, 
     plot_central_features,
@@ -18,9 +18,9 @@ from hiara.src.feature_association.plots import (
     plot_aging_overlap
     
 )
-from hiara.src.feature_association.cc.plots import plot_ccc_lr_pairs_vs_datasets, plot_ccc_directionality, plot_ccc_hub_analysis, plot_ccc_ligand_receptor_families, plot_ccc_sender_receiver_matrix, plot_ccc_top_pairs
-from hiara import retrieve_sig_stats, retrieve_stats, mapping_minor_2_major
-from hiara.src.config import get_config_fa, get_config, MAJOR_CTS
+from hira.src.feature_association.cc.plots import plot_ccc_lr_pairs_vs_datasets, plot_ccc_directionality, plot_ccc_hub_analysis, plot_ccc_ligand_receptor_families, plot_ccc_sender_receiver_matrix, plot_ccc_top_pairs
+from hira import retrieve_sig_stats, retrieve_stats, mapping_minor_2_major
+from hira.src.config import get_config_fa, get_config, MAJOR_CTS
 
 
 def wrapper_plots_tfa_major_b_aging(args, stats_features, stats_features_sig, skip_pathway):
@@ -158,7 +158,7 @@ def wrapper_plots_ccc_aging(args, stats_features, stats_features_sig, skip_pathw
 
 def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
     """Plot group for tfa_major_b condition analysis."""
-    from hiara.src.feature_association.plots_condition import (
+    from hira.src.feature_association.plots_condition import (
         plot_overview_heatmap,
         wrapper_plot_central_tfs_condition,
         plot_disease_case_tfs,

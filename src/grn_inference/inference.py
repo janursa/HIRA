@@ -12,7 +12,7 @@ import pandas as pd
 from scipy.stats import spearmanr
 from statsmodels.stats.multitest import multipletests
 from scipy.sparse import issparse
-from hiara import PRIOR_DIR
+from hira import PRIOR_DIR
 
 
 def efficient_melting(net, gene_names):

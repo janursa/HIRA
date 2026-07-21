@@ -14,8 +14,8 @@ import os
 import warnings
 import matplotlib.pyplot as plt
 
-from hiara import retrieve_stats
-from hiara.src.feature_association.plots_groups import (
+from hira import retrieve_stats
+from hira.src.feature_association.plots_groups import (
     wrapper_plots_tfa_major_b_condition,
     wrapper_plots_tfa_sub_b_condition,
     wrapper_plots_gene_expression_condition,
@@ -26,13 +26,13 @@ from hiara.src.feature_association.plots_groups import (
     wrapper_plots_ccc_sub_b_condition
 )
 # Import common utilities and configuration
-from hiara.src.config import (
+from hira.src.config import (
     get_config_fa,
     get_available_fa_analyses,
     PLOTS_DIR, 
     MAJOR_CTS
 )
-from hiara.src.config import get_config
+from hira.src.config import get_config
 
 warnings.filterwarnings("ignore")
 # Set matplotlib defaults

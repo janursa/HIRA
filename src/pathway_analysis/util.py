@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 import json
-from hiara.src.config import  PRIOR_DIR
+from hira.src.config import  PRIOR_DIR
 def get_opengenes_sets():
     df = pd.read_csv(f'{PRIOR_DIR}/gene-aging-mechanisms.tsv', sep='\t')
     reported_genes = df.index.unique().to_list()
@@ -95,7 +95,7 @@ def get_gene2pathway():
 def pathway_kde_func(stats_df, pathway='hallmark', sets=None, test='wilcoxon', min_genes=10, fdr_method='fdr_bh', feature_col='gene'):
     from statsmodels.stats.multitest import multipletests
     from scipy import stats
-    from hiara.src.pathway_analysis.util import get_genesets
+    from hira.src.pathway_analysis.util import get_genesets
     genesets = get_genesets(pathway=pathway)
     if sets is not None:
         genesets = {key:value for key, value in genesets.items() if key in sets}
@@ -144,7 +144,7 @@ def pathway_kde_func(stats_df, pathway='hallmark', sets=None, test='wilcoxon', m
 
 
 def get_canonical_pathways():
-    geneset_file = '/home/jnourisa/projs/ongoing/hiara/input/prior/h.all.v2024.1.Hs.symbols.gmt'
+    geneset_file = '/home/jnourisa/projs/ongoing/hira/input/prior/h.all.v2024.1.Hs.symbols.gmt'
     genesets_all = read_gmt(geneset_file) 
     genesets_all = {key: gs['genes'] for key, gs in genesets_all.items()}
 
@@ -222,7 +222,7 @@ def run_ora_local(gene_list, background_genes, gene_sets, min_size=5, max_size=5
 
 def gsea_func(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hallmark_2020'], feature_col='gene'):
     import gseapy as gp
-    # from hiara.src.utils.util import get_genesets
+    # from hira.src.utils.util import get_genesets
     from gseapy import barplot, dotplot
     all_genes = np.loadtxt(f'{PRIOR_DIR}/tf_all.csv', dtype=str)
     # all_genes = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
@@ -297,10 +297,10 @@ def wrapper_gsea(stats, palette=None, **kwargs):
         (fig, ax) matplotlib figure and axes objects
     """
     import matplotlib.pyplot as plt
-    from hiara.src.feature_association.plots import dotplot_category_color
+    from hira.src.feature_association.plots import dotplot_category_color
     
     if palette is None:
-        from hiara.src.config import palette_trend_2
+        from hira.src.config import palette_trend_2
         palette = palette_trend_2
     
     # Handle feature_type parameter (convert to feature_col for gsea_func)

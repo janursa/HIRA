@@ -34,16 +34,6 @@ FEATURES_DIR = f'{OUTPUT_DIR}/features/'
 CLOCKS_DIR = f"{OUTPUT_DIR}/clock/"
 PLOTS_DIR = f"{OUTPUT_DIR}/plots/"
 
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(GRNS_DIR, exist_ok=True)
-os.makedirs(CLOCKS_DIR, exist_ok=True)
-os.makedirs(PLOTS_DIR, exist_ok=True)
-os.makedirs(PRIOR_DIR, exist_ok=True)
-os.makedirs(FEATURES_DIR, exist_ok=True)
-os.makedirs(FEATURE_DATA_DIR, exist_ok=True)
-
-
-
 CLOCK_V = 'V1'
 USE_LOCAL_CLOCK = True  # If True, use clocks saved in CLOCKS_DIR;
 
@@ -157,6 +147,8 @@ DATASET_NAME_MAPPING = {
     "data13": "aida",
     "SLE": "perez_sle"
 }
+
+TASK_GRN_BENCHMARK_DIR = os.environ.get('TASK_GRN_BENCHMARK_DIR', '/home/jnourisa/projs/ongoing/task_grn_inference/')
 
 surrogate_names = {
                     'onek1k':'OneK1K',

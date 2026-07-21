@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.patches import Patch
 
-from hiara.src.config import PLOTS_DIR, palette_trend_2, colors_blind
-from hiara.src.feature_association.helper import retrieve_sig_stats
+from hira.src.config import PLOTS_DIR, palette_trend_2, colors_blind
+from hira.src.feature_association.helper import retrieve_sig_stats
 
 
 def parse_ccc_feature_name(feature_name):
@@ -246,8 +246,8 @@ def plot_ccc_lr_pairs_vs_datasets(analysis_name, datasets=None, top_n=15, filter
     are consistently significant across multiple datasets and cell type pairs.
     Similar to plot_features_vs_datasets but for CCC data.
     """
-    from hiara.src.feature_association.helper import retrieve_stats
-    from hiara.src.config import DISCOVERY_COHORTS, surrogate_names, cmap_trend
+    from hira.src.feature_association.helper import retrieve_stats
+    from hira.src.config import DISCOVERY_COHORTS, surrogate_names, cmap_trend
     from matplotlib.colors import Normalize
     from matplotlib import gridspec
     

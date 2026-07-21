@@ -1,9 +1,9 @@
 import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sns
-from hiara import MAJOR_CTS, CLOCKS_DIR, OUTPUT_DIR, PLOTS_DIR, surrogate_names, colors_blind
-from hiara import wrapper_clock_predictions
-from hiara.src.clock.plots import plot_scatter_age_vs_predictedAge
+from hira import MAJOR_CTS, CLOCKS_DIR, OUTPUT_DIR, PLOTS_DIR, surrogate_names, colors_blind
+from hira import wrapper_clock_predictions
+from hira.src.clock.plots import plot_scatter_age_vs_predictedAge
 from grnimmuneclock import evaluate_groupwise_median, train_aging_clock
 
 
