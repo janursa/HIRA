@@ -1082,7 +1082,7 @@ def plot_features_vs_datasets(cell_type,
                               features_dir=None,
                               show_size_legend=False,
                               plots_dir=PLOTS_DIR,
-                              
+                              grns_dir=None,
                               ):
 
     feature_type = get_config_fa(analysis_name)['feature_type']
@@ -1101,7 +1101,7 @@ def plot_features_vs_datasets(cell_type,
         stats_t = stats_t[stats_t['gene'].isin(sig_genes)]
     
     # - get centrality measure
-    net = retrieve_net_consensus(cell_type=cell_type)
+    net = retrieve_net_consensus(cell_type=cell_type, grns_dir=grns_dir)
     group_col = 'target' if feature_type == 'gene_expression' else 'source'
     c = net.groupby([group_col]).size()
     c = c / c.max()
