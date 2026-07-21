@@ -18,11 +18,16 @@ dependencies=(
 
 set -e
 
+# Load repo-level config (HIRA_DIR, HIRA_BASE_DIR, ...) if present
+[ -f .env ] && set -a && source .env && set +a
+
 # Parse command line arguments
 DATASET=$1
 FORCE=${2:-true}
 CELL_TYPE_GRANULARITY=${3:-'major'}
-MAIN_DIR=${4:-'/vol/projects/jnourisa/'}
+# Defaults to config.py's GRNS_DIR (repo output/grns, or $HIRA_DIR/output/grns), so this
+# lines up with where retrieve_net()/retrieve_net_consensus() read GRNs from downstream.
+GRNS_DIR=${4:-$(python -c "import sys; sys.path.insert(0, 'src'); from config import GRNS_DIR; print(GRNS_DIR)")}
 MAX_WORKERS=${5:-5}
 
 # Determine data type based on dataset
@@ -32,7 +37,7 @@ if [ "$DATASET" = "soundlife" ] ; then
 fi
 
 # Run GRN inference
-SAVE_GRNS_DIR="${MAIN_DIR}/output/grns/${DATASET}/${data_type}"
+SAVE_GRNS_DIR="${GRNS_DIR}/${DATASET}/${data_type}"
 
 args="  
     --dataset $DATASET \

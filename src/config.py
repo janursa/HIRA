@@ -12,9 +12,36 @@ from matplotlib.colors import LinearSegmentedColormap
 from collections import OrderedDict
 import warnings
 import os
-import platform
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
+
+HIRA_DIR = os.environ.get('HIRA_DIR')
+if not HIRA_DIR:
+    raise RuntimeError("HIRA_DIR is not set. Set it in .env or export it in your shell.")
+
+# Heavy omics data (raw + processed datasets, priors, per-cell feature matrices).
+base_dir = os.environ.get('HIRA_BASE_DIR')
+if not base_dir:
+    raise RuntimeError("HIRA_BASE_DIR is not set. Set it in .env or export it in your shell.")
+DATA_DIR = f'{base_dir}/datasets/'
+PRIOR_DIR = f'{base_dir}/prior/'
+FEATURE_DATA_DIR = f'{base_dir}/features/'  # heavy per-cell/per-dataset feature matrices (.h5ad)
+
+# Lightweight results (GRNs, summary stats, clock models, plots). Git-tracked, lives in the repo.
+OUTPUT_DIR = os.path.join(HIRA_DIR, 'output')
+GRNS_DIR = f'{OUTPUT_DIR}/grns'
+FEATURES_DIR = f'{OUTPUT_DIR}/features/'
+CLOCKS_DIR = f"{OUTPUT_DIR}/clock/"
+PLOTS_DIR = f"{OUTPUT_DIR}/plots/"
+
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(GRNS_DIR, exist_ok=True)
+os.makedirs(CLOCKS_DIR, exist_ok=True)
+os.makedirs(PLOTS_DIR, exist_ok=True)
+os.makedirs(PRIOR_DIR, exist_ok=True)
+os.makedirs(FEATURES_DIR, exist_ok=True)
+os.makedirs(FEATURE_DATA_DIR, exist_ok=True)
+
 
 
 CLOCK_V = 'V1'
@@ -106,9 +133,6 @@ ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebi
 CLOCK_TRAINING_COHORTS = [
                 'onek1k',
                 'abf300',
-                # 'aida',
-                # 'zhang',
-                # 'soundlife'
                 ]
 CLOCK_TEST_COHORTS = [
                 'aida',
@@ -134,30 +158,6 @@ DATASET_NAME_MAPPING = {
     "SLE": "perez_sle"
 }
 
-if platform.system() == 'Linux':
-    HIARA_DIR = '/home/jnourisa/projs/ongoing/hiara/'
-    base_dir = '/vol/projects/jnourisa/hiara/'
-    TASK_GRN_BENCHMARK_DIR = '/home/jnourisa/projs/ongoing/task_grn_inference/'
-else:
-    HIARA_DIR = '/Users/jno24/Documents/projs/ongoing/hiara/'
-    base_dir = '/Users/jno24/Documents/projs/ongoing/hiara/base_folder'
-    TASK_GRN_BENCHMARK_DIR = '/Users/jno24/Documents/projs/ongoing/task_grn_inference/'
-
-DATA_DIR = f'{base_dir}/datasets/'
-PRIOR_DIR = f'{base_dir}/prior/'
-
-OUTPUT_DIR = f'{base_dir}/output/'
-GRNS_DIR = f'{OUTPUT_DIR}/grns'
-    
-FEATURES_DIR = f'{OUTPUT_DIR}/features/'
-CLOCKS_DIR = f"{OUTPUT_DIR}/clock/"
-PLOTS_DIR = f"{OUTPUT_DIR}/plots/"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(GRNS_DIR, exist_ok=True)
-os.makedirs(CLOCKS_DIR, exist_ok=True)
-os.makedirs(PLOTS_DIR, exist_ok=True)
-os.makedirs(PRIOR_DIR, exist_ok=True)
-os.makedirs(FEATURES_DIR, exist_ok=True)
 surrogate_names = {
                     'onek1k':'OneK1K',
                     'abf300': 'ABF300',
