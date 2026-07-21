@@ -11,7 +11,6 @@ import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap
 from collections import OrderedDict
 import warnings
-import os
 import platform
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
@@ -152,12 +151,6 @@ GRNS_DIR = f'{OUTPUT_DIR}/grns'
 FEATURES_DIR = f'{OUTPUT_DIR}/features/'
 CLOCKS_DIR = f"{OUTPUT_DIR}/clock/"
 PLOTS_DIR = f"{OUTPUT_DIR}/plots/"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(GRNS_DIR, exist_ok=True)
-os.makedirs(CLOCKS_DIR, exist_ok=True)
-os.makedirs(PLOTS_DIR, exist_ok=True)
-os.makedirs(PRIOR_DIR, exist_ok=True)
-os.makedirs(FEATURES_DIR, exist_ok=True)
 surrogate_names = {
                     'onek1k':'OneK1K',
                     'abf300': 'ABF300',
