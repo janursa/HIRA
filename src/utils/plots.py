@@ -186,5 +186,61 @@ def dotplot(df, ax,
     cbar.set_ticks(tick_values)
     cbar.ax.set_xticklabels([f"{x:.2f}" for x in tick_values])
 
+
+def create_interaction_df(data_dict: dict) -> pd.DataFrame:
+    """Build a boolean occurrence dataframe from {name: [items]} for an upset plot."""
+    all_cases = list(set(item for items in data_dict.values() for item in items))
+    interaction_df = pd.DataFrame(index=all_cases)
+    for key, items in data_dict.items():
+        interaction_df[key] = interaction_df.index.isin(items)
+    return interaction_df
+
+
+def plot_interactions(interaction_df: pd.DataFrame, min_subset_size=None, min_degree=None, color_map=None, sort_by='degree'):
+    """Upset plot of set interactions (e.g. shared genes/edges across cell types)."""
+    import upsetplot
+    import warnings
+    from hira.src.config import colors_blind
+    warnings.filterwarnings(action='ignore')
+    fig = plt.figure()
+    out_dict = upsetplot.plot(
+        upsetplot.from_indicators(indicators=lambda a: a == True, data=interaction_df), fig=fig,
+        show_counts=True,
+        show_percentages='{:.0%}',
+        sort_by=sort_by,
+        min_subset_size=min_subset_size,
+        min_degree=min_degree,
+        facecolor='grey',
+        other_dots_color=.1,
+        shading_color=.01,
+        with_lines=True,
+        element_size=35,
+        intersection_plot_elements=5,
+        totals_plot_elements=2,
+    )
+    matrix_ax, shading_ax, totals_ax, intersections_ax = out_dict['matrix'], out_dict['shading'], out_dict['totals'], out_dict['intersections']
+
+    methods_order = [label.get_text() for label in matrix_ax.get_yticklabels()]
+    colors = colors_blind + colors_blind
+    for i_bar, bar in enumerate(totals_ax.patches):
+        if color_map is None:
+            bar.set_facecolor(colors[i_bar])
+        else:
+            bar.set_facecolor(color_map[methods_order[i_bar]])
+        bar.set_edgecolor('white')
+
+    for bar in intersections_ax.patches:
+        bar.set_facecolor('#c49e81')
+        bar.set_edgecolor('black')
+        bar.set_linewidth(.4)
+
+    for bar, new_color in zip(shading_ax.patches, colors):
+        bar.set_facecolor(new_color)
+        bar.set_alpha(.1)
+        bar.set_edgecolor('black')
+
+    plt.subplots_adjust(wspace=-.4)
+    return fig
+
     cbar.ax.tick_params(labelsize=8, direction='out')
     cbar.ax.set_title(color_legend_title, fontsize=9, pad=5)

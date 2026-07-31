@@ -144,7 +144,8 @@ def pathway_kde_func(stats_df, pathway='hallmark', sets=None, test='wilcoxon', m
 
 
 def get_canonical_pathways():
-    geneset_file = '/home/jnourisa/projs/ongoing/hira/input/prior/h.all.v2024.1.Hs.symbols.gmt'
+    from hira.src.config import HIRA_DIR
+    geneset_file = os.path.join(HIRA_DIR, 'input/prior/h.all.v2024.1.Hs.symbols.gmt')
     genesets_all = read_gmt(geneset_file) 
     genesets_all = {key: gs['genes'] for key, gs in genesets_all.items()}
 

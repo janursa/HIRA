@@ -290,7 +290,6 @@ def draw_net_datasets(cell_type, datasets, features, min_degree=3, indivitual_ne
         evidence = collectri.copy()
         if False:
             # - add skeleton
-            # skeleton = pd.read_csv(f'/home/jnourisa/projs/ongoing/task_grn_inference/resources/grn_benchmark/prior//skeleton.csv')
             skeleton = pd.read_csv(f'{prior_dir}/skeleton_promotor.csv')
             skeleton['weight'] = 1
             skeleton['dataset'] = 'skeleton'

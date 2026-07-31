@@ -15,7 +15,7 @@ import seaborn as sns
 from scipy.stats import spearmanr, pearsonr
 from matplotlib_venn import venn2
 
-from hira.src.config import PLOTS_DIR, OUTPUT_DIR, cell_types, palette_major_cts
+from hira.src.config import PLOTS_DIR, OUTPUT_DIR, MAJOR_CTS, palette_major_cts
 
 
 def load_stats(data_type='bulk', suffix=''):
@@ -261,7 +261,7 @@ def main():
     print(f"  - Promotor-only stats: {len(stats_promotor)} rows")
     
     # Determine cell types to analyze
-    cell_types_to_analyze = args.cell_types if args.cell_types else cell_types
+    cell_types_to_analyze = args.cell_types if args.cell_types else MAJOR_CTS
     
     # Run comparison for each cell type
     print("\nRunning comparisons...")

@@ -211,7 +211,11 @@ def format_data(adata, dataset_name):
         adata.var.rename(columns={gene_name: 'gene_name'}, inplace=True)
         # only keep gene_name column
         adata.var =  adata.var[['gene_name']].set_index('gene_name')
-    
+
+    # Gene symbols can collide (e.g. multiple Ensembl IDs -> same symbol); dedup
+    # so var_names stays unique for downstream concat/aggregation.
+    adata.var_names_make_unique()
+
     # Common processing for all datasets
     adata.obs = adata.obs.astype('str')
     adata.obs.rename(columns={'perturbation':'condition', 'disease':'condition', 'treatment':'condition'}, inplace=True)
@@ -220,11 +224,15 @@ def format_data(adata, dataset_name):
     adata = remove_attributes(adata, keep_layers=(dataset_name == 'op'))
     adata.obs[bulk_group_col] = adata.obs[bulk_group].astype(str).agg('_'.join, axis=1)
     return adata
-def basic_qc(adata, run_test):
+def basic_qc(adata, run_test, n_groups=None, max_pct_mt=20.0):
     print('Shape before filtering:', adata.shape, flush=True)
     adata.var["mt"] = adata.var_names.str.startswith("MT-")
     sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
-    n_groups = adata.obs['bulk_group'].nunique()
+    # n_groups drives the gene min_cells threshold below; pass it in explicitly
+    # when adata is a memory-bound chunk of a larger dataset (see script.py),
+    # otherwise it's derived from adata itself (already the full dataset).
+    if n_groups is None:
+        n_groups = adata.obs['bulk_group'].nunique()
     if run_test:
         min_cells = 2
         min_genes = 2
@@ -233,9 +241,11 @@ def basic_qc(adata, run_test):
         min_cells_per_group = 10 # - consider the number of donors
         min_cells = int(n_groups * min_cells_per_group)
         min_cells = max(min_cells, 10)
-   
+
     sc.pp.filter_cells(adata, min_genes=min_genes)
     sc.pp.filter_cells(adata, max_genes=5000)
+    if not run_test:
+        adata = adata[adata.obs['pct_counts_mt'] < max_pct_mt].copy()
     # Apply filters
     sc.pp.filter_genes(adata, min_cells=min_cells)
     sc.pp.filter_genes(adata, min_counts=1)
@@ -268,7 +278,7 @@ def annotate_celltypist_subsample_knn(adata, subsample_n=150_000, leiden_resolut
     obs_org = adata.obs.copy()
 
     # --- Back up raw counts ---
-    scratch_dir = os.environ.get('HIARA_SCRATCH', '/tmp')
+    scratch_dir = os.environ.get('HIRA_SCRATCH', '/tmp')
     tmp_counts = os.path.join(scratch_dir, f'counts_backup_{uuid.uuid4().hex}.npz')
     print(f'Backing up raw counts to {tmp_counts}...', flush=True)
     if not sp.issparse(adata.X):
@@ -448,7 +458,7 @@ def annotate_celltypist_fast(adata, n_clusters=500):
     obs_org = adata.obs.copy()
 
     # --- Back up raw counts to scratch disk ---
-    scratch_dir = os.environ.get('HIARA_SCRATCH', '/tmp')
+    scratch_dir = os.environ.get('HIRA_SCRATCH', '/tmp')
     tmp_counts = os.path.join(scratch_dir, f'counts_backup_{uuid.uuid4().hex}.npz')
     print(f'Backing up raw counts to {tmp_counts}...', flush=True)
     if not sp.issparse(adata.X):
@@ -632,7 +642,7 @@ def _annotate_celltypist_majority_voting(adata):
     adata.layers['counts'] = adata.X.copy()
     sc.pp.normalize_total(adata, target_sum=1e4)
     sc.pp.log1p(adata)
-    models.download_models(force_update=True)
+    models.download_models(force_update=False)
     model = models.Model.load(model='Immune_All_Low.pkl')
     obs_org = adata.obs.copy()
     predictions = celltypist.annotate(adata, model=model, majority_voting=True, use_GPU=False)
@@ -722,12 +732,12 @@ def annotate_celltypes(adata, dataset):
         return adata
 
     # Env var override: allows testing alternative methods without code changes
-    method = os.environ.get('HIARA_ANNOTATE_METHOD', '')
+    method = os.environ.get('HIRA_ANNOTATE_METHOD', '')
     if method == 'subsample_knn':
-        print(f'Using subsample kNN + label transfer annotation (HIARA_ANNOTATE_METHOD=subsample_knn).')
+        print(f'Using subsample kNN + label transfer annotation (HIRA_ANNOTATE_METHOD=subsample_knn).')
         return annotate_celltypist_subsample_knn(adata)
     if method == 'majority_voting':
-        print(f'Using CellTypist majority_voting=True (HIARA_ANNOTATE_METHOD=majority_voting).')
+        print(f'Using CellTypist majority_voting=True (HIRA_ANNOTATE_METHOD=majority_voting).')
         return _annotate_celltypist_majority_voting(adata)
 
     return _annotate_celltypist_majority_voting(adata)

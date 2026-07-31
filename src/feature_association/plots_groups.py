@@ -18,7 +18,6 @@ from hira.src.feature_association.plots import (
     plot_aging_overlap
     
 )
-from hira.src.feature_association.cc.plots import plot_ccc_lr_pairs_vs_datasets, plot_ccc_directionality, plot_ccc_hub_analysis, plot_ccc_ligand_receptor_families, plot_ccc_sender_receiver_matrix, plot_ccc_top_pairs
 from hira import retrieve_sig_stats, retrieve_stats, mapping_minor_2_major
 from hira.src.config import get_config_fa, get_config, MAJOR_CTS
 
@@ -135,7 +134,8 @@ def wrapper_plots_ct_pol_dist_aging(args, stats_features, stats_features_sig, sk
 
 def wrapper_plots_ccc_aging(args, stats_features, stats_features_sig, skip_pathway):
     """Plot group for ccc_sub_b analysis."""
-    analysis_name = args.analysis_name    
+    from hira.src.feature_association.cc.plots import plot_ccc_lr_pairs_vs_datasets, plot_ccc_directionality, plot_ccc_hub_analysis, plot_ccc_ligand_receptor_families, plot_ccc_sender_receiver_matrix, plot_ccc_top_pairs
+    analysis_name = args.analysis_name
     plot_scatter_feature_vs_age(analysis_name, cell_types=['all'], feature_selection_mode='top_sig', top_features=10)
     
     # Hub L-R pairs across datasets

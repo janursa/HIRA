@@ -681,3 +681,101 @@ def test_unpaired(df, ctr, treatment):
     slope = treatment_samples.mean() - ctr_samples.mean()
 
     return p_value, slope
+
+
+def basic_qc(adata, min_genes_per_cell=200, max_genes_per_cell=5000, min_cells_per_gene=10):
+    mt = adata.var_names.str.startswith("MT-")
+    print("shape before ", adata.shape)
+    total_counts = adata.X.sum(axis=1)
+    n_genes_by_counts = (adata.X > 0).sum(axis=1)
+
+    low_gene_filter = n_genes_by_counts < min_genes_per_cell
+    high_gene_filter = n_genes_by_counts > max_genes_per_cell
+
+    mask_cells = (~low_gene_filter) & (~high_gene_filter)
+    n_cells = (adata.X != 0).sum(axis=0)
+    mask_genes = n_cells > min_cells_per_gene
+    adata_f = adata[mask_cells, mask_genes]
+    print("shape after ", adata_f.shape)
+    return adata_f
+
+
+def read_gene_annotation(annotation_file):
+    """Read a GTF gene annotation file and extract TSS per gene."""
+    gtf_columns = [
+        "chromosome", "source", "feature", "start", "end",
+        "score", "strand", "frame", "attributes",
+    ]
+    gtf_df = pd.read_csv(
+        annotation_file, sep="\t", comment="#", names=gtf_columns, low_memory=False
+    )
+    gtf_df["gene_name"] = gtf_df["attributes"].str.extract(r'gene_name "([^"]+)"')
+
+    annotation_df = gtf_df[gtf_df["feature"] == "gene"][
+        ["chromosome", "start", "end", "strand", "gene_name"]
+    ]
+    annotation_df["TSS"] = annotation_df.apply(
+        lambda x: x["start"] if x["strand"] == "+" else x["end"], axis=1
+    )
+    return annotation_df[["chromosome", "start", "end", "TSS", "strand", "gene_name"]]
+
+
+def sum_by(adata: ad.AnnData, col: str, unique_mapping: bool = True) -> ad.AnnData:
+    """Sum `.X` entries per unique value of `col`.
+
+    Adapted from https://discourse.scverse.org/t/group-sum-rows-based-on-jobs-feature/371/4
+    """
+    from scipy import sparse
+
+    assert pd.api.types.is_categorical_dtype(adata.obs[col])
+    cat = adata.obs[col].values
+
+    indicator = sparse.coo_matrix(
+        (np.broadcast_to(True, adata.n_obs), (cat.codes, np.arange(adata.n_obs))),
+        shape=(len(cat.categories), adata.n_obs),
+    )
+
+    sum_adata = ad.AnnData(
+        indicator @ adata.X,
+        var=adata.var,
+        obs=pd.DataFrame(index=cat.categories),
+    )
+
+    # copy over `.obs` values that have a one-to-one-mapping with `.obs[col]`
+    obs_cols = list(set(adata.obs.columns) - set([col]))
+    if unique_mapping:
+        one_to_one_mapped_obs_cols = []
+        nunique_in_col = adata.obs[col].nunique()
+        for other_col in obs_cols:
+            if len(adata.obs[[col, other_col]].drop_duplicates()) == nunique_in_col:
+                one_to_one_mapped_obs_cols.append(other_col)
+    else:
+        one_to_one_mapped_obs_cols = obs_cols
+
+    joining_df = (
+        adata.obs[[col] + one_to_one_mapped_obs_cols].drop_duplicates().set_index(col)
+    )
+    assert (sum_adata.obs.index == sum_adata.obs.join(joining_df).index).all()
+    sum_adata.obs = sum_adata.obs.join(joining_df)
+    sum_adata.obs.index.name = col
+    sum_adata.obs = sum_adata.obs.reset_index()
+    sum_adata.obs.index = sum_adata.obs.index.astype("str")
+
+    cell_count_df = adata.obs.groupby(col).size().reset_index(name='cell_count')
+    sum_adata.obs = sum_adata.obs.merge(cell_count_df, on=col, how='left')
+    return sum_adata
+
+
+def bulkify_func(adata, cell_count_t=10, covariates=['cell_type', 'donor_id', 'age']):
+    """Aggregate single-cell counts into pseudobulk per covariate group."""
+    adata.obs['sum_by'] = ''
+    for covariate in covariates:
+        adata.obs['sum_by'] += '_' + adata.obs[covariate].astype(str)
+    adata.obs['sum_by'] = adata.obs['sum_by'].astype('category')
+    adata_bulk = sum_by(adata, 'sum_by', unique_mapping=True)
+    cell_count_df = adata.obs.groupby('sum_by').size().reset_index(name='cell_count')
+    if 'cell_count' in adata_bulk.obs:
+        adata_bulk.obs.drop('cell_count', axis=1, inplace=True)
+    adata_bulk.obs = adata_bulk.obs.merge(cell_count_df, on='sum_by')
+    adata_bulk = adata_bulk[adata_bulk.obs['cell_count'] >= cell_count_t]
+    return adata_bulk

@@ -650,7 +650,7 @@ def plot_central_features(stats_aging, cell_types):
         print(f"Saving figure to {file_name}")
         plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
 def plot_interaction_of_features_between_cell_types(args):
-    from geneRNBI.src.exp_analysis.helper import plot_interactions, create_interaction_df
+    from hira.src.utils.plots import plot_interactions, create_interaction_df
 
     stats_sig = retrieve_sig_stats(analysis_name=args.analysis_name).drop_duplicates(subset=['cell_type', 'gene'])
     if stats_sig['cell_type'].nunique() <2:

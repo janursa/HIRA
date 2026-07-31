@@ -24,9 +24,9 @@ warnings.filterwarnings("ignore")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from hiara import retrieve_stats
-from hiara.src.config import PLOTS_DIR, MAJOR_CTS, get_config_fa
-from hiara.src.feature_association.plots_condition import plot_overview_heatmap
+from hira import retrieve_stats
+from hira.src.config import PLOTS_DIR, MAJOR_CTS, get_config_fa
+from hira.src.feature_association.plots_condition import plot_overview_heatmap
 
 plt.rcParams["figure.dpi"] = 150
 plt.rcParams["font.family"] = "Arial"

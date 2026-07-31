@@ -17,7 +17,7 @@ def wrapper_predict_age(adata, cell_type, USE_LOCAL_CLOCK=USE_LOCAL_CLOCK, versi
     import sys
     sys.path.insert(0, '../GRNimmuneClock')
     from grnimmuneclock import predict_age
-    adata = predict_age(adata, cell_type=cell_type, use_local_clocks=USE_LOCAL_CLOCK, version=version)
+    adata = predict_age(adata, cell_type=cell_type, version=version)
     return adata
 def wrapper_clock_predictions(cell_types, evaluate_datasets, data_type='bulk', condition=None, version=CLOCK_V):
     obs_store = []

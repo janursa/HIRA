@@ -28,7 +28,7 @@ PRIOR_DIR = f'{base_dir}/prior/'
 FEATURE_DATA_DIR = f'{base_dir}/features/'  # heavy per-cell/per-dataset feature matrices (.h5ad)
 
 # Lightweight results (GRNs, summary stats, clock models, plots). Git-tracked, lives in the repo.
-OUTPUT_DIR = os.path.join(HIRA_DIR, 'output')
+OUTPUT_DIR = os.path.join(HIRA_DIR, 'results_folder')
 GRNS_DIR = f'{OUTPUT_DIR}/grns'
 FEATURES_DIR = f'{OUTPUT_DIR}/features/'
 CLOCKS_DIR = f"{OUTPUT_DIR}/clock/"

@@ -4,7 +4,7 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 from hira.src.config import get_config, SUB_CT_LABEL, MAJOR_CT_LABEL
-from task_grn_inference.src.process_data.helper_data import bulkify_func
+from hira.src.utils.util import bulkify_func
 
 def normalize(adata):
     sc.pp.normalize_total(adata, target_sum=1e6)

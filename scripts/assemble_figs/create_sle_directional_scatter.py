@@ -22,8 +22,8 @@ warnings.filterwarnings("ignore")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from hiara import retrieve_stats, retrieve_sig_stats
-from hiara.src.config import PLOTS_DIR, surrogate_names
+from hira import retrieve_stats, retrieve_sig_stats
+from hira.src.config import PLOTS_DIR, surrogate_names
 
 plt.rcParams["figure.dpi"] = 150
 plt.rcParams["font.family"] = "Arial"

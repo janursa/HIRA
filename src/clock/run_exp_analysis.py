@@ -9,7 +9,7 @@ import seaborn as sns
 import anndata as ad
 from hira import MAJOR_CTS, PLOTS_DIR, PRIOR_DIR, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK, palette_major_cts, USE_LOCAL_CLOCK, DISCOVERY_COHORTS
 from hira import retrieve_net_consensus
-from hira.src.feature_association.plots import dotplot_category_color
+from hira.src.network_analysis.plots import dotplot_category_color
 from hira.src.config import surrogate_names
 
 def features_stats():
@@ -18,7 +18,7 @@ def features_stats():
         net = retrieve_net_consensus(cell_type=cell_type)
         print(cell_type, net.shape)
         features_dict[cell_type] = net['target'].unique().tolist()
-    from geneRNBI.src.exp_analysis.helper import plot_interactions, create_interaction_df
+    from hira.src.utils.plots import plot_interactions, create_interaction_df
 
     interaction_main_df = create_interaction_df(features_dict)
     aa = plot_interactions(interaction_main_df, min_subset_size=200, min_degree=2, color_map=palette_major_cts)

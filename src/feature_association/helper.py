@@ -10,9 +10,9 @@ import gc
 import scanpy as sc
 import anndata as ad
 from statsmodels.stats.multitest import multipletests
-from hira.src.config import GRNS_DIR, get_config_fa, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, HIARA_DIR
+from hira.src.config import GRNS_DIR, get_config_fa, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, HIRA_DIR
 from tqdm import tqdm
-from hira.src.config import OUTPUT_DIR, FEATURES_DIR, CORR_THRESHOLD, TF_MIN_TARGET, FEATURE_TYPES, SUB_CT_LABEL, MAJOR_CT_LABEL
+from hira.src.config import OUTPUT_DIR, FEATURES_DIR, FEATURE_DATA_DIR, CORR_THRESHOLD, TF_MIN_TARGET, FEATURE_TYPES, SUB_CT_LABEL, MAJOR_CT_LABEL
 from scipy.sparse import issparse
 from hira.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net
 import warnings
@@ -173,7 +173,7 @@ def retrieve_feature_data(
                                granularity=granularity)
         
     else:
-        file_path = f'{FEATURES_DIR}/{analysis_name}/{dataset}_{cell_type}{suffix}.h5ad'
+        file_path = f'{FEATURE_DATA_DIR}/{analysis_name}/{dataset}_{cell_type}{suffix}.h5ad'
         if os.path.exists(file_path) == False:
             raise ValueError(f'File {file_path} does not exist')
         adata = ad.read_h5ad(file_path)
@@ -197,7 +197,7 @@ def retrieve_feature_data(
     return adata
 
 def write_feature_data(adata, dataset, cell_type, analysis_name, suffix=''):
-    output_dir = f'{FEATURES_DIR}/{analysis_name}'
+    output_dir = f'{FEATURE_DATA_DIR}/{analysis_name}'
     os.makedirs(output_dir, exist_ok=True)
     adata.write_h5ad(f'{output_dir}/{dataset}_{cell_type}{suffix}.h5ad')
 
@@ -402,7 +402,7 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
 
     return stats_df
 
-def run_meta_analysis(stats_all, meta_association_type='max', min_degree=2, temp_dir='../output/tf_activity/'):
+def run_meta_analysis(stats_all, meta_association_type='max', min_degree=2, temp_dir='../results_folder/tf_activity/'):
     os.makedirs(temp_dir, exist_ok=True)
     # ---------- prepare
     assert stats_all.shape[0]> 0, 'No stats for meta analysis'
@@ -424,7 +424,7 @@ def run_meta_analysis(stats_all, meta_association_type='max', min_degree=2, temp
         df.to_csv(file_path, index=False)
         out_path = f'{temp_dir}/stats_{cell_type}_meta.csv'
 
-        Rscript_file = f'{HIARA_DIR}/src/feature_association//meta_analysis/script.R'
+        Rscript_file = f'{HIRA_DIR}/src/feature_association//meta_analysis/script.R'
         # Run the R script with the provided file paths
         try:
             subprocess.run(
@@ -659,7 +659,7 @@ def wrapper_tf_activity(analysis_name, par):
                 net = retrieve_net_consensus(cell_type=cell_type, promotor_only=promotor_only)
             else:
                 net = retrieve_net(dataset=dataset, cell_type=cell_type, promotor_only=promotor_only)
-            if adata_t.shape[0] < 10:
+            if adata_t.obs['condition'].value_counts().min() < 3:
                 continue
             tf_acts = calculate_tf_activity(adata_t, net)
             tf_acts.obs['dataset'] = dataset

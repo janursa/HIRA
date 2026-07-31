@@ -52,23 +52,28 @@ Bulk:
 
 Usage
 -----
-    cd /home/jnourisa/projs/ongoing/hiara
+    cd <hira repo root>
     python scripts/tests/test_zhang_preprocessing.py \\
         --new_sc   temp/sc_new/zhang.h5ad \\
         --new_bulk temp/bulk_new/zhang.h5ad \\
-        [--ref_sc  /vol/projects/jnourisa/hiara/datasets/sc/zhang.h5ad] \\
-        [--ref_bulk /vol/projects/jnourisa/hiara/datasets/bulk/zhang.h5ad]
+        [--ref_sc  <path to reference sc h5ad>] \\
+        [--ref_bulk <path to reference bulk h5ad>]
+
+Reference paths default to $HIRA_BASE_DIR/datasets/{sc,bulk}/zhang.h5ad
+(see .env / README) unless overridden via --ref_sc/--ref_bulk.
 
 Exits 0 if all checks pass, 1 otherwise.
 """
 
 import argparse
+import os
 import sys
 import numpy as np
 import anndata as ad
+from hira.src.config import DATA_DIR
 
-REF_SC   = '/vol/projects/jnourisa/hiara/datasets/sc/zhang.h5ad'
-REF_BULK = '/vol/projects/jnourisa/hiara/datasets/bulk/zhang.h5ad'
+REF_SC   = os.path.join(DATA_DIR, 'sc/zhang.h5ad')
+REF_BULK = os.path.join(DATA_DIR, 'bulk/zhang.h5ad')
 
 REQUIRED_SC_OBS_COLS   = ['donor_id', 'age', 'sex', 'Major_CT', 'Sub_CT', 'dataset']
 REQUIRED_BULK_OBS_COLS = ['donor_id', 'age', 'sex', 'Major_CT', 'cell_count']

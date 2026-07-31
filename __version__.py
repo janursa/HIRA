@@ -1,4 +1,4 @@
-"""Version information for HIaRA."""
+"""Version information for HIRA."""
 
 __version__ = "1.0.0"
 __author__ = "Jalil Nourisa"

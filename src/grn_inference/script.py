@@ -5,7 +5,7 @@ from tqdm import tqdm
 import argparse
 import anndata as ad
 import pandas as pd
-from hira.src.utils.util import retrieve_adata
+from hira.src.utils.util import retrieve_adata, basic_qc
 import scanpy as sc 
 import numpy as np 
 from scipy.stats import spearmanr
@@ -15,7 +15,6 @@ import subprocess
 
 from hira.src.config import MAJOR_CTS, PRIOR_DIR
 from hira.src.grn_inference.inference import main as main_inference
-from task_grn_inference.src.utils.util import basic_qc
 from hira import get_config
 
 def wrapper_grn(task, par):
@@ -33,7 +32,7 @@ def wrapper_grn(task, par):
     sampled_indices = []
     for group_name, group_df in adata.obs.groupby(pseudobulk_group, sort=False):
         sample_size = min(5000, len(group_df))
-        sampled_indices.extend(group_df.sample(n=sample_size).index.tolist())
+        sampled_indices.extend(group_df.sample(n=sample_size, random_state=0).index.tolist())
     adata = adata[sampled_indices].copy()
     print('Shape after sampling: ', adata.shape, flush=True)
 
@@ -141,7 +140,7 @@ if __name__ == '__main__':
             'force': args.force,
             'top_n_edges': 100_000,
             'save_grns_dir': args.save_grns_dir,
-            # 'temp_dir': 'output/grns/temp/',
+            # 'temp_dir': 'results_folder/grns/temp/',
     } 
     print('running grn inference...', flush=True)
     os.makedirs(par['save_grns_dir'], exist_ok=True)

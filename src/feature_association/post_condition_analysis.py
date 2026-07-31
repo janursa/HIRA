@@ -182,7 +182,7 @@ def main():
         wrapper_plots_tfa_major_b_condition(args, stats, stats_sig)
     elif args.analysis_name == 'tfa_sub_b':
         wrapper_plots_tfa_sub_b_condition(args, stats, stats_sig)
-    elif args.analysis_name == 'gene_expression':
+    elif args.analysis_name in ('ge_major_b', 'ge_sub_b'):
         wrapper_plots_gene_expression_condition(args, stats, stats_sig)
     elif args.analysis_name == 'ct_tf_markers':
         wrapper_plots_ct_tf_markers_condition(args, stats, stats_sig)

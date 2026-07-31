@@ -15,10 +15,10 @@ set -e
 # Load repo-level config (HIRA_DIR, HIRA_BASE_DIR, ...) if present
 [ -f .env ] && set -a && source .env && set +a
 
-# echo "---------------------------------------------------------- Consensus networks -----------------------------------------------------------------"
-# python src/feature_association/consensus_nets.py
+echo "---------------------------------------------------------- Consensus networks -----------------------------------------------------------------"
+python src/feature_association/consensus_nets.py
 
-analysis_name="tfa_major_b" # tfa_major_b ct_tf_markers tfa_sub_b ge_major_b ct_freq ct_pol_dist tfa_peg ccc_major_b ccc_sub_b  
+analysis_name="${1:-tfa_major_b}" # tfa_major_b ct_tf_markers tfa_sub_b ge_major_b ct_freq ct_pol_dist tfa_peg ccc_major_b ccc_sub_b
 # cell_types="Naive_B Memory_B Tcm_Naive_CD8 Tem_Trm_CD8 Tem_Temra_CD8 MAIT Tcm_Naive_CD4 Tem_Effector_CD4 NonClassic_MONO Classic_MONO CD16_NK" # "Tcm_Naive_CD4"
 test_mode="" #--test-mode
 
@@ -39,7 +39,7 @@ python src/feature_association/run_analysis.py  --dataset parsebioscience --cell
 python src/feature_association/post_condition_analysis.py --dataset parsebioscience --analysis-type perturbation --analysis-name $analysis_name   --agreement opposite --skip-pathway
 
 echo "---------------------------------------------------------- op -----------------------------------------------------------------"
-python src/feature_association/run_analysis.py  --dataset op  --analysis-name $analysis_name --association-type grouped 
+python src/feature_association/run_analysis.py  --dataset op  --cell-types CD4T --analysis-name $analysis_name --association-type grouped
 python src/feature_association/post_condition_analysis.py --dataset op --analysis-type perturbation --analysis-name $analysis_name   --agreement opposite --skip-pathway
 
 echo "---------------------------------------------------------- CXCL9 -----------------------------------------------------------------"

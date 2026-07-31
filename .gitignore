@@ -8,7 +8,6 @@ input/
 logs/
 params*
 resources*
-output*
 target/
 out/
 local/
@@ -16,9 +15,9 @@ datasets_raw/
 state*
 trace*
 tw*
-base_folder/*
 datasets/*
 prior/*
+sync.sh
 tmp/*   
 
 # related to python
@@ -37,3 +36,6 @@ work
 # IDE related
 .idea
 .vscode
+
+# scratch/experimental notebooks, not part of the published pipeline
+notebooks/experimental/

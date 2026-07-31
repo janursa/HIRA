@@ -21,40 +21,38 @@ def load_sc_data(file_name, dataset, run_test, gene_names=None):
         input_files = sorted(glob.glob(input_pattern))
         if not input_files:
             raise ValueError(f"No SoundLife_*.h5ad files found in {file_name}")
-        print(f'Found {len(input_files)} SoundLife files to merge:', flush=True)
+        print(f'Found {len(input_files)} SoundLife files:', flush=True)
         for f in input_files:
             print(f'  - {os.path.basename(f)}', flush=True)
-        merged_adata = None
+
         if run_test:
             input_files = input_files[:2]
+            merged_adata = None
+            for i, input_file in enumerate(input_files):
+                print(f'\nReading file {i+1}/{len(input_files)}: {os.path.basename(input_file)}', flush=True)
+                adata_temp = ad.read_h5ad(input_file, backed='r')
+                adata_temp = format_data(adata_temp, dataset)
+                adata_temp = subset_to_test(adata_temp)
+                merged_adata = adata_temp if merged_adata is None else ad.concat(
+                    [merged_adata, adata_temp], join='inner', merge='same'
+                )
+                del adata_temp
+                gc.collect()
+            print(f'\nFinal merged soundlife shape: {merged_adata.shape}', flush=True)
+            return merged_adata
 
-        for i, input_file in enumerate(input_files):
-            print(f'\nReading file {i+1}/{len(input_files)}: {os.path.basename(input_file)}', flush=True)
+        # Non-test: the 8 files merge to 13.8M+ cells, too large to QC in one shot
+        # (blew a 500GB node casting the sparse .data array during filter_cells).
+        # Return backed, formatted per-file adatas instead; main() runs
+        # basic_qc/annotate_celltypes one file at a time (each file is its own
+        # chunk, same idea as the generic bulk_group chunking below) and concats
+        # the much-smaller post-QC results.
+        adatas = []
+        for input_file in input_files:
             adata_temp = ad.read_h5ad(input_file, backed='r')
             adata_temp = format_data(adata_temp, dataset)
-            if run_test:
-                adata_temp = subset_to_test(adata_temp)
-            elif gene_names is not None:
-                # Filter to known genes before loading into memory (saves ~50% memory)
-                keep = adata_temp.var_names.isin(gene_names)
-                adata_temp = adata_temp[:, keep].to_memory()
-            else:
-                adata_temp = adata_temp.to_memory()
-
-            if merged_adata is None:
-                merged_adata = adata_temp
-            else:
-                merged_adata = ad.concat(
-                    [merged_adata, adata_temp],
-                    join='inner',
-                    merge='same'
-                )
-            print(f'Merged shape so far: {merged_adata.shape}', flush=True)
-            del adata_temp
-            gc.collect()
-
-        adata = merged_adata
-        print(f'\nFinal merged soundlife shape: {adata.shape}', flush=True)
+            adatas.append(adata_temp)
+        return adatas
 
     else:
         adata = ad.read_h5ad(file_name, backed='r')
@@ -95,21 +93,44 @@ def main(par):
     file_name = par['input_file']
 
     gene_names = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
-    adata = load_sc_data(file_name, dataset, par['run_test'], gene_names=gene_names)
 
-    if dataset == 'soundlife' or par['run_test']:
+    if dataset == 'soundlife' and not par['run_test']:
+        # Chunked by file (each SoundLife_*.h5ad is already a natural, memory-sized
+        # unit) instead of by bulk_group — see load_sc_data for why the upfront merge
+        # was dropped.
+        adatas = load_sc_data(file_name, dataset, par['run_test'], gene_names=gene_names)
+        n_groups = len(set().union(*(set(a.obs['bulk_group']) for a in adatas)))
+        print(f'Chunked loading: {len(adatas)} file(s), {n_groups} bulk_group(s) total', flush=True)
+
+        processed = []
+        for i, a in enumerate(adatas):
+            keep = a.var_names.isin(gene_names)
+            chunk = a[:, keep].to_memory()
+            print(f'File {i+1}/{len(adatas)}: {chunk.n_obs:,} cells loaded to memory', flush=True)
+            chunk = basic_qc(chunk, par['run_test'], n_groups=n_groups)
+            chunk = annotate_celltypes(chunk, dataset)
+            processed.append(chunk)
+            del chunk, a
+            gc.collect()
+
+        adata = ad.concat(processed, join='inner', merge='same')
+        del processed
+        gc.collect()
+    elif dataset == 'soundlife' or par['run_test']:
+        adata = load_sc_data(file_name, dataset, par['run_test'], gene_names=gene_names)
         adata = basic_qc(adata, par['run_test'])
         if dataset == 'soundlife':
             adata = adata[:, adata.var_names.isin(gene_names)].copy()
         adata = annotate_celltypes(adata, dataset)
     else:
+        adata = load_sc_data(file_name, dataset, par['run_test'], gene_names=gene_names)
         # Chunked loading: combine cell + gene masks into one backed slice per chunk
         # to avoid chained masking on backed objects (only one mask allowed).
         chunk_max = 500_000
         gene_mask = adata.var_names.isin(gene_names)
-        chunk_groups_list = _build_chunk_groups(
-            adata.obs['bulk_group'].value_counts(), chunk_max
-        )
+        group_sizes = adata.obs['bulk_group'].value_counts()
+        n_groups = group_sizes.size  # global count, so gene QC thresholds don't depend on chunk boundaries
+        chunk_groups_list = _build_chunk_groups(group_sizes, chunk_max)
         print(f'Chunked loading: {len(chunk_groups_list)} chunk(s), max {chunk_max:,} cells each', flush=True)
 
         processed = []
@@ -124,7 +145,7 @@ def main(par):
                 raw = raw.tocsr() if sp.issparse(raw) else sp.csr_matrix(raw)
                 chunk.X = raw.astype(np.int32)
                 del chunk.layers['counts']
-            chunk = basic_qc(chunk, par['run_test'])
+            chunk = basic_qc(chunk, par['run_test'], n_groups=n_groups)
             chunk = annotate_celltypes(chunk, dataset)
             if 'annotation_qc' in chunk.uns:
                 qc_reports.append(chunk.uns.pop('annotation_qc'))
@@ -145,8 +166,7 @@ def main(par):
     assert not adata.layers, "adata should not have any layers before writing"
     assert not isinstance(adata.X, np.ndarray), "adata.X should be sparse before writing"
     assert np.all(adata.X.data >= 0), "adata.X should contain raw counts (non-negative values)"
-    one_value = adata.X.data[0]
-    assert np.isclose(one_value % 1, 0), "adata.X should contain raw counts (integer values)"
+    assert np.all(np.isclose(adata.X.data % 1, 0)), "adata.X should contain raw counts (integer values)"
 
     adata.write_h5ad(f"{par['processed_files_dir']}/{dataset}.h5ad", compression='gzip')
     print(adata, flush=True)
