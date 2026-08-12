@@ -16,8 +16,24 @@ from hira.src.config import (
 def wrapper_predict_age(adata, cell_type, USE_LOCAL_CLOCK=USE_LOCAL_CLOCK, version=CLOCK_V):
     import sys
     sys.path.insert(0, '../GRNimmuneClock')
-    from grnimmuneclock import predict_age
-    adata = predict_age(adata, cell_type=cell_type, version=version)
+    from grnimmuneclock import retrieve_function
+    # ponytail: AgingClock/predict_age only support CD4T/CD8T (published models); local
+    # retrained clocks (CLOCKS_DIR) cover all MAJOR_CTS, so predict directly instead of
+    # going through AgingClock's restricted public API.
+    model, gene_names = retrieve_function(
+        cell_type=cell_type,
+        model_dir=CLOCKS_DIR if USE_LOCAL_CLOCK else None,
+        version=version,
+    )
+    adata_aligned = ad.AnnData(
+        X=pd.DataFrame(adata.X.toarray() if sparse.issparse(adata.X) else np.asarray(adata.X),
+                        columns=adata.var_names, index=adata.obs_names)
+          .reindex(columns=gene_names, fill_value=0).values,
+        obs=adata.obs,
+    )
+    adata.obs['predicted_age'] = model.predict(adata_aligned.X)
+    if 'age' in adata.obs.columns:
+        adata.obs['age_acceleration'] = adata.obs['predicted_age'] - adata.obs['age']
     return adata
 def wrapper_clock_predictions(cell_types, evaluate_datasets, data_type='bulk', condition=None, version=CLOCK_V):
     obs_store = []

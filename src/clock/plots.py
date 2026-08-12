@@ -357,7 +357,7 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, ctr, cond):
             # Group by donor_id, age_group, and condition - take median of age_residual
             obs_ct = obs_ct.groupby(['donor_id', 'age_group', 'condition'])['age_residual'].median().reset_index()
             # Use existing age_group column and map to pretty names
-            age_group_name_mapping = {'young': 'Young', 'old': 'Old'}
+            age_group_name_mapping = {'young': 'Young', 'old': 'Old', 'Young': 'Young', 'Old': 'Old'}
             obs_ct['age_bin'] = obs_ct['age_group'].map(age_group_name_mapping)
             # Set correct order: Young, Old
             age_bin_order = ['Young', 'Old']

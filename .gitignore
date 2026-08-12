@@ -12,6 +12,7 @@ target/
 out/
 local/
 datasets_raw/
+results_folder/
 state*
 trace*
 tw*

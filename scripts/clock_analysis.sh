@@ -3,7 +3,7 @@ set -e
 # Load repo-level config (HIRA_DIR, HIRA_BASE_DIR, ...) if present
 [ -f .env ] && set -a && source .env && set +a
 
-python src/feature_association/consensus_nets.py
+# python src/feature_association/consensus_nets.py
 
 echo "--------------------------------------------------------------train clocks--------------------------------------------------------------"
 python src/clock/run_train.py

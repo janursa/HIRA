@@ -456,6 +456,7 @@ DATASET_CONFIGS = {
     # ========== AGING DATASETS (Longitudinal) ==========
     "soundlife": ConditionConfig(
             name="soundlife",
+            condition_column='age_group',
             bulk_group=['donor_id', 'visitName'],
         )
 }

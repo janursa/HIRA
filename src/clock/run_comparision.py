@@ -4,7 +4,9 @@ import seaborn as sns
 from hira import MAJOR_CTS, CLOCKS_DIR, OUTPUT_DIR, PLOTS_DIR, surrogate_names, colors_blind
 from hira import wrapper_clock_predictions
 from hira.src.clock.plots import plot_scatter_age_vs_predictedAge
+from hira.src.utils.util import retrieve_adata
 from grnimmuneclock import evaluate_groupwise_median, train_aging_clock
+import anndata as ad
 
 
 W_train_datasets = ['abf300', 'onek1k'] # we only use these datasets for training for a fair comparision
@@ -23,10 +25,14 @@ def train_clocks():
         print(f"Training {cell_type} aging clock for Wenchao comparison")
         print(f"{'='*60}")
         
+        adata_train = ad.concat([
+            retrieve_adata(dataset=dataset, data_type=data_type, cell_type=cell_type, only_net_genes=True)
+            for dataset in W_train_datasets
+        ])
+
         model, predictions, adata_train = train_aging_clock(
+            adata=adata_train,
             cell_type=cell_type,
-            datasets=W_train_datasets,
-            data_type=data_type,
             reg_type=reg_type,
             tune_model=tune_model,
             output_dir=CLOCKS_DIR,

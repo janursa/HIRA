@@ -739,7 +739,13 @@ def main():
         required=True,
         help='Type of analysis: disease, perturbation, or aging'
     )
-    
+    parser.add_argument(
+        '--config-label',
+        type=str,
+        default=None,
+        help='Config label for datasets with multiple configurations (unused, kept for CLI compatibility)'
+    )
+
     # Analysis parameters
     parser.add_argument(
         '--cell-types',

@@ -87,8 +87,10 @@ def gsea(features_dict):
 def plot_feature_values(cell_type, features, feature_type, dataset='data1', ax=None, show_cbar=True, data_type='bulk', show_ylabels=True):
     from hira.src.feature_association.helper import retrieve_feature_data, bin_feature_values
     from hira.src.feature_association.plots import heatplot_age_trend
-       
-    adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, data_type=data_type, feature_type=feature_type) 
+
+    # ponytail: only bulk+major callers exist here, so feature_type maps 1:1 to these analysis names
+    analysis_name = {'gene_expression': 'ge_major_b', 'tf_activity': 'tfa_major_b'}[feature_type]
+    adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, analysis_name=analysis_name)
     # print(features)
     # aaa
     adata = adata[:, adata.var_names.isin(features)]
@@ -161,11 +163,11 @@ def wrapper_trend(top_features_dict, top_feature_values_dict, feature_type, data
         # plot these tfs in natural aging
         if feature_type == 'tf_activity':
             from hira.src.feature_association.plots import plot_features_vs_datasets
-            aa = plot_features_vs_datasets(cell_type=cell_type, features=features, feature_type=feature_type, sizes=(90, 100))
+            aa = plot_features_vs_datasets(cell_type=cell_type, features=features, analysis_name='tfa_major_b', sizes=(90, 100))
 def plot_coeff():
     from grnimmuneclock import retrieve_function
     for cell_type in MAJOR_CTS:
-        model, gene_names = retrieve_function(cell_type=cell_type, use_local_clocks=USE_LOCAL_CLOCK, version=CLOCK_V)
+        model, gene_names = retrieve_function(cell_type=cell_type, model_dir=CLOCKS_DIR if USE_LOCAL_CLOCK else None, version=CLOCK_V)
         coefs = model.named_steps["ridge"].coef_
         abs_coefs = np.abs(coefs)
         sorted_abs_coefs = np.sort(abs_coefs)[::-1]
@@ -190,7 +192,7 @@ def tf_act_analysis(n_features=5):
     top_tfs_dict = {}
     top_acts_dict = {}
     for cell_type in ['CD8T', 'CD4T']:
-        model, gene_names = retrieve_function(cell_type=cell_type, use_local_clocks=USE_LOCAL_CLOCK, version=CLOCK_V)
+        model, gene_names = retrieve_function(cell_type=cell_type, model_dir=CLOCKS_DIR if USE_LOCAL_CLOCK else None, version=CLOCK_V)
         coefs = model.named_steps["ridge"].coef_
         
         abs_coefs = np.abs(coefs)
