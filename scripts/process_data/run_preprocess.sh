@@ -70,6 +70,7 @@ else
 fi
 
 PROCESSED_FILES_DIR="${MAIN_DIR}/datasets/sc/"
+mkdir -p "${MAIN_DIR}/datasets/sc" "${MAIN_DIR}/datasets/bulk" "${MAIN_DIR}/datasets/bulk_minor"
 
 if [ "$RUN_PROCESS_DATASET" = true ]; then
         args="--dataset $dataset --processed_files_dir $PROCESSED_FILES_DIR --input_file $input_file"

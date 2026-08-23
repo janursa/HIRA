@@ -16,6 +16,8 @@ set -e
 # Load repo-level config (HIRA_DIR, HIRA_BASE_DIR, ...) if present
 [ -f .env ] && set -a && source .env && set +a
 
+mkdir -p "$(python -c "import sys; sys.path.insert(0, 'src'); from config import PLOTS_DIR; print(PLOTS_DIR)")"
+
 echo "---------------------------------------------------------- Consensus networks -----------------------------------------------------------------"
 python src/feature_association/consensus_nets.py
 

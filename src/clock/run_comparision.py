@@ -57,7 +57,7 @@ def extract_w_results():
     return median_prediction
 if __name__ == "__main__":
     test_datasets = ['perez_sle', 'aida']
-    # train_clocks()
+    train_clocks()
     W_median_prediction = extract_w_results()
     predictions_all = wrapper_clock_predictions(MAJOR_CTS, evaluate_datasets=test_datasets, version=version)
     test_predictions = predictions_all[predictions_all['condition']=='healthy'] # only healthy samples?
