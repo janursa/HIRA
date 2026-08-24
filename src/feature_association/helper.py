@@ -634,24 +634,46 @@ def associate_with_condition(adata, config, test_type=None):
     return stats
 
 
+def aggregate_tf_activity_per_donor(tf_acts_cell, bulk_group):
+    # per-cell ULM scores -> per-donor median, to avoid the pseudobulk cell_count/dropout confound
+    group_cols = [c for c in bulk_group if c != 'cell_type']
+    obs = tf_acts_cell.obs
+    group_key = obs[group_cols].astype(str).agg('_'.join, axis=1)
+
+    df = tf_acts_cell.to_df()
+    donor_median = df.groupby(group_key.values).median()
+
+    cell_count = group_key.value_counts().rename('cell_count')
+    keep_obs_cols = list(dict.fromkeys(group_cols + ['age', 'condition', 'dataset']))
+    donor_obs = obs[keep_obs_cols].copy()
+    donor_obs['group'] = group_key.values
+    donor_obs = donor_obs.drop_duplicates('group').set_index('group').join(cell_count)
+    donor_obs = donor_obs.loc[donor_median.index]
+
+    var = pd.DataFrame({'source': donor_median.columns}, index=donor_median.columns)
+    return ad.AnnData(X=donor_median.values, obs=donor_obs, var=var)
+
 def wrapper_tf_activity(analysis_name, par):
     print('Loading data...')
     cell_types = par['cell_types']
     datasets = par['datasets']
     condition = par.get('condition', None)
     promotor_only = par['promotor_only']
-    
+
     print('Calculating TF activity...')
     print(f'  - Promotor-based only: {promotor_only}')
 
     config = get_config_fa(analysis_name)
     data_type = config['data_type']
     granularity = config['granularity']
+    per_donor_median = analysis_name in ['tfa_major_b', 'tfa_sub_b']
+    load_data_type = 'sc' if per_donor_median else data_type
     for dataset in datasets:
-        adata = retrieve_adata(dataset=dataset, data_type=data_type, condition=condition)
+        adata = retrieve_adata(dataset=dataset, data_type=load_data_type, condition=condition)
+        bulk_group = get_config(dataset).bulk_group
 
         for cell_type in tqdm(cell_types, desc='cell types'):
-            print(dataset, data_type)
+            print(dataset, load_data_type)
             adata_t = adata[adata.obs[granularity] == cell_type].copy()
             if len(adata_t) == 0:
                 print(f'No samples for {cell_type} in {dataset}, skipping TF activity calculation')
@@ -663,6 +685,8 @@ def wrapper_tf_activity(analysis_name, par):
             if adata_t.obs['condition'].value_counts().min() < 3:
                 continue
             tf_acts = calculate_tf_activity(adata_t, net)
+            if per_donor_median:
+                tf_acts = aggregate_tf_activity_per_donor(tf_acts, bulk_group)
             tf_acts.obs['dataset'] = dataset
             tf_acts.uns['dataset'] = dataset
             tf_acts = tf_acts[tf_acts.obs['age'].isna()==False] # there is a bug in the code that causes age to be NaN
