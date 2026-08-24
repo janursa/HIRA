@@ -10,6 +10,7 @@ import gc
 import scanpy as sc
 import anndata as ad
 from statsmodels.stats.multitest import multipletests
+import statsmodels.api as sm
 from hira.src.config import GRNS_DIR, get_config_fa, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, HIRA_DIR
 from tqdm import tqdm
 from hira.src.config import OUTPUT_DIR, FEATURES_DIR, FEATURE_DATA_DIR, CORR_THRESHOLD, TF_MIN_TARGET, FEATURE_TYPES, SUB_CT_LABEL, MAJOR_CT_LABEL
@@ -545,7 +546,7 @@ def wrapper_association_with_age_condition(analysis_name,
             # Determine statistics based on configuration
             if association_type == 'continous':
                 print('Aging analysis for', cell_type, 'in', dataset)
-                stats = association_with_age(adata, association_type='spearman')
+                stats = association_with_age(adata, association_type='linear')
                 stats['condition'] = condition
                 stats['comparison'] = 'aging'
             elif association_type == 'grouped':
@@ -1267,7 +1268,8 @@ def association_with_age(adata, association_type, gene_col='gene'):
         df = adata_sub.to_df()
         df = df.reset_index(drop=True)
         df['age'] = adata_sub.obs['age'].values
-        
+        df['cell_count'] = pd.to_numeric(adata_sub.obs['cell_count'].values, errors='coerce')
+
         # Remove NaN values (donors missing this feature/subtype)
         valid_mask = ~df[gene].isna()
         df = df[valid_mask]
@@ -1295,7 +1297,9 @@ def association_with_age(adata, association_type, gene_col='gene'):
             p_value, slope = 1.0, 0.0
         else:
             if association_type == 'linear':
-                slope, intercept, r_value, p_value, _ = linregress(ages, expression)
+                X = sm.add_constant(df[['age', 'cell_count']])
+                fit = sm.OLS(df[gene], X).fit()
+                slope, p_value = fit.params['age'], fit.pvalues['age']
             elif association_type == 'spearman':
                 slope, p_value = spearmanr(ages, expression)
             else:
