@@ -805,10 +805,6 @@ def metacellify_func(adata, target_size=15, cell_count_t=5, n_pcs=15, random_sta
     for covariate in covariates:
         adata.obs['group'] += '_' + adata.obs[covariate].astype(str)
 
-    adata_norm = adata.copy()
-    sc.pp.normalize_total(adata_norm, target_sum=1e4)
-    sc.pp.log1p(adata_norm)
-
     metacell_id = np.empty(adata.n_obs, dtype=object)
     for group, idx in adata.obs.groupby('group').indices.items():
         n_cells = len(idx)
@@ -817,9 +813,14 @@ def metacellify_func(adata, target_size=15, cell_count_t=5, n_pcs=15, random_sta
             # ponytail: too few cells to cluster meaningfully, one metacell per cell
             labels = np.arange(n_cells)
         else:
-            X = adata_norm.X[idx]
+            X = adata.X[idx]
             if sp.issparse(X):
                 X = X.toarray()
+            # normalize_total + log1p are per-cell, so doing them on the group slice is
+            # identical to normalizing the whole matrix, without the full-size copy
+            totals = X.sum(axis=1, keepdims=True)
+            totals[totals == 0] = 1
+            X = np.log1p(X * (1e4 / totals))
             n_comp = min(n_pcs, X.shape[0] - 1, X.shape[1])
             if n_comp >= 2:
                 X = PCA(n_components=n_comp, random_state=random_state).fit_transform(X)
@@ -827,7 +828,7 @@ def metacellify_func(adata, target_size=15, cell_count_t=5, n_pcs=15, random_sta
                 n_clusters=n_clusters, random_state=random_state, n_init=3
             ).fit_predict(X)
         metacell_id[idx] = [f'{group}_mc{l}' for l in labels]
-    del adata_norm; gc.collect()
+    gc.collect()
 
     adata.obs['metacell_id'] = pd.Categorical(metacell_id)
     adata_mc = sum_by(adata, 'metacell_id', unique_mapping=True)

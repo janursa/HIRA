@@ -4,7 +4,7 @@
 #SBATCH --error=logs/%j.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
-#SBATCH --time=20:00:00
+#SBATCH --time=40:00:00
 #SBATCH --mem=500GB
 #SBATCH --partition=cpu
 #SBATCH --mail-type=END,FAIL      
@@ -26,6 +26,7 @@ declare -A dependencies
 dependencies=(
     ["process_dataset"]="src/process_data/preprocess/script.py"
     ["bulkify_code"]="src/process_data/bulkify/script.py"
+    ["metacell_code"]="src/process_data/metacell/script.py"
 )
 
 # Import dataset name mapping from config.py (raw file key -> friendly name)
@@ -48,6 +49,7 @@ set -e
 RUN_TEST=false
 RUN_PROCESS_DATASET=true
 RUN_PSEUDOBULK=true
+RUN_METACELL=true
 MAIN_DIR=$(python -c "import sys; sys.path.insert(0, 'src'); from config import base_dir; print(base_dir)")
 
 # Root of the raw data lake (see README > Data Acquisition). Override with HIRA_RAW_DIR,
@@ -70,7 +72,7 @@ else
 fi
 
 PROCESSED_FILES_DIR="${MAIN_DIR}/datasets/sc/"
-mkdir -p "${MAIN_DIR}/datasets/sc" "${MAIN_DIR}/datasets/bulk" "${MAIN_DIR}/datasets/bulk_minor"
+mkdir -p "${MAIN_DIR}/datasets/sc" "${MAIN_DIR}/datasets/bulk" "${MAIN_DIR}/datasets/bulk_minor" "${MAIN_DIR}/datasets/metacell"
 
 if [ "$RUN_PROCESS_DATASET" = true ]; then
         args="--dataset $dataset --processed_files_dir $PROCESSED_FILES_DIR --input_file $input_file"
@@ -91,6 +93,7 @@ fi
 PROCESSED_DATASET_FILE="${MAIN_DIR}/datasets/sc/${mapped_name}.h5ad"
 BULK_ALL="${MAIN_DIR}/datasets/bulk/${mapped_name}.h5ad"
 BULK_MINOR_CELLTYPE="${MAIN_DIR}/datasets/bulk_minor/${mapped_name}.h5ad"
+METACELL_OUT="${MAIN_DIR}/datasets/metacell/${mapped_name}.h5ad"
 
 if [ "$RUN_PSEUDOBULK" = true ]; then
         DOWNSAMPLE=false
@@ -104,3 +107,10 @@ if [ "$RUN_PSEUDOBULK" = true ]; then
         $cmd
 fi
 
+if [ "$RUN_METACELL" = true ]; then
+        args="--sc_dataset_file $PROCESSED_DATASET_FILE --metacell_out $METACELL_OUT"
+        [ "$RUN_TEST" = true ] && args="${args} --run-test"
+        cmd="python ${dependencies["metacell_code"]} $args"
+        echo "Running (bash): $cmd"
+        $cmd
+fi

@@ -4,6 +4,7 @@ Stage 1 of scripts/process_data/run_preprocess.sh; see --help for arguments.
 Writes: <HIRA_BASE_DIR>/datasets/sc/<dataset>.h5ad
 """
 import anndata as ad
+import scanpy as sc
 import gc
 from hira.src.config import DATASET_NAME_MAPPING, get_config, MAJOR_CT_LABEL, PRIOR_DIR
 import argparse
@@ -111,7 +112,7 @@ def main(par):
             keep = a.var_names.isin(gene_names)
             chunk = a[:, keep].to_memory()
             print(f'File {i+1}/{len(adatas)}: {chunk.n_obs:,} cells loaded to memory', flush=True)
-            chunk = basic_qc(chunk, par['run_test'], n_groups=n_groups)
+            chunk = basic_qc(chunk, par['run_test'])
             chunk = annotate_celltypes(chunk, dataset)
             processed.append(chunk)
             del chunk, a
@@ -133,7 +134,6 @@ def main(par):
         chunk_max = 500_000
         gene_mask = adata.var_names.isin(gene_names)
         group_sizes = adata.obs['bulk_group'].value_counts()
-        n_groups = group_sizes.size  # global count, so gene QC thresholds don't depend on chunk boundaries
         chunk_groups_list = _build_chunk_groups(group_sizes, chunk_max)
         print(f'Chunked loading: {len(chunk_groups_list)} chunk(s), max {chunk_max:,} cells each', flush=True)
 
@@ -149,7 +149,7 @@ def main(par):
                 raw = raw.tocsr() if sp.issparse(raw) else sp.csr_matrix(raw)
                 chunk.X = raw.astype(np.int32)
                 del chunk.layers['counts']
-            chunk = basic_qc(chunk, par['run_test'], n_groups=n_groups)
+            chunk = basic_qc(chunk, par['run_test'])
             chunk = annotate_celltypes(chunk, dataset)
             if 'annotation_qc' in chunk.uns:
                 qc_reports.append(chunk.uns.pop('annotation_qc'))
@@ -165,6 +165,9 @@ def main(par):
             combined_qc = pd.concat([pd.DataFrame(r) for r in qc_reports], ignore_index=True)
             combined_qc.index = combined_qc.index.astype(str)
             adata.uns['annotation_qc'] = combined_qc.to_dict()
+
+    sc.pp.filter_genes(adata, min_counts=1)
+    print(f'Shape after gene filtering: {adata.shape}', flush=True)
 
     print(f"Writing processed data to {par['processed_files_dir']}/{dataset}.h5ad", flush=True)
     assert not adata.layers, "adata should not have any layers before writing"
