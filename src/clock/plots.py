@@ -414,8 +414,11 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, ctr, cond):
         # Use None for palette if config is provided (let seaborn auto-generate)
         palette_to_use = palette_disease
         
-        sns.barplot(data=plot_df_c, x='age_bin', y='age_residual', hue='condition', width=0.5,
-                    ax=ax, palette=palette_to_use, ci='sd', errorbar='sd', capsize=0.1, linewidth=.1, alpha=.8, errcolor='black', errwidth=1.5)
+        sns.stripplot(data=plot_df_c, x='age_bin', y='age_residual', hue='condition', dodge=True,
+                      ax=ax, palette=palette_to_use, size=3.5, alpha=.8, linewidth=.2, edgecolor='black', jitter=True)
+        sns.pointplot(data=plot_df_c, x='age_bin', y='age_residual', hue='condition', dodge=0.4,
+                      ax=ax, palette=palette_to_use, estimator=np.median, errorbar=None,
+                      linestyle='none', markers='_', markersize=14, markeredgewidth=2)
 
         # Correct for multiple testing
         corrected = multipletests([p for p in pvals if not np.isnan(p)], method='bonferroni')
@@ -432,11 +435,9 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, ctr, cond):
                     else:
                         star = '*'
 
-                    # Compute bracket height above error bars
+                    # Compute bracket height above the highest data point
                     group_data = plot_df[plot_df['age_bin'] == age_bin]
-                    group_means = group_data.groupby('condition')['age_residual'].mean()
-                    group_stds = group_data.groupby('condition')['age_residual'].std()
-                    y_max = (group_means + group_stds).max() + 2  # leave more space
+                    y_max = group_data['age_residual'].max() + 2  # leave more space
 
                     h = 1  # bracket height
                     bar_x1 = j - 0.2

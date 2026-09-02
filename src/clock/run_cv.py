@@ -1,11 +1,15 @@
+"""Leave-one-cohort-out CV of the trained clocks on CLOCK_TEST_COHORTS.
 
+Usage: python src/clock/run_cv.py   (needs run_train.py first)
+Writes: PLOTS_DIR/ scatter of actual vs predicted age, per cohort and cell type
+"""
 import pandas as pd
 from scipy.stats import spearmanr
 import matplotlib.pyplot as plt
 import seaborn as sns
 from hira.src.clock.plots import plot_scatter_age_vs_predictedAge
 from sklearn.metrics import r2_score
-from hira import CLOCK_TEST_COHORTS, wrapper_clock_predictions, PLOTS_DIR, MAJOR_CTS, surrogate_names, palette_datasets_pretty, colors_blind
+from hira import CLOCK_TEST_COHORTS, wrapper_clock_predictions, CLOCK_PLOTS_DIR as PLOTS_DIR, MAJOR_CTS, surrogate_names, palette_datasets_pretty, colors_blind
 
 obs = wrapper_clock_predictions(MAJOR_CTS, CLOCK_TEST_COHORTS, condition='healthy')
 

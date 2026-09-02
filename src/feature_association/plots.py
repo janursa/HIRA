@@ -17,7 +17,7 @@ from scipy.cluster.hierarchy import linkage
 from matplotlib.patches import Patch
 
 
-from hira.src.config import FEATURES_DIR, MAJOR_CT_LABEL, PRIOR_DIR, MAJOR_CTS, SUB_CTS , PLOTS_DIR, colors_blind, DISCOVERY_COHORTS, \
+from hira.src.config import FEATURES_DIR, MAJOR_CT_LABEL, PRIOR_DIR, MAJOR_CTS, SUB_CTS , PLOTS_DIR, AGING_PLOTS_DIR, colors_blind, DISCOVERY_COHORTS, \
     surrogate_names, palette_datasets, palette_trend, palette_datasets_pretty, mapping_minor_2_major, \
     palette_trend_2, palette_major_cts, palette_sub_cts, palette_datasets, palette_trend_2, colors_blind, \
         get_config_fa, cmap_trend
@@ -48,7 +48,7 @@ def wrapper_sig_features_counts(args):
     
     feature_type = get_config_fa(args.analysis_name)['feature_type']
     plt.ylabel('Significant TFs' if feature_type == 'tf_activity' else 'Significant features')
-    file_name = f"{PLOTS_DIR}/aging_features_count_{args.analysis_name}.png"
+    file_name = f"{AGING_PLOTS_DIR}/aging_features_count_{args.analysis_name}.png"
     print(f"Saving figure to {file_name}")
     plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
 
@@ -85,7 +85,13 @@ def plot_aging_overlap(analysis_name, stats_sig, cell_types, args):
             
             # Get aging data for this cell type (keep cell_type column for plot_overlap)
             aging_stats_sig_ct = aging_stats_sig[aging_stats_sig['cell_type'] == cell_type][['gene', 'cell_type', 'slope']].copy()
-            
+
+            if len(aging_stats_sig_ct) == 0:
+                # ponytail: no significant aging TFs for this cell type -> nothing to overlap/plot
+                print(f"    Warning: No aging reference data for {cell_type}")
+                ax.axis('off')
+                continue
+
             # Merge aging slopes with condition slopes
             merged = aging_stats_sig_ct[['gene', 'slope']].merge(
                 stats_sig_sub_renamed, 
@@ -124,7 +130,7 @@ def plot_aging_overlap(analysis_name, stats_sig, cell_types, args):
         comparison = comparison.replace('(', '_').replace(')', '_').replace(':', '_').replace(' ', '_')
         name_suffix = f'{dataset}_{comparison}'
         plt.tight_layout()
-        output_path = os.path.join(output_dir, f'ref_overlap_{name_suffix}_{args.feature_type}.png')
+        output_path = os.path.join(output_dir, f'ref_overlap_{name_suffix}_{args.feature_type}_{analysis_name}.png')
         output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
         plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
@@ -139,7 +145,7 @@ def plot_directional_consistency_scatter(
                                         agreement='same',
                                         label_consistent = 'Consistent',
                                         label_opposing = 'Opposing',
-                                        output_dir = FEATURES_DIR,
+                                        output_dir = PLOTS_DIR,
                                         save_suffix = '',
                                         pvalue_col='p_value_adj'
                                         ):
@@ -454,12 +460,12 @@ def plot_scatter_feature_vs_age(
         _plot_scatter_feature_vs_age(
             features=selected_features, analysis_name=analysis_name, cell_type=cell_type, datasets=datasets)
         tag = 'custom' if features is not None else ('top_central' if feature_selection_mode == 'top_central' else 'top_sig') 
-        file_name = f"{PLOTS_DIR}/scatter_feature_vs_age_{analysis_name}_{cell_type}_{tag}.png"
+        file_name = f"{AGING_PLOTS_DIR}/scatter_feature_vs_age_{analysis_name}_{cell_type}_{tag}.png"
         print(f"Saving figure to {file_name}")
         plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
 def plot_young_vs_aging(analysis_name, cell_type, 
-                        young_age_threshold=30, annotate_top_n=10, plots_dir=PLOTS_DIR):
+                        young_age_threshold=30, annotate_top_n=10, plots_dir=AGING_PLOTS_DIR):
     """
     Plot mean feature values in young adults (< age threshold) vs aging slope.
 
@@ -575,7 +581,7 @@ def gsea_analysis(stats_sig):
     from hira.src.pathway_analysis.util import get_genesets, pathway_kde_func, get_hallmark, gsea_func, wrapper_gsea
 
     wrapper_gsea(stats_sig)
-    file_name = f"{PLOTS_DIR}/gsea_tf_activity.png"
+    file_name = f"{AGING_PLOTS_DIR}/gsea_tf_activity.png"
     print(f"Saving figure to {file_name}")
     plt.savefig(file_name, bbox_inches='tight', dpi=200)
 def plot_heatmap_overal(stats_aging, analysis_name):
@@ -596,10 +602,10 @@ def plot_heatmap_overal(stats_aging, analysis_name):
                         trend_names = trends,
                         figsize=(4, 7),
                         map_names={**{'cell_type':'Cell type', 'dataset': 'Dataset'}, **surrogate_names})
-    file_name = f"{PLOTS_DIR}/overall_heatmap_{analysis_name}.png"
+    file_name = f"{AGING_PLOTS_DIR}/overall_heatmap_{analysis_name}.png"
     print(f"Saving figure to {file_name}")
     plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
-def plot_central_features(stats_aging, cell_types):
+def plot_central_features(stats_aging, cell_types, analysis_name):
     if True:
         # Parameters
         n_top = 10
@@ -646,7 +652,7 @@ def plot_central_features(stats_aging, cell_types):
             ax.spines[['top', 'right']].set_visible(False)
             i+=1
         fig.tight_layout()
-        file_name = os.path.join(PLOTS_DIR, f'central_aging_{focus}.png')
+        file_name = os.path.join(AGING_PLOTS_DIR, f'central_aging_{focus}_{analysis_name}.png')
         print(f"Saving figure to {file_name}")
         plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
 def plot_interaction_of_features_between_cell_types(args):
@@ -659,7 +665,7 @@ def plot_interaction_of_features_between_cell_types(args):
     df_dict = stats_sig.groupby(['cell_type'])['gene'].apply(list).to_dict()
     interaction_main_df = create_interaction_df(df_dict)
     aa = plot_interactions(interaction_main_df, min_subset_size=5, min_degree=1, color_map=palette_major_cts)
-    file_name = f"{PLOTS_DIR}/interactions.png"
+    file_name = f"{AGING_PLOTS_DIR}/interactions_{args.analysis_name}.png"
     print(f"Saving figure to {file_name}")
     plt.savefig(file_name, dpi=300, transparent=True, bbox_inches='tight')
     # plt.title(surrogate_names[race], pad=40, fontsize=10, fontweight='bold')
@@ -713,7 +719,7 @@ def plot_case_tf(args):
                                                 datasets=datasets, show_cbar=show_cbar, ax=ax, show_ylabels=show_ylabels)
             
             plt.suptitle(f'{cell_type}', y=1.05)
-            file_name = f"{PLOTS_DIR}/case_tf_{case_tf}_{cell_type}.png"
+            file_name = f"{AGING_PLOTS_DIR}/case_tf_{case_tf}_{cell_type}_{args.analysis_name}.png"
             print(f"Saving figure to {file_name}")
             plt.savefig(file_name, bbox_inches='tight', dpi=300)
 
@@ -1081,7 +1087,7 @@ def plot_features_vs_datasets(cell_type,
                               filter_significant=True, 
                               features_dir=None,
                               show_size_legend=False,
-                              plots_dir=PLOTS_DIR,
+                              plots_dir=AGING_PLOTS_DIR,
                               grns_dir=None,
                               ):
 
@@ -1136,8 +1142,9 @@ def plot_features_vs_datasets(cell_type,
     stats_t['dataset'] = stats_t['dataset'].apply(lambda name: surrogate_names.get(name, name))
 
     if stats_t.shape[0]==0:
-        raise ValueError(f'No data for {cell_type} {feature_type}')
-        
+        print(f'No data for {cell_type} {feature_type}, skipping plot_features_vs_datasets')
+        return
+
     # Calculate automated layout parameters
     n_features = len(features)
     # Use logarithmic scaling for many features - more generous spacing (looser)
@@ -1322,7 +1329,7 @@ def plot_features_vs_datasets(cell_type,
         wspace=wspace
     )
     if os.path.exists(plots_dir):
-        file_name = f'{plots_dir}/feature_vs_datasets_{cell_type}_{feature_type}.png'
+        file_name = f'{plots_dir}/feature_vs_datasets_{cell_type}_{feature_type}_{analysis_name}.png'
         plt.savefig(file_name, dpi=300, bbox_inches='tight')
         print(f'Saved figure to {file_name}')
     else:

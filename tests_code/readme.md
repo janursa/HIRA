@@ -1,15 +1,14 @@
-# tests/
+# tests_code/
 
 Regression + determinism checks for the pipeline, split one folder per stage. Each stage does
 two checks against a fixture committed via git-lfs: matches_baseline() (rerun vs committed
-baseline) and is_deterministic() (two reruns diffed against each other). See `reproducibility.md`
-at repo root for the design rationale. `_repro_utils.py` (shared helpers: diffing, csv/adata
-comparison, sandboxed subprocess runner) lives once at the tests/ root, not per-folder — pytest
+baseline) and is_deterministic() (two reruns diffed against each other). `_repro_utils.py` (shared helpers: diffing, csv/adata
+comparison, sandboxed subprocess runner) lives once at the tests_code/ root, not per-folder — pytest
 caches same-named modules by basename when there's no `__init__.py`, so per-folder copies
 silently collided when all four stages were collected together in one run.
 
 ```
-tests/
+tests_code/
 ├── _repro_utils.py                      shared helpers used by every stage below
 ├── preprocessing/                       raw-data freshness + preprocessing stage
 │   ├── fixtures/

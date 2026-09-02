@@ -93,19 +93,18 @@ def sparse_corrcoef(A, B=None):
     return coeffs
 
 
-def main(expression_sample, gene_names, weight_t):
-    net = infer_grn(expression_sample, gene_names, p_value_filter=True) 
-    if False:
-        net = net[net['weight'].abs() > weight_t]
+def main(expression_sample, gene_names):
+    net = infer_grn(expression_sample, gene_names, p_value_filter=True)
 
     tf_all = np.loadtxt(f"{PRIOR_DIR}/tf_all.csv", dtype=str)
     net = net[net['source'].isin(tf_all)]
-    
-    if True:
-        skeleton = pd.read_csv(f'{PRIOR_DIR}/skeleton_promotor.csv')
-        net['edge'] = net['source'] + '_' + net['target']
-        net['promotor_based'] = net['edge'].isin(skeleton['edge'])
-        net = net.drop('edge', axis=1)
+
+    # Annotate motif support; filtering on it is a load-time choice (see retrieve_net).
+    net['edge'] = net['source'] + '_' + net['target']
+    for col, fname in [('promotor_based', 'skeleton_promotor.csv'), ('skeleton_based', 'skeleton_atac.csv')]:
+        skeleton = pd.read_csv(f'{PRIOR_DIR}/{fname}', usecols=['edge'])
+        net[col] = net['edge'].isin(skeleton['edge'])
+    net = net.drop('edge', axis=1)
 
     return net
 

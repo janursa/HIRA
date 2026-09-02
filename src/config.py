@@ -1,8 +1,8 @@
 
 """
-Configuration for condition-based analyses (disease and perturbation).
-This module centralizes all dataset-specific configurations to eliminate
-code duplication between disease and perturbation analyses.
+Central configuration for the whole pipeline: directory layout (from the HIRA_DIR /
+HIRA_BASE_DIR / HIRA_RAW_DIR env vars), cohort lists, cell-type maps, per-analysis
+settings (CONFIG_FA, get_config), clock settings, and plotting palettes.
 """
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Literal
@@ -33,6 +33,12 @@ GRNS_DIR = f'{OUTPUT_DIR}/grns'
 FEATURES_DIR = f'{OUTPUT_DIR}/features/'
 CLOCKS_DIR = f"{OUTPUT_DIR}/clock/"
 PLOTS_DIR = f"{OUTPUT_DIR}/plots/"
+CLOCK_PLOTS_DIR = f"{PLOTS_DIR}clock/"
+AGING_PLOTS_DIR = f"{PLOTS_DIR}aging/"
+CONDITION_PLOTS_DIR = f"{PLOTS_DIR}condition/"
+COMPARISON_PLOTS_DIR = f"{PLOTS_DIR}comparisons/"
+for _d in (CLOCK_PLOTS_DIR, AGING_PLOTS_DIR, CONDITION_PLOTS_DIR, COMPARISON_PLOTS_DIR):
+    os.makedirs(_d, exist_ok=True)
 
 CLOCK_V = 'V1'
 USE_LOCAL_CLOCK = True  # If True, use clocks saved in CLOCKS_DIR;
@@ -82,7 +88,9 @@ mapping_minor_2_major = {
 SUB_CTS = list(mapping_minor_2_major.keys())
 MAJOR_CTS = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
 CONFIG_FA = {
-    'tfa_major_b': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL}, 
+    'tfa_major_b': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL},
+    'tfa_major_sc': {'data_type': 'sc', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL},
+    'tfa_major_mc': {'data_type': 'metacell', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL},
     'tfa_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'tf_activity', 'granularity': SUB_CT_LABEL},
     'ct_tf_markers': {'data_type': 'sc', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL, 
                         'trend_labels': ['Higher in this group', 'Lower in this group'],
@@ -96,7 +104,9 @@ CONFIG_FA = {
     'ccc_major_b': {'data_type': 'sc', 'feature_type': 'cc_interaction', 'granularity': MAJOR_CT_LABEL, 'cell_types': ['all']},
 }
 ANALYSIS_DEF = {
-    'tfa_major_b': 'TF activity features from major cell type analysis',
+    'tfa_major_b': 'TF activity features from major cell type analysis (sc data, per-donor median aggregation)',
+    'tfa_major_sc': 'TF activity features from major cell type analysis (sc data, per-donor median aggregation) - alias of tfa_major_b under a consistent name',
+    'tfa_major_mc': 'TF activity features from major cell type analysis (metacell pseudobulk, no per-donor median)',
     'tfa_sub_b': 'TF activity features from sub cell type analysis',
     'ct_tf_markers': 'TF markers for each sub cell types',
     'ge_major_b': 'Gene expression features from major cell type analysis',
@@ -132,6 +142,10 @@ CLOCK_TEST_COHORTS = [
                 # 'abf300'
                 ]
 NET_WEIGHT_THRESHOLD = None  # 0.05 # Minimum absolute weight for edges in GRN 
+# Motif-support pruning at load time. Applied before NET_MAX_SIZE, so the truncation
+# keeps the strongest *supported* edges. 'skeleton' = ATAC+motif (skeleton_atac.csv),
+# 'promotor' = promoter motifs only, None = no pruning.
+NET_SKELETON = 'skeleton'  # 'skeleton' | 'promotor' | None
 NET_MAX_SIZE = 100_000
 CLOCK_CV_SCORING = 'spearman'  # 'r2' or 'spearman'
 TUNE_CLOCK = True

@@ -5,7 +5,7 @@
 #
 # Usage: bash scripts/prior/acquire.sh <file>
 # Files: gene_names aging_hallmark_genes disease_gene_association skeleton_promotor
-#        collectri tf_all hallmark essential_genes gene_aging_mechanisms
+#        skeleton_atac collectri tf_all hallmark essential_genes gene_aging_mechanisms
 
 set -e
 
@@ -29,6 +29,20 @@ case "$file" in
     ;;
   skeleton_promotor)
     python3 src/process_data/prior/build_skeleton_promotor.py
+    ;;
+  skeleton_atac)
+    # ATAC+motif skeleton (OP PBMC multiome). Rebuilding needs scglue + a GPU node:
+    #   singularity exec --nv /home/jnourisa/projs/images/scglue \
+    #     python3 src/process_data/prior/build_skeleton_atac.py --dataset op
+    # The built file already exists upstream, so copy it and add the `edge` column.
+    python3 -c "
+import sys, pandas as pd
+sys.path.insert(0, 'src'); from config import PRIOR_DIR
+d = pd.read_csv('${TASK_GRN_REPO}/resources/grn_benchmark/prior/skeleton_op.csv', index_col=0)
+d = d[['source', 'target']].drop_duplicates()
+d['edge'] = d['source'] + '_' + d['target']
+d.to_csv(f'{PRIOR_DIR}/skeleton_atac.csv', index=False)
+"
     ;;
   collectri)
     python3 -c "from hira.src.utils.util import flesh_out_collectri; flesh_out_collectri()"
@@ -55,7 +69,7 @@ copy at ${PRIOR_DIR}/gene-aging-mechanisms.tsv
 EOF
     ;;
   *)
-    echo "Usage: bash scripts/prior/acquire.sh <gene_names|aging_hallmark_genes|disease_gene_association|skeleton_promotor|collectri|tf_all|hallmark|essential_genes|gene_aging_mechanisms>"
+    echo "Usage: bash scripts/prior/acquire.sh <gene_names|aging_hallmark_genes|disease_gene_association|skeleton_promotor|skeleton_atac|collectri|tf_all|hallmark|essential_genes|gene_aging_mechanisms>"
     exit 1
     ;;
 esac

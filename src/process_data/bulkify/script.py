@@ -1,3 +1,8 @@
+"""Pseudobulk an annotated single-cell dataset per donor x cell type.
+
+Stage 2 of scripts/process_data/run_preprocess.sh; see --help for arguments.
+Writes: <HIRA_BASE_DIR>/datasets/{bulk,bulk_minor}/<dataset>.h5ad
+"""
 import scanpy as sc
 import argparse
 import anndata as ad

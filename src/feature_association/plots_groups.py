@@ -19,7 +19,7 @@ from hira.src.feature_association.plots import (
     
 )
 from hira import retrieve_sig_stats, retrieve_stats, mapping_minor_2_major
-from hira.src.config import get_config_fa, get_config, MAJOR_CTS
+from hira.src.config import get_config_fa, get_config, MAJOR_CTS, AGING_PLOTS_DIR
 
 
 def wrapper_plots_tfa_major_b_aging(args, stats_features, stats_features_sig, skip_pathway):
@@ -29,7 +29,7 @@ def wrapper_plots_tfa_major_b_aging(args, stats_features, stats_features_sig, sk
     plot_scatter_feature_vs_age(analysis_name, cell_types=['CD8T', 'CD4T'])
     plot_heatmap_overal(stats_features, analysis_name=args.analysis_name)
     wrapper_sig_features_counts(args)
-    plot_central_features(stats_features_sig, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'])
+    plot_central_features(stats_features_sig, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'], analysis_name=analysis_name)
     plot_interaction_of_features_between_cell_types(args)
     plot_case_tf(args)
     if not skip_pathway:
@@ -57,7 +57,8 @@ def wrapper_plots_tfa_sub_b_aging(args, stats_features, stats_features_sig, skip
         label_consistent='Consistent',
         label_opposing='Opposing',
         save_suffix='sub_vs_major_aging',
-        pvalue_col='meta_p_adj'
+        pvalue_col='meta_p_adj',
+        output_dir=AGING_PLOTS_DIR
     )
 
 
@@ -86,7 +87,8 @@ def wrapper_plots_ct_tf_markers_aging(args, stats_features, stats_features_sig, 
         label_consistent='Consistent',
         label_opposing='Opposing',
         save_suffix='',
-        pvalue_col='meta_p_adj'
+        pvalue_col='meta_p_adj',
+        output_dir=AGING_PLOTS_DIR
     )
 
 
@@ -113,7 +115,8 @@ def wrapper_plots_tfa_peg_aging(args, stats_features, stats_features_sig, skip_p
         label_consistent='Consistent',
         label_opposing='Opposing',
         save_suffix='',
-        pvalue_col='meta_p_adj'
+        pvalue_col='meta_p_adj',
+        output_dir=AGING_PLOTS_DIR
     )
 
 
@@ -175,14 +178,15 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
         plot_directional_consistency_scatter(
             stats, 
             stats_ref=retrieve_sig_stats(analysis_name=analysis_name),
-            save_suffix=args.dataset,
+            save_suffix=f'{args.dataset}_{analysis_name}',
             x_label='Validation analysis \n(significance)',
             y_label='Discovery analysis \n(significance)',
             agreement='same',
             label_consistent='Consistent',
-            label_opposing='Opposing'
+            label_opposing='Opposing',
+            output_dir=args.output_dir
         )
-    
+
     elif dataset == 'perez_sle':
         age_group = 'Both age groups'
         stats_sub = stats_sig[stats_sig['age_group']==age_group]
@@ -199,14 +203,15 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
         plot_directional_consistency_scatter(
             stats_sub[stats_sub['cell_type'].isin(cell_types)], 
             stats_ref=retrieve_sig_stats(analysis_name=analysis_name),
-            save_suffix=args.dataset,
+            save_suffix=f'{args.dataset}_{analysis_name}',
             x_label=f'SLE \n(significance)',
             y_label='Natural aging \n(significance)',
             agreement='same',
             label_consistent='Acceleration',
-            label_opposing='Rejuvenation'
+            label_opposing='Rejuvenation',
+            output_dir=args.output_dir
         )
-        
+
         wrapper_plot_central_tfs_condition(stats, group_col='age_group', cell_types=cell_types, args=args)
         if analysis_name == 'tfa_major_b':
             cell_type = 'CD8T'
@@ -232,13 +237,14 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
         config = get_config(dataset=args.dataset)
         plot_directional_consistency_scatter(
             stats_sig[stats_sig['cell_type'].isin(['CD4T', 'CD8T'])], 
-            stats_ref=retrieve_sig_stats(analysis_name='tfa_major_b'),
-            save_suffix=args.dataset,
+            stats_ref=retrieve_sig_stats(analysis_name=analysis_name),
+            save_suffix=f'{args.dataset}_{analysis_name}',
             x_label=f'{config.treatment_groups[1]} \n(significance)',
             y_label='Natural aging \n(significance)',
             agreement='opposite',
             label_consistent='Acceleration',
-            label_opposing='Rejuvenation'
+            label_opposing='Rejuvenation',
+            output_dir=args.output_dir
         )
         wrapper_plot_central_tfs_condition(stats, group_col='comparison', cell_types=selected_cell_types, args=args)
         if not args.skip_pathway:
@@ -253,32 +259,34 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
 
         wrapper_plot_central_tfs_condition(stats, group_col='comparison', cell_types=['CD4T'], args=args)
         plot_ctr_condition_donor_level(args, cell_types=['CD4T']) 
-        stats_aging = retrieve_sig_stats(analysis_name='tfa_major_b').drop_duplicates(subset=['cell_type', 'gene'])
+        stats_aging = retrieve_sig_stats(analysis_name=analysis_name).drop_duplicates(subset=['cell_type', 'gene'])
         config = get_config(dataset=args.dataset)
         plot_directional_consistency_scatter(
             stats_sig[stats_sig['cell_type'].isin(['CD4T', 'CD8T'])], 
             stats_ref=stats_aging,
-            save_suffix=args.dataset,
+            save_suffix=f'{args.dataset}_{analysis_name}',
             x_label=f'{config.treatment_groups[1]} \n(significance)',
             y_label='Natural aging \n(significance)',
             agreement='opposite',
             label_consistent='Acceleration',
-            label_opposing='Rejuvenation'
+            label_opposing='Rejuvenation',
+            output_dir=args.output_dir
         )
-    
+
     elif dataset == 'CXCL9':
         args.case_tfs = ['STAT1', 'BATF'] 
         for comparison in stats['comparison'].unique():
             stats_sub = stats[stats['comparison']==comparison]
             plot_directional_consistency_scatter(
                 stats_sub[stats_sub['cell_type'].isin(['CD4T', 'CD8T'])], 
-                stats_ref=retrieve_sig_stats(analysis_name='tfa_major_b'),
-                save_suffix=f"{args.dataset}_f_{comparison.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')}",
+                stats_ref=retrieve_sig_stats(analysis_name=analysis_name),
+                save_suffix=f"{args.dataset}_f_{comparison.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')}_{analysis_name}",
                 x_label=f'{comparison} \n(significance)',
                 y_label='Natural aging \n(significance)',
                 agreement='opposite',
                 label_consistent='Acceleration' if comparison != 'LPS \n (ctr: RPMI)' else 'Age deceleration',
                 label_opposing='Rejuvenation' if comparison != 'LPS \n (ctr: RPMI)' else 'Age deceleration',
+                output_dir=args.output_dir
             )
             plot_ctr_condition_donor_level(args, cell_types=['CD4T']) 
 

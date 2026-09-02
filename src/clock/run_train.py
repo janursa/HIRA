@@ -1,4 +1,8 @@
+"""Train the per-cell-type aging clocks on CLOCK_TRAINING_COHORTS (bulk, ridge).
 
+Usage: python src/clock/run_train.py
+Writes: CLOCKS_DIR/<cell_type>/ (one model per MAJOR_CTS entry, version CLOCK_V)
+"""
 import anndata as ad
 from grnimmuneclock import train_aging_clock
 from hira import MAJOR_CTS, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK

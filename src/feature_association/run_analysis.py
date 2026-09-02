@@ -43,7 +43,7 @@ def define_cell_types(analysis_name, user_cell_types=None):
 
 def calculate_features(analysis_name, par):
     """Calculate features based on type."""
-    if analysis_name in ['tfa_major_b', 'tfa_sub_b']:
+    if analysis_name in ['tfa_major_b', 'tfa_sub_b', 'tfa_major_mc', 'tfa_major_sc']:
         wrapper_tf_activity(analysis_name, par)
     elif analysis_name in ['ge_sub_b', 'ge_major_b']:
         pass

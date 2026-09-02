@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_DIR = Path(__file__).resolve().parents[2]
+REPO_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_DIR.parent))              # `import hira` -> this repo
 sys.path.insert(0, str(REPO_DIR / 'GRNimmuneClock'))   # `import grnimmuneclock`
 
@@ -45,21 +45,25 @@ from hira.src.utils.util import test_unpaired as run_unpaired_test, test_mixed_e
 from hira.src.config import get_config
 from grnimmuneclock import AgingClock
 
+# Which TF-activity analysis these claims are checked against (tfa_major_b/tfa_major_mc/tfa_major_sc).
+# Override with: TFA_ANALYSIS_NAME=tfa_major_b pytest -s tests_code/test_manuscript_claims.py
+ANALYSIS_NAME = os.environ.get('TFA_ANALYSIS_NAME', 'tfa_major_mc')
+
 
 @lru_cache(maxsize=None)
 def sig_stats():
     """Age-associated TFs (multi-cohort discovery), as used to make Fig 2A-B."""
-    return retrieve_sig_stats(analysis_name='tfa_major_b')
+    return retrieve_sig_stats(analysis_name=ANALYSIS_NAME)
 
 
 @lru_cache(maxsize=None)
 def all_stats():
-    return retrieve_stats(analysis_name='tfa_major_b')
+    return retrieve_stats(analysis_name=ANALYSIS_NAME)
 
 
 @lru_cache(maxsize=None)
 def soundlife_stats():
-    return retrieve_stats(analysis_name='tfa_major_b', dataset='soundlife')
+    return retrieve_stats(analysis_name=ANALYSIS_NAME, dataset='soundlife')
 
 
 @lru_cache(maxsize=None)
@@ -185,7 +189,7 @@ def test_test_cohort_data_available():
     missing = []
     for cohort in ['aida', 'perez_sle']:
         try:
-            retrieve_feature_data(dataset=cohort, cell_type='CD4T', analysis_name='tfa_major_b')
+            retrieve_feature_data(dataset=cohort, cell_type='CD4T', analysis_name=ANALYSIS_NAME)
         except Exception:
             missing.append(cohort)
     print(f'\n[claim] clocks tested across AIDA, Perez | missing locally: {missing}')
@@ -224,7 +228,7 @@ def test_sle_accelerates_cd8t_aging_in_young_patients():
 def test_parsebioscience_cached_conditions():
     """'PBMCs stimulated with 90 cytokines across 12 donors' -- checks what's actually
     materialized for the clock pipeline's cached parsebioscience feature matrix."""
-    adata = retrieve_feature_data(dataset='parsebioscience', cell_type='CD4T', analysis_name='tfa_major_b')
+    adata = retrieve_feature_data(dataset='parsebioscience', cell_type='CD4T', analysis_name=ANALYSIS_NAME)
     n_donors = adata.obs['donor_id'].nunique()
     conditions = sorted(adata.obs['condition'].unique())
     print(f'\n[claim] 90 cytokines x 12 donors | actual: {len(conditions)} condition(s) {conditions}, '
@@ -271,7 +275,7 @@ def test_ruxolitinib_reduces_predicted_age_op():
 def test_cxcl9_donor_count():
     """'PBMCs from seven healthy donors were treated with ruxolitinib ... under both
     basal condition (RPMI) and LPS-stimulation'"""
-    adata = retrieve_feature_data(dataset='CXCL9', cell_type='CD4T', analysis_name='tfa_major_b')
+    adata = retrieve_feature_data(dataset='CXCL9', cell_type='CD4T', analysis_name=ANALYSIS_NAME)
     n_donors = adata.obs['donor_id'].nunique()
     print(f'\n[claim] 7 ex vivo donors | actual: {n_donors}')
     assert n_donors == 7, f'{n_donors} donors cached for CXCL9, expected 7'

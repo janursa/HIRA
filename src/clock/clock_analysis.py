@@ -23,7 +23,7 @@ from statsmodels.stats.multitest import multipletests
 
 # Import common utilities and configuration
 from hira.src.config import (
-    PLOTS_DIR, 
+    CLOCK_PLOTS_DIR as PLOTS_DIR,
     OUTPUT_DIR,
     MAJOR_CTS as default_cell_types,
     surrogate_names,

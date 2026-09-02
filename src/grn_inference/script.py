@@ -1,4 +1,8 @@
+"""Infer a per-cell-type GRN for one dataset.
 
+Submitted per dataset by scripts/grn_inference/wrapper_grn_inference.sh; see --help
+for arguments. Writes one network CSV per cell type into GRNS_DIR.
+"""
 import sys
 import os 
 from tqdm import tqdm
@@ -50,14 +54,14 @@ def wrapper_grn(task, par):
     else:
         X_norm = adata.X
 
-    net = main_inference(X_norm, adata.var_names, par['weight_t'])
+    net = main_inference(X_norm, adata.var_names)
     
     print("Adding metadata to the inferred network", flush=True)
     net['cell_type'] = cell_type
     net['sample_size'] = adata.shape[0]
     net['gene_size'] = adata.shape[1]
 
-    # select the top 1M edges based obs weight
+    # Store a generous superset; pruning/truncation is a load-time choice (see retrieve_net).
     net = net.sort_values(by='weight', ascending=False, key=abs).head(par['top_n_edges'])
     print('Shape of the inferred network: ', net.shape, flush=True)
     net.to_csv(save_file_name, index=False)
@@ -130,7 +134,6 @@ if __name__ == '__main__':
     par = {
         # - grn inference parameters
             'dataset': args.dataset,
-            'weight_t': 0.05,
             'cell_types': MAJOR_CTS, #TODO: fix me
             'min_genes_per_cell': 10, 
             'max_genes_per_cell': 5000 if args.data_type == 'sc' else 1e6, 
@@ -138,7 +141,7 @@ if __name__ == '__main__':
             'data_type': args.data_type,
             'num_workers': args.num_workers,
             'force': args.force,
-            'top_n_edges': 100_000,
+            'top_n_edges': 500_000,
             'save_grns_dir': args.save_grns_dir,
             # 'temp_dir': 'results_folder/grns/temp/',
     } 

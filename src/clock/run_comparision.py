@@ -1,7 +1,14 @@
+"""Benchmark the GRN-based clock against published expression clocks.
+
+Retrains on abf300 + onek1k only, so both models see the same training data.
+
+Usage: python src/clock/run_comparision.py
+Writes: PLOTS_DIR/ comparison scatter + metrics
+"""
 import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sns
-from hira import MAJOR_CTS, CLOCKS_DIR, OUTPUT_DIR, PLOTS_DIR, surrogate_names, colors_blind
+from hira import MAJOR_CTS, CLOCKS_DIR, OUTPUT_DIR, CLOCK_PLOTS_DIR as PLOTS_DIR, surrogate_names, colors_blind
 from hira import wrapper_clock_predictions
 from hira.src.clock.plots import plot_scatter_age_vs_predictedAge
 from hira.src.utils.util import retrieve_adata

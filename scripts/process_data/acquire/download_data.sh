@@ -2,11 +2,11 @@
 # Acquires raw input data for a cohort. For publicly hosted cohorts this downloads
 # the file; for gated/private cohorts it prints the manual access steps.
 #
-# Usage: bash scripts/process_data/download_data.sh <cohort>
+# Usage: bash scripts/process_data/acquire/download_data.sh <cohort>
 # Cohorts: onek1k perez_sle aida parsebioscience abf300 zhang soundlife op CXCL9
 #
 # Downloads land under $HIRA_RAW_DIR (default /vol/projects/CIIM), the same root
-# scripts/process_data/run_main.sh reads raw input from. See README > Data Acquisition.
+# scripts/process_data/run_preprocess.sh reads raw input from. See README > Data Acquisition.
 
 set -e
 
@@ -85,7 +85,7 @@ EOF
     echo "CXCL9 has no public source; it is CIIM-internal. Obtain it from the CIIM data lake."
     ;;
   *)
-    echo "Usage: bash scripts/process_data/download_data.sh <cohort>"
+    echo "Usage: bash scripts/process_data/acquire/download_data.sh <cohort>"
     echo "Cohorts: onek1k perez_sle aida parsebioscience abf300 zhang soundlife op CXCL9"
     exit 1
     ;;

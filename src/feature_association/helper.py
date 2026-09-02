@@ -11,7 +11,7 @@ import scanpy as sc
 import anndata as ad
 from statsmodels.stats.multitest import multipletests
 import statsmodels.api as sm
-from hira.src.config import GRNS_DIR, get_config_fa, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, HIRA_DIR
+from hira.src.config import GRNS_DIR, get_config_fa, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, HIRA_DIR, NET_SKELETON
 from tqdm import tqdm
 from hira.src.config import OUTPUT_DIR, FEATURES_DIR, FEATURE_DATA_DIR, CORR_THRESHOLD, TF_MIN_TARGET, FEATURE_TYPES, SUB_CT_LABEL, MAJOR_CT_LABEL
 from scipy.sparse import issparse
@@ -546,7 +546,7 @@ def wrapper_association_with_age_condition(analysis_name,
             # Determine statistics based on configuration
             if association_type == 'continous':
                 print('Aging analysis for', cell_type, 'in', dataset)
-                stats = association_with_age(adata, association_type='linear')
+                stats = association_with_age(adata, association_type='spearman')
                 stats['condition'] = condition
                 stats['comparison'] = 'aging'
             elif association_type == 'grouped':
@@ -634,24 +634,36 @@ def associate_with_condition(adata, config, test_type=None):
     return stats
 
 
+def subsample_cells_per_group(adata, bulk_group, max_cells, seed=0):
+    # ponytail: bounds memory/runtime for per-cell ULM; a median over max_cells is already stable, full completeness isn't needed
+    group_cols = [c for c in bulk_group if c != 'cell_type']
+    group_key = adata.obs[group_cols].astype(str).agg('_'.join, axis=1)
+    pos = pd.Series(np.arange(adata.n_obs))
+    keep = pos.groupby(group_key.values, group_keys=False).apply(
+        lambda s: s.sample(n=min(len(s), max_cells), random_state=seed)
+    )
+    return adata[keep.values].copy()
+
 def aggregate_tf_activity_per_donor(tf_acts_cell, bulk_group):
-    # per-cell ULM scores -> per-donor median, to avoid the pseudobulk cell_count/dropout confound
+    # per-cell/per-metacell ULM scores -> per-donor mean. Each unit is depth-normalised
+    # independently, so this avoids the pseudobulk cell_count/dropout confound while still
+    # tracking subpopulation composition; the median discards it (e.g. GATA3 in CD8T).
     group_cols = [c for c in bulk_group if c != 'cell_type']
     obs = tf_acts_cell.obs
     group_key = obs[group_cols].astype(str).agg('_'.join, axis=1)
 
     df = tf_acts_cell.to_df()
-    donor_median = df.groupby(group_key.values).median()
+    donor_agg = df.groupby(group_key.values).mean()
 
     cell_count = group_key.value_counts().rename('cell_count')
     keep_obs_cols = list(dict.fromkeys(group_cols + ['age', 'condition', 'dataset']))
     donor_obs = obs[keep_obs_cols].copy()
     donor_obs['group'] = group_key.values
     donor_obs = donor_obs.drop_duplicates('group').set_index('group').join(cell_count)
-    donor_obs = donor_obs.loc[donor_median.index]
+    donor_obs = donor_obs.loc[donor_agg.index]
 
-    var = pd.DataFrame({'source': donor_median.columns}, index=donor_median.columns)
-    return ad.AnnData(X=donor_median.values, obs=donor_obs, var=var)
+    var = pd.DataFrame({'source': donor_agg.columns}, index=donor_agg.columns)
+    return ad.AnnData(X=donor_agg.values, obs=donor_obs, var=var)
 
 def wrapper_tf_activity(analysis_name, par):
     print('Loading data...')
@@ -666,27 +678,39 @@ def wrapper_tf_activity(analysis_name, par):
     config = get_config_fa(analysis_name)
     data_type = config['data_type']
     granularity = config['granularity']
-    per_donor_median = analysis_name in ['tfa_major_b', 'tfa_sub_b']
-    load_data_type = 'sc' if per_donor_median else data_type
+    per_donor_agg = analysis_name in ['tfa_major_b', 'tfa_sub_b', 'tfa_major_sc']
+    # mc has multiple metacells per donor; must still collapse to one sample/donor to avoid pseudoreplication
+    aggregate_per_donor = per_donor_agg or analysis_name == 'tfa_major_mc'
+    load_data_type = 'sc' if per_donor_agg else data_type
+    max_cells_per_group = 300
     for dataset in datasets:
-        adata = retrieve_adata(dataset=dataset, data_type=load_data_type, condition=condition)
         bulk_group = get_config(dataset).bulk_group
+        if not per_donor_agg:
+            adata = retrieve_adata(dataset=dataset, data_type=load_data_type, condition=condition)
 
         for cell_type in tqdm(cell_types, desc='cell types'):
             print(dataset, load_data_type)
-            adata_t = adata[adata.obs[granularity] == cell_type].copy()
+            if per_donor_agg:
+                # load only this cell type's cells (not the whole dataset) to bound memory
+                adata_t = retrieve_adata(dataset=dataset, data_type=load_data_type, condition=condition,
+                                          cell_type=cell_type, granularity=granularity)
+                if len(adata_t) > 0:
+                    adata_t = subsample_cells_per_group(adata_t, bulk_group, max_cells_per_group)
+            else:
+                adata_t = adata[adata.obs[granularity] == cell_type].copy()
             if len(adata_t) == 0:
                 print(f'No samples for {cell_type} in {dataset}, skipping TF activity calculation')
                 continue
             if par['use_consensus_net']:
-                net = retrieve_net_consensus(cell_type=cell_type, promotor_only=promotor_only)
+                net = retrieve_net_consensus(cell_type=cell_type, skeleton='promotor' if promotor_only else NET_SKELETON)
             else:
-                net = retrieve_net(dataset=dataset, cell_type=cell_type, promotor_only=promotor_only)
+                net = retrieve_net(dataset=dataset, cell_type=cell_type, skeleton='promotor' if promotor_only else NET_SKELETON)
             if adata_t.obs['condition'].value_counts().min() < 3:
                 continue
             tf_acts = calculate_tf_activity(adata_t, net)
-            if per_donor_median:
+            if aggregate_per_donor:
                 tf_acts = aggregate_tf_activity_per_donor(tf_acts, bulk_group)
+                tf_acts.obs[granularity] = cell_type
             tf_acts.obs['dataset'] = dataset
             tf_acts.uns['dataset'] = dataset
             tf_acts = tf_acts[tf_acts.obs['age'].isna()==False] # there is a bug in the code that causes age to be NaN
@@ -1120,9 +1144,9 @@ def wrapper_ct_tf_markers(analysis_name, par):
                 print(f'No samples for {cell_type} in {dataset}, skipping TF activity calculation')
                 continue
             if par['use_consensus_net']:
-                net = retrieve_net_consensus(cell_type=cell_type, promotor_only=promotor_only)
+                net = retrieve_net_consensus(cell_type=cell_type, skeleton='promotor' if promotor_only else NET_SKELETON)
             else:
-                net = retrieve_net(dataset=dataset, cell_type=cell_type, promotor_only=promotor_only)
+                net = retrieve_net(dataset=dataset, cell_type=cell_type, skeleton='promotor' if promotor_only else NET_SKELETON)
             if adata_t.shape[0] < 10:
                 continue
             tf_acts = calculate_tf_activity(adata_t, net)
@@ -1292,7 +1316,6 @@ def association_with_age(adata, association_type, gene_col='gene'):
         df = adata_sub.to_df()
         df = df.reset_index(drop=True)
         df['age'] = adata_sub.obs['age'].values
-        df['cell_count'] = pd.to_numeric(adata_sub.obs['cell_count'].values, errors='coerce')
 
         # Remove NaN values (donors missing this feature/subtype)
         valid_mask = ~df[gene].isna()
@@ -1321,7 +1344,7 @@ def association_with_age(adata, association_type, gene_col='gene'):
             p_value, slope = 1.0, 0.0
         else:
             if association_type == 'linear':
-                X = sm.add_constant(df[['age', 'cell_count']])
+                X = sm.add_constant(df['age'])
                 fit = sm.OLS(df[gene], X).fit()
                 slope, p_value = fit.params['age'], fit.pvalues['age']
             elif association_type == 'spearman':

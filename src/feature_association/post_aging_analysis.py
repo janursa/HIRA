@@ -66,7 +66,7 @@ if __name__ == "__main__":
     stats_features = retrieve_stats(analysis_name=args.analysis_name)
     stats_features_sig = retrieve_sig_stats(analysis_name=args.analysis_name)
 
-    if analysis_name in ['tfa_major_b']:
+    if analysis_name in ['tfa_major_b', 'tfa_major_mc', 'tfa_major_sc']:
         wrapper_plots_tfa_major_b_aging(args, stats_features, stats_features_sig, skip_pathway)
     elif analysis_name in ['tfa_sub_b']:
         wrapper_plots_tfa_sub_b_aging(args, stats_features, stats_features_sig, skip_pathway)

@@ -1,4 +1,8 @@
+"""QC, cell-type annotation and harmonisation of one cohort's raw h5ad.
 
+Stage 1 of scripts/process_data/run_preprocess.sh; see --help for arguments.
+Writes: <HIRA_BASE_DIR>/datasets/sc/<dataset>.h5ad
+"""
 import anndata as ad
 import gc
 from hira.src.config import DATASET_NAME_MAPPING, get_config, MAJOR_CT_LABEL, PRIOR_DIR

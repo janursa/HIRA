@@ -14,6 +14,7 @@ local/
 datasets_raw/
 results_folder/
 state*
+manuscript/
 trace*
 tw*
 datasets/*
@@ -40,3 +41,8 @@ work
 
 # scratch/experimental notebooks, not part of the published pipeline
 notebooks/experimental/
+results_folder_*/
+
+# scratch
+temp/
+$LOG

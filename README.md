@@ -3,6 +3,9 @@
 Analysis pipeline for immune aging: cell-type-resolved GRN inference, aging clocks,
 feature association, pathway/motif/trajectory analysis.
 
+Stages run in order — priors, raw data, preprocessing, GRN inference, feature association,
+clocks, supplementary figures. `scripts/readme.md` is the one-table index of all of them.
+
 ## Setup
 
 ```bash
@@ -37,12 +40,12 @@ Set these in `.env`
 
 ## Data Acquisition
 
-Preprocessing (`scripts/process_data/run_main.sh`) reads raw per-cohort files from
+Preprocessing (`scripts/process_data/run_preprocess.sh`) reads raw per-cohort files from
 `$HIRA_RAW_DIR` (default `/vol/projects/CIIM`). To fetch a cohort's raw data, or
 print manual access instructions where a download can't be automated:
 
 ```bash
-bash scripts/process_data/download_data.sh <cohort>
+bash scripts/process_data/acquire/download_data.sh <cohort>
 ```
 
 | Cohort | Access | Source |
@@ -59,7 +62,7 @@ bash scripts/process_data/download_data.sh <cohort>
 
 To use raw files from a location other than `$HIRA_RAW_DIR`'s default layout,
 either set `HIRA_RAW_DIR` in `.env`, or set `INPUT_FILE_OVERRIDE` when invoking
-`run_main.sh` to point at a single custom path. Downloaded files may need light
+`run_preprocess.sh` to point at a single custom path. Downloaded files may need light
 column-name harmonization (donor/age/condition fields) to match what
 `src/process_data/preprocess/helper.py:format_data` expects — it already
 recognizes several common CELLxGENE/Synapse schema variants.
@@ -71,26 +74,58 @@ write them under `<HIRA_BASE_DIR>/datasets/{sc,bulk,bulk_minor,metacell}/<datase
 ## GRN inference
 
 Infers per-cell-type gene regulatory networks from the datasets under `<HIRA_BASE_DIR>/datasets/`.
-Edit the dataset list and paths in `scripts/wrapper_grn_inference.sh`, then submit:
+Edit the dataset list and paths in `scripts/grn_inference/wrapper_grn_inference.sh`, then submit:
 
 ```bash
-bash scripts/wrapper_grn_inference.sh
+bash scripts/grn_inference/wrapper_grn_inference.sh
 ```
 
 This `sbatch`-submits one SLURM job per dataset via `src/grn_inference/run_grn_inference.sh`.
 
 ## Age-associated TF activity and gene expression analysis
 
-Computes features (TF activity, gene expression, etc.) from the inferred GRNs and tests
-their association with age/condition, aggregating across cohorts via meta-analysis where
-applicable.
+Computes features (TF activity, gene expression, etc.) and tests their association with age/condition, aggregating across cohorts via meta-analysis where applicable.
 
 ```bash
 sbatch scripts/feature_analysis.sh
 ```
 
-`analysis_name` selects the feature type (e.g. `tfa_major_b` for TF activity,
-`ge_major_b` for gene expression.
+`analysis_name` (default `tfa_major_mc`) selects the feature type and the data it runs on; the
+full vocabulary is `CONFIG_FA` in `src/config.py`, described by `ANALYSIS_DEF` next to it —
+e.g. `tfa_major_mc` (same, metacells),
+`ge_major_b` (gene expression), `ct_freq` (cell type composition).
+
+## Aging clocks
+
+Trains the per-cell-type Ridge clocks (via the `GRNimmuneClock` submodule), runs
+cross-validation, compares against published clocks, and applies them to the disease and
+perturbation cohorts.
+
+```bash
+bash scripts/clock_analysis.sh
+```
+
+Relevant config: `CLOCK_V` (model version), `TUNE_CLOCK` (Optuna alpha search),
+`CLOCK_CV_SCORING`, `CLOCK_TRAINING_COHORTS`. Trained models land in `results_folder/clock/`
+and are copied into the package by `python src/clock/build_package_data.py`, which also
+regenerates the consensus GRNs and example dataset shipped with `GRNimmuneClock`.
+
+## Supplementary figures
+
+Cohort composition stats, GRN overlap plots, and the discovery-vs-validation TF tables:
+
+```bash
+bash scripts/supp_figs.sh
+```
+
+## Results layout
+
+`results_folder/` is git-tracked and holds everything lightweight:
+
+- `grns/` — per-cohort and consensus GRNs
+- `features/` — association statistics and supplementary tables
+- `clock/` — trained clock models and predictions
+- `plots/` — all figures, `plots/assembled/` for multi-panel manuscript figures
 
 
 ## License

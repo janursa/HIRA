@@ -10,11 +10,11 @@
 #SBATCH --mail-type=END,FAIL      
 #SBATCH --mail-user=jalil.nourisa@gmail.com   
 
-# Usage: sbatch run_main.sh <dataset>
-# e.g.:  sbatch run_main.sh data1
+# Usage: sbatch run_preprocess.sh <dataset>
+# e.g.:  sbatch run_preprocess.sh data1
 dataset=$1
 if [ -z "$dataset" ]; then
-    echo "ERROR: no dataset provided. Usage: sbatch run_main.sh <dataset>"
+    echo "ERROR: no dataset provided. Usage: sbatch run_preprocess.sh <dataset>"
     exit 1
 fi
 

@@ -16,7 +16,7 @@ from matplotlib.lines import Line2D
 
 from hira import retrieve_stats
 from hira.src.config import (
-    PLOTS_DIR, 
+    COMPARISON_PLOTS_DIR as PLOTS_DIR,
     OUTPUT_DIR,
     MAJOR_CTS,
     surrogate_names,

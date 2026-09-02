@@ -15,7 +15,7 @@ import seaborn as sns
 from scipy.stats import spearmanr, pearsonr
 from matplotlib_venn import venn2
 
-from hira.src.config import PLOTS_DIR, OUTPUT_DIR, MAJOR_CTS, palette_major_cts
+from hira.src.config import COMPARISON_PLOTS_DIR as PLOTS_DIR, OUTPUT_DIR, MAJOR_CTS, palette_major_cts
 
 
 def load_stats(data_type='bulk', suffix=''):

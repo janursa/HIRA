@@ -8,7 +8,7 @@ import scanpy as sc
 from pathlib import Path
 from scipy import stats
 from hira.src.config import DATA_TYPES, MAJOR_CT_LABEL, SUB_CTS, DISCOVERY_COHORTS, mapping_minor_2_major, CONSENSUS_MIN_DEGREE, \
-     SUB_CT_LABEL, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR, NET_WEIGHT_THRESHOLD, NET_MAX_SIZE
+     SUB_CT_LABEL, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR, NET_WEIGHT_THRESHOLD, NET_MAX_SIZE, NET_SKELETON
 
 # increase width of output display
 pd.set_option('display.max_columns', None)
@@ -212,16 +212,17 @@ def retrieve_adata(dataset,
 
     return adata
 
-def retrieve_net(dataset, cell_type, promotor_only=False, data_type='sc', grns_dir=GRNS_DIR, prior_dir=PRIOR_DIR):      
+def retrieve_net(dataset, cell_type, skeleton=NET_SKELETON, data_type='sc', grns_dir=GRNS_DIR, prior_dir=PRIOR_DIR):
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO', 'all'], f'Unknown cell type {cell_type_major}'
+    assert skeleton in ('skeleton', 'promotor', None), f'Unknown skeleton {skeleton}'
     folder = f"{grns_dir}/{dataset}/{data_type}/"
     
     net = pd.read_csv(f"{folder}/net_{cell_type_major}.csv")
     gene_names = np.loadtxt(f'{prior_dir}/gene_names.txt', dtype=str)
     net = net[net['target'].isin(gene_names)]
-    if promotor_only:
-        net = net[net['promotor_based']]
+    if skeleton is not None:
+        net = net[net[f'{skeleton}_based']]
     
     if NET_WEIGHT_THRESHOLD is not None:
         net = net[net['weight'] > NET_WEIGHT_THRESHOLD]
@@ -238,10 +239,13 @@ def retrieve_net(dataset, cell_type, promotor_only=False, data_type='sc', grns_d
 #     nets = pd.concat(net_store, ignore_index=True)
 #     return nets
 
-def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CONSENSUS_MIN_DEGREE, promotor_only=False, force=False, grns_dir=None):
+def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CONSENSUS_MIN_DEGREE, skeleton=NET_SKELETON, force=False, grns_dir=None):
+    # One cache file per cell type. Its contents follow the config (NET_SKELETON,
+    # NET_MAX_SIZE, ...) in force at build time -- rerun consensus_nets.py after
+    # changing any of them.
     if grns_dir is None:
         grns_dir = GRNS_DIR
-    save_name = f"{grns_dir}/consensus_net_{cell_type}_minDegree{min_degree}{'_promotorOnly' if promotor_only else ''}.csv"
+    save_name = f"{grns_dir}/consensus_net_{cell_type}.csv"
     if Path(save_name).exists() and not force:
         # print('Loading existing consensus GRN for', cell_type, 'with min degree', min_degree)
         net_mean = pd.read_csv(save_name)
@@ -250,7 +254,7 @@ def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CON
     from scipy.stats import zscore
     net_store = []
     for dataset in datasets:
-        net = retrieve_net(dataset, cell_type, promotor_only=promotor_only, grns_dir=grns_dir)
+        net = retrieve_net(dataset, cell_type, skeleton=skeleton, grns_dir=grns_dir)
         net['dataset'] = dataset
         net_store.append(net)
     nets = pd.concat(net_store)
@@ -779,3 +783,57 @@ def bulkify_func(adata, cell_count_t=10, covariates=['cell_type', 'donor_id', 'a
     adata_bulk.obs = adata_bulk.obs.merge(cell_count_df, on='sum_by')
     adata_bulk = adata_bulk[adata_bulk.obs['cell_count'] >= cell_count_t]
     return adata_bulk
+
+
+def metacellify_func(adata, target_size=15, cell_count_t=5, n_pcs=15, random_state=0,
+                      covariates=['cell_type', 'donor_id', 'age']):
+    """Aggregate single-cell counts into metacells (~target_size cells each).
+
+    Within each covariate group (e.g. donor x cell type), cells are split into
+    sub-clusters of ~target_size cells via MiniBatchKMeans on a PCA embedding
+    of the group's normalized expression, then raw counts are summed per
+    sub-cluster. This controls metacell size directly (n_clusters = n_cells /
+    target_size) rather than via Leiden resolution, which doesn't map
+    predictably to cluster size.
+    """
+    from sklearn.cluster import MiniBatchKMeans
+    from sklearn.decomposition import PCA
+    import scipy.sparse as sp
+    import gc
+
+    adata.obs['group'] = ''
+    for covariate in covariates:
+        adata.obs['group'] += '_' + adata.obs[covariate].astype(str)
+
+    adata_norm = adata.copy()
+    sc.pp.normalize_total(adata_norm, target_sum=1e4)
+    sc.pp.log1p(adata_norm)
+
+    metacell_id = np.empty(adata.n_obs, dtype=object)
+    for group, idx in adata.obs.groupby('group').indices.items():
+        n_cells = len(idx)
+        n_clusters = max(1, round(n_cells / target_size))
+        if n_clusters >= n_cells:
+            # ponytail: too few cells to cluster meaningfully, one metacell per cell
+            labels = np.arange(n_cells)
+        else:
+            X = adata_norm.X[idx]
+            if sp.issparse(X):
+                X = X.toarray()
+            n_comp = min(n_pcs, X.shape[0] - 1, X.shape[1])
+            if n_comp >= 2:
+                X = PCA(n_components=n_comp, random_state=random_state).fit_transform(X)
+            labels = MiniBatchKMeans(
+                n_clusters=n_clusters, random_state=random_state, n_init=3
+            ).fit_predict(X)
+        metacell_id[idx] = [f'{group}_mc{l}' for l in labels]
+    del adata_norm; gc.collect()
+
+    adata.obs['metacell_id'] = pd.Categorical(metacell_id)
+    adata_mc = sum_by(adata, 'metacell_id', unique_mapping=True)
+    cell_count_df = adata.obs.groupby('metacell_id').size().reset_index(name='cell_count')
+    if 'cell_count' in adata_mc.obs:
+        adata_mc.obs.drop('cell_count', axis=1, inplace=True)
+    adata_mc.obs = adata_mc.obs.merge(cell_count_df, on='metacell_id')
+    adata_mc = adata_mc[adata_mc.obs['cell_count'] >= cell_count_t]
+    return adata_mc
