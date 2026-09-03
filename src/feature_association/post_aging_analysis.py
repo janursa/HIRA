@@ -30,8 +30,8 @@ from hira import retrieve_net_consensus
 
 from hira import retrieve_sig_stats, retrieve_stats, mapping_minor_2_major
 from hira.src.feature_association.plots_groups import (
-    wrapper_plots_tfa_major_b_aging,
-    wrapper_plots_tfa_sub_b_aging,
+    wrapper_plots_tfa_major_aging,
+    wrapper_plots_tfa_sub_aging,
     wrapper_plots_gene_expression_aging,
     wrapper_plots_ct_tf_markers_aging,
     wrapper_plots_tfa_peg_aging,
@@ -67,9 +67,9 @@ if __name__ == "__main__":
     stats_features_sig = retrieve_sig_stats(analysis_name=args.analysis_name)
 
     if analysis_name in ['tfa_major_b', 'tfa_major_mc', 'tfa_major_sc']:
-        wrapper_plots_tfa_major_b_aging(args, stats_features, stats_features_sig, skip_pathway)
+        wrapper_plots_tfa_major_aging(args, stats_features, stats_features_sig, skip_pathway)
     elif analysis_name in ['tfa_sub_b']:
-        wrapper_plots_tfa_sub_b_aging(args, stats_features, stats_features_sig, skip_pathway)
+        wrapper_plots_tfa_sub_aging(args, stats_features, stats_features_sig, skip_pathway)
     elif analysis_name in ['ge_major_b']:
         wrapper_plots_gene_expression_aging(args, stats_features, stats_features_sig, skip_pathway)
     elif analysis_name in ['ct_tf_markers']:

@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 from hira import retrieve_stats
 from hira.src.feature_association.plots_groups import (
-    wrapper_plots_tfa_major_b_condition,
+    wrapper_plots_tfa_major_condition,
     wrapper_plots_tfa_sub_b_condition,
     wrapper_plots_gene_expression_condition,
     wrapper_plots_ct_tf_markers_condition,
@@ -179,7 +179,7 @@ def main():
 
     # Call the appropriate wrapper based on analysis_name
     if args.analysis_name in ('tfa_major_b', 'tfa_major_mc', 'tfa_major_sc'):
-        wrapper_plots_tfa_major_b_condition(args, stats, stats_sig)
+        wrapper_plots_tfa_major_condition(args, stats, stats_sig)
     elif args.analysis_name == 'tfa_sub_b':
         wrapper_plots_tfa_sub_b_condition(args, stats, stats_sig)
     elif args.analysis_name in ('ge_major_b', 'ge_sub_b'):

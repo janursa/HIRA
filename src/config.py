@@ -103,6 +103,11 @@ CONFIG_FA = {
     'ccc_sub_b': {'data_type': 'sc', 'feature_type': 'cc_interaction', 'granularity': SUB_CT_LABEL, 'cell_types': ['all']},
     'ccc_major_b': {'data_type': 'sc', 'feature_type': 'cc_interaction', 'granularity': MAJOR_CT_LABEL, 'cell_types': ['all']},
 }
+# Reference analyses that cross-analysis plots compare against (sub-cell-type vs major,
+# TF activity vs gene expression). Named here so no plot hardcodes an analysis name.
+REF_TFA_ANALYSIS = 'tfa_major_b'
+REF_GE_ANALYSIS = 'ge_major_b'
+
 ANALYSIS_DEF = {
     'tfa_major_b': 'TF activity features from major cell type analysis (sc data, per-donor median aggregation)',
     'tfa_major_sc': 'TF activity features from major cell type analysis (sc data, per-donor median aggregation) - alias of tfa_major_b under a consistent name',

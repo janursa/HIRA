@@ -19,11 +19,11 @@ from hira.src.feature_association.plots import (
     
 )
 from hira import retrieve_sig_stats, retrieve_stats, mapping_minor_2_major
-from hira.src.config import get_config_fa, get_config, MAJOR_CTS, AGING_PLOTS_DIR
+from hira.src.config import get_config_fa, get_config, MAJOR_CTS, MAJOR_CT_LABEL, AGING_PLOTS_DIR, REF_TFA_ANALYSIS
 
 
-def wrapper_plots_tfa_major_b_aging(args, stats_features, stats_features_sig, skip_pathway):
-    """Plot group for tfa_major_b analysis."""
+def wrapper_plots_tfa_major_aging(args, stats_features, stats_features_sig, skip_pathway):
+    """Plot group for the major-cell-type TF activity analyses."""
     analysis_name = args.analysis_name
     
     plot_scatter_feature_vs_age(analysis_name, cell_types=['CD8T', 'CD4T'])
@@ -36,14 +36,14 @@ def wrapper_plots_tfa_major_b_aging(args, stats_features, stats_features_sig, sk
         gsea_analysis(stats_sig=stats_features_sig)
 
 
-def wrapper_plots_tfa_sub_b_aging(args, stats_features, stats_features_sig, skip_pathway):
-    """Plot group for tfa_sub_b analysis."""
+def wrapper_plots_tfa_sub_aging(args, stats_features, stats_features_sig, skip_pathway):
+    """Plot group for the sub-cell-type TF activity analyses."""
     analysis_name = args.analysis_name
     
     wrapper_sig_features_counts(args)
     plot_heatmap_overal(stats_features, analysis_name=args.analysis_name)
 
-    stats_ref = retrieve_stats(analysis_name='tfa_major_b', cell_type='CD8T')
+    stats_ref = retrieve_stats(analysis_name=REF_TFA_ANALYSIS, cell_type='CD8T')
     stats_features_c = stats_features[stats_features['cell_type']=='Tcm_Naive_CD8'].copy()
     stats_features_c['cell_type'] = stats_features_c['cell_type'].map(mapping_minor_2_major)
     
@@ -73,7 +73,7 @@ def wrapper_plots_ct_tf_markers_aging(args, stats_features, stats_features_sig, 
     analysis_name = args.analysis_name
     
     plot_heatmap_overal(stats_features, analysis_name=args.analysis_name)
-    stats_features_ref = retrieve_sig_stats(analysis_name='tfa_major_b', cell_type='CD8T')
+    stats_features_ref = retrieve_sig_stats(analysis_name=REF_TFA_ANALYSIS, cell_type='CD8T')
     stats_features_s = stats_features[stats_features['cell_type']=='Tcm_Naive_CD8']
     stats_features_s['cell_type'] = stats_features_s['cell_type'].map(mapping_minor_2_major)
 
@@ -103,7 +103,7 @@ def wrapper_plots_tfa_peg_aging(args, stats_features, stats_features_sig, skip_p
     plot_scatter_feature_vs_age(analysis_name, cell_types=['CD8T'], feature_selection_mode='top_sig')
     plot_features_vs_datasets(cell_type='CD8T', analysis_name=analysis_name, top_features=20)
 
-    stats_features_ref = retrieve_sig_stats(analysis_name='tfa_major_b', cell_type='CD8T')
+    stats_features_ref = retrieve_sig_stats(analysis_name=REF_TFA_ANALYSIS, cell_type='CD8T')
     
     plot_directional_consistency_scatter(
         stats_features[stats_features['cell_type']=='CD8T'], 
@@ -159,8 +159,8 @@ def wrapper_plots_ccc_aging(args, stats_features, stats_features_sig, skip_pathw
 # CONDITION ANALYSIS WRAPPERS
 # =============================================================================
 
-def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
-    """Plot group for tfa_major_b condition analysis."""
+def wrapper_plots_tfa_major_condition(args, stats, stats_sig):
+    """Plot group for the major-cell-type TF activity condition analyses."""
     from hira.src.feature_association.plots_condition import (
         plot_overview_heatmap,
         wrapper_plot_central_tfs_condition,
@@ -213,7 +213,8 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
         )
 
         wrapper_plot_central_tfs_condition(stats, group_col='age_group', cell_types=cell_types, args=args)
-        if analysis_name == 'tfa_major_b':
+        cfg_fa = get_config_fa(analysis_name)
+        if cfg_fa['feature_type'] == 'tf_activity' and cfg_fa['granularity'] == MAJOR_CT_LABEL:
             cell_type = 'CD8T'
             case_tfs = ['LEF1']
             plot_disease_case_tfs(args, cell_type=cell_type, case_tfs=case_tfs)
@@ -298,7 +299,7 @@ def wrapper_plots_tfa_major_b_condition(args, stats, stats_sig):
 
 def wrapper_plots_tfa_sub_b_condition(args, stats, stats_sig):
     """Plot group for tfa_sub_b condition analysis."""
-    wrapper_plots_tfa_major_b_condition(args, stats, stats_sig)
+    wrapper_plots_tfa_major_condition(args, stats, stats_sig)
 
 
 def wrapper_plots_gene_expression_condition(args, stats, stats_sig):

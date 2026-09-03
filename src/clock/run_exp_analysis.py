@@ -15,7 +15,7 @@ import anndata as ad
 from hira import MAJOR_CTS, CLOCK_PLOTS_DIR as PLOTS_DIR, PRIOR_DIR, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK, palette_major_cts, USE_LOCAL_CLOCK, DISCOVERY_COHORTS
 from hira import retrieve_net_consensus
 from hira.src.network_analysis.plots import dotplot_category_color
-from hira.src.config import surrogate_names
+from hira.src.config import surrogate_names, REF_TFA_ANALYSIS, REF_GE_ANALYSIS
 
 def features_stats():
     features_dict = {}
@@ -94,7 +94,7 @@ def plot_feature_values(cell_type, features, feature_type, dataset='data1', ax=N
     from hira.src.feature_association.plots import heatplot_age_trend
 
     # ponytail: only bulk+major callers exist here, so feature_type maps 1:1 to these analysis names
-    analysis_name = {'gene_expression': 'ge_major_b', 'tf_activity': 'tfa_major_b'}[feature_type]
+    analysis_name = {'gene_expression': REF_GE_ANALYSIS, 'tf_activity': REF_TFA_ANALYSIS}[feature_type]
     adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type, analysis_name=analysis_name)
     # print(features)
     # aaa
@@ -168,7 +168,7 @@ def wrapper_trend(top_features_dict, top_feature_values_dict, feature_type, data
         # plot these tfs in natural aging
         if feature_type == 'tf_activity':
             from hira.src.feature_association.plots import plot_features_vs_datasets
-            aa = plot_features_vs_datasets(cell_type=cell_type, features=features, analysis_name='tfa_major_b', sizes=(90, 100), plots_dir=PLOTS_DIR)
+            aa = plot_features_vs_datasets(cell_type=cell_type, features=features, analysis_name=REF_TFA_ANALYSIS, sizes=(90, 100), plots_dir=PLOTS_DIR)
 def plot_coeff():
     from grnimmuneclock import retrieve_function
     for cell_type in MAJOR_CTS:
@@ -242,7 +242,7 @@ def tf_act_analysis(n_features=5, sig_threshold=0.05):
 
         # --- sign-concordance of ULM-inferred regulation vs. empirical aging trend, across ALL TFs ---
         # meta-analyzed across the natural-aging discovery cohorts (per-cohort stats files don't exist for these)
-        emp_stats_raw = retrieve_stats(analysis_name='tfa_major_b', cell_type=cell_type, multi_cohort=True)
+        emp_stats_raw = retrieve_stats(analysis_name=REF_TFA_ANALYSIS, cell_type=cell_type, multi_cohort=True)
         emp_stats = emp_stats_raw.groupby('gene').agg(
             slope=('slope', 'mean'), p_value_adj=('meta_p_adj', 'first'), is_significant=('is_significant', 'first')
         )

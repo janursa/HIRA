@@ -20,7 +20,7 @@ from matplotlib.patches import Patch
 from hira.src.config import FEATURES_DIR, MAJOR_CT_LABEL, PRIOR_DIR, MAJOR_CTS, SUB_CTS , PLOTS_DIR, AGING_PLOTS_DIR, colors_blind, DISCOVERY_COHORTS, \
     surrogate_names, palette_datasets, palette_trend, palette_datasets_pretty, mapping_minor_2_major, \
     palette_trend_2, palette_major_cts, palette_sub_cts, palette_datasets, palette_trend_2, colors_blind, \
-        get_config_fa, cmap_trend
+        get_config_fa, cmap_trend, REF_GE_ANALYSIS
 from hira.src.feature_association.helper import bin_feature_values, retrieve_feature_data, \
                                                     retrieve_sig_stats, retrieve_stats
 from hira.src.utils.util import retrieve_net, retrieve_adata, retrieve_net_consensus
@@ -715,7 +715,7 @@ def plot_case_tf(args):
             if plot_genexpression:
                 ax.set_xlabel('')
                 ax = axes[1]
-                plot_feature_values_all_datasets(cell_type, analysis_name='ge_major_b', feature=case_tf, 
+                plot_feature_values_all_datasets(cell_type, analysis_name=REF_GE_ANALYSIS, feature=case_tf, 
                                                 datasets=datasets, show_cbar=show_cbar, ax=ax, show_ylabels=show_ylabels)
             
             plt.suptitle(f'{cell_type}', y=1.05)
