@@ -9,7 +9,7 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 from hira.src.config import get_config, SUB_CT_LABEL, MAJOR_CT_LABEL
-from hira.src.utils.util import bulkify_func
+from hira.src.utils.util import bulkify_func, filter_rb_mt_genes
 
 def normalize(adata):
     # keep the summed raw counts: CPM alone is composition-biased (a few strongly induced
@@ -57,6 +57,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     adata = ad.read_h5ad(args.sc_dataset_file)
+    adata = filter_rb_mt_genes(adata)
     dataset = adata.obs['dataset'].unique()[0]
     cfg = get_config(dataset)
     bulk_group = cfg.bulk_group

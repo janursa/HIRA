@@ -9,7 +9,7 @@ from tqdm import tqdm
 import argparse
 import anndata as ad
 import pandas as pd
-from hira.src.utils.util import retrieve_adata, basic_qc
+from hira.src.utils.util import retrieve_adata, basic_qc, filter_rb_mt_genes
 import scanpy as sc 
 import numpy as np 
 from scipy.stats import spearmanr
@@ -39,6 +39,7 @@ def wrapper_grn(task, par):
         sampled_indices.extend(group_df.sample(n=sample_size, random_state=0).index.tolist())
     adata = adata[sampled_indices].copy()
     print('Shape after sampling: ', adata.shape, flush=True)
+    adata = filter_rb_mt_genes(adata)
 
     if False:
         obs = adata.obs.copy()

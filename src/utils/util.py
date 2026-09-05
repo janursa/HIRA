@@ -691,6 +691,12 @@ def test_unpaired(df, ctr, treatment):
     return p_value, slope
 
 
+def filter_rb_mt_genes(adata):
+    """Drop mitochondrial (MT-*) and ribosomal (RPS*/RPL*) genes."""
+    drop = adata.var_names.str.match(r'^(MT-|RP[SL])')
+    print(f'Dropping {drop.sum()} RB/MT genes', flush=True)
+    return adata[:, ~drop].copy()
+
 def basic_qc(adata, min_genes_per_cell=200, max_genes_per_cell=5000, min_cells_per_gene=10):
     mt = adata.var_names.str.startswith("MT-")
     print("shape before ", adata.shape)
