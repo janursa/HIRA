@@ -691,9 +691,25 @@ def test_unpaired(df, ctr, treatment):
     return p_value, slope
 
 
+# HGNC gene groups 728 ("S ribosomal proteins") + 729 ("L ribosomal proteins"), fetched from
+# https://www.genenames.org/cgi-bin/genegroup/download?id=728&type=branch (and id=729).
+# A prefix regex like RP[SL] also catches RPS6KA1/3/4/5, RPS6KB1, RPS6KC1, RPS6KL1, RPS19BP1
+# (S6-kinase family, not ribosomal proteins) -- use the curated symbol list instead.
+RB_GENES = [
+    'FAU', 'RPL10', 'RPL10A', 'RPL10L', 'RPL11', 'RPL12', 'RPL13', 'RPL13A', 'RPL14', 'RPL15',
+    'RPL17', 'RPL18', 'RPL18A', 'RPL19', 'RPL21', 'RPL22', 'RPL22L1', 'RPL23', 'RPL23A', 'RPL24',
+    'RPL26', 'RPL26L1', 'RPL27', 'RPL27A', 'RPL28', 'RPL29', 'RPL3', 'RPL30', 'RPL31', 'RPL32',
+    'RPL34', 'RPL35', 'RPL35A', 'RPL36', 'RPL36A', 'RPL36AL', 'RPL37', 'RPL37A', 'RPL38', 'RPL39',
+    'RPL39L', 'RPL3L', 'RPL4', 'RPL41', 'RPL5', 'RPL6', 'RPL7', 'RPL7A', 'RPL7L1', 'RPL8', 'RPL9',
+    'RPLP0', 'RPLP1', 'RPLP2', 'RPS10', 'RPS11', 'RPS12', 'RPS13', 'RPS14', 'RPS15', 'RPS15A',
+    'RPS16', 'RPS17', 'RPS18', 'RPS19', 'RPS2', 'RPS20', 'RPS21', 'RPS23', 'RPS24', 'RPS25',
+    'RPS26', 'RPS27', 'RPS27A', 'RPS27L', 'RPS28', 'RPS29', 'RPS3', 'RPS3A', 'RPS4X', 'RPS4Y1',
+    'RPS4Y2', 'RPS5', 'RPS6', 'RPS7', 'RPS8', 'RPS9', 'RPSA', 'UBA52',
+]
+
 def filter_rb_mt_genes(adata):
-    """Drop mitochondrial (MT-*) and ribosomal (RPS*/RPL*) genes."""
-    drop = adata.var_names.str.match(r'^(MT-|RP[SL])')
+    """Drop mitochondrial (MT-*) and ribosomal protein (RB_GENES) genes."""
+    drop = adata.var_names.str.startswith('MT-') | adata.var_names.isin(RB_GENES)
     print(f'Dropping {drop.sum()} RB/MT genes', flush=True)
     return adata[:, ~drop].copy()
 
