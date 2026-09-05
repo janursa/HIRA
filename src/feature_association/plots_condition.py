@@ -385,7 +385,7 @@ def plot_pathway_analysis(stats_sig, args):
     pathway_scores = gsea_func(
         stats_sig,
         pvalue_col='p_value_adj',
-        gene_sets=['MSigDB_Hallmark_2020'],
+        gene_sets='hallmark',
         feature_col='gene'
     )
     

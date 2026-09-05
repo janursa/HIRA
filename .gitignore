@@ -15,6 +15,7 @@ datasets_raw/
 results_folder/
 state*
 manuscript/
+plan*
 trace*
 tw*
 datasets/*

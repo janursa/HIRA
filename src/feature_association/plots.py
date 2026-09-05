@@ -580,7 +580,9 @@ def plot_young_vs_aging(analysis_name, cell_type,
 def gsea_analysis(stats_sig):
     from hira.src.pathway_analysis.util import get_genesets, pathway_kde_func, get_hallmark, gsea_func, wrapper_gsea
 
-    wrapper_gsea(stats_sig)
+    fig, _ = wrapper_gsea(stats_sig)
+    if fig is None:
+        return
     file_name = f"{AGING_PLOTS_DIR}/gsea_tf_activity.png"
     print(f"Saving figure to {file_name}")
     plt.savefig(file_name, bbox_inches='tight', dpi=200)

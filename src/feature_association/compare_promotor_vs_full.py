@@ -28,7 +28,7 @@ def load_stats(data_type='bulk', suffix=''):
 
 def get_significant_tfs(stats, p_threshold=0.05, condition='healthy'):
     """Extract significant TFs from stats."""
-    mask = (stats['condition'] == condition) & (stats['meta_p_adj'] < p_threshold) & (stats['trend'] != 'Inconsistent')
+    mask = (stats['condition'] == condition) & (stats['meta_p_adj'] < p_threshold)
     return stats[mask].copy()
 
 

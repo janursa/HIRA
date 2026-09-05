@@ -70,7 +70,7 @@ if __name__ == "__main__":
         wrapper_plots_tfa_major_aging(args, stats_features, stats_features_sig, skip_pathway)
     elif analysis_name in ['tfa_sub_b']:
         wrapper_plots_tfa_sub_aging(args, stats_features, stats_features_sig, skip_pathway)
-    elif analysis_name in ['ge_major_b']:
+    elif analysis_name in ['ge_major_b', 'ge_major_mc']:
         wrapper_plots_gene_expression_aging(args, stats_features, stats_features_sig, skip_pathway)
     elif analysis_name in ['ct_tf_markers']:
         wrapper_plots_ct_tf_markers_aging(args, stats_features, stats_features_sig, skip_pathway)

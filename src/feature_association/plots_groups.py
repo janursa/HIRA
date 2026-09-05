@@ -26,7 +26,7 @@ def wrapper_plots_tfa_major_aging(args, stats_features, stats_features_sig, skip
     """Plot group for the major-cell-type TF activity analyses."""
     analysis_name = args.analysis_name
     
-    plot_scatter_feature_vs_age(analysis_name, cell_types=['CD8T', 'CD4T'])
+    # plot_scatter_feature_vs_age(analysis_name, cell_types=['CD8T', 'CD4T'])
     plot_heatmap_overal(stats_features, analysis_name=args.analysis_name)
     wrapper_sig_features_counts(args)
     plot_central_features(stats_features_sig, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'], analysis_name=analysis_name)

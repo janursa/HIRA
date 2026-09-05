@@ -1,10 +1,10 @@
 """Compare each TF's age trend in activity against its own age trend in expression.
 
 Needs two feature analyses to have been run: a TF-activity one and a gene-expression one
-(`bash scripts/feature_analysis.sh tfa_major_b` and `... ge_major_b`).
+(`bash scripts/feature_association/wrapper_feature_analysis.sh tfa_major_mc` and `... ge_major_mc`).
 
 Usage: python src/feature_association/activation_vs_expression.py \
-           [--tfa-analysis tfa_major_b] [--ge-analysis ge_major_b] [--dataset aida]
+           [--tfa-analysis tfa_major_mc] [--ge-analysis ge_major_mc] [--dataset aida]
 Writes: PLOTS_DIR/activation_vs_expression.png
 """
 import argparse
@@ -13,7 +13,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-from hira.src.config import PLOTS_DIR
+from hira.src.config import PLOTS_DIR, REF_GE_ANALYSIS
 from hira.src.feature_association.helper import retrieve_sig_stats
 from hira.src.feature_association.plots import plot_activation_vs_expression
 
@@ -41,7 +41,7 @@ def build_frame(tfa_analysis, ge_analysis, dataset):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--tfa-analysis', default='tfa_major_b')
-    parser.add_argument('--ge-analysis', default='ge_major_b')
+    parser.add_argument('--ge-analysis', default=REF_GE_ANALYSIS)
     parser.add_argument('--dataset', default='aida')
     parser.add_argument('--cell-type', default='CD8T')
     args = parser.parse_args()

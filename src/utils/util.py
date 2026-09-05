@@ -13,6 +13,10 @@ from hira.src.config import DATA_TYPES, MAJOR_CT_LABEL, SUB_CTS, DISCOVERY_COHOR
 # increase width of output display
 pd.set_option('display.max_columns', None)
 
+def coarsen(series):
+    """Strip a trailing batch index, e.g. 'IN_NIB_B001'->'IN_NIB', 'Data1_6'->'Data1'."""
+    return series.astype(str).str.replace(r'_[A-Za-z]*\d+$', '', regex=True)
+
 def read_gmt(file_path: str) -> dict[str, list[str]]:
     """Reas gmt file and returns a dict of gene"""
     gene_sets = {}

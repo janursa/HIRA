@@ -1,6 +1,5 @@
-import subprocess
 import numpy as np
-from scipy.stats import linregress, spearmanr
+from scipy.stats import linregress, spearmanr, norm, rankdata, pearsonr, combine_pvalues
 import pandas as pd
 import os
 import scipy
@@ -11,11 +10,12 @@ import scanpy as sc
 import anndata as ad
 from statsmodels.stats.multitest import multipletests
 import statsmodels.api as sm
-from hira.src.config import GRNS_DIR, get_config_fa, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, HIRA_DIR, NET_SKELETON
+from hira.src.config import GRNS_DIR, get_config_fa, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, NET_SKELETON
 from tqdm import tqdm
 from hira.src.config import OUTPUT_DIR, FEATURES_DIR, FEATURE_DATA_DIR, CORR_THRESHOLD, TF_MIN_TARGET, FEATURE_TYPES, SUB_CT_LABEL, MAJOR_CT_LABEL
+from hira.src.config import CONFOUND_COVARIATES, COARSENED_COVARIATES
 from scipy.sparse import issparse
-from hira.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net
+from hira.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net, coarsen
 import warnings
 from scipy.sparse import issparse
 from scipy.stats import mannwhitneyu
@@ -67,17 +67,8 @@ def retrieve_stats(analysis_name, cell_type=None, dataset=None, multi_cohort=Non
         stats["comparison"] = 'aging'
         p_val_col = "meta_p_adj"
 
-        mask_trend = stats["trend"] != "Inconsistent"
-
-        # genes where all datasets have |slope| > threshold
-        def has_consistent_slope(group):
-            return (group["slope"].abs() > CORR_THRESHOLD).all()
-
-        valid_groups = (
-            stats.groupby(["gene", "cell_type"])
-            .filter(has_consistent_slope)
-        )
-        mask_slope = stats.index.isin(valid_groups.index)
+        mask_slope = stats["pooled_rho"].abs() > CORR_THRESHOLD
+        mask_trend = stats["sign_consistent"].astype(bool)
 
     else:
         config = get_config(dataset)
@@ -150,11 +141,28 @@ def retrieve_sig_stats(**kwargs):
     stats_sig = stats[stats['is_significant']]
     return stats_sig
 
+# analysis_name -> cached tf_activity feature dir to read from, when it differs from
+# analysis_name itself (i.e. the analysis only changes the association step, not the features)
+FA_ANALYSIS_FEATURE_SOURCE = {'tfa_major_b_ctNaiveToEffector': 'tfa_major_b'}
+NAIVE_CT_COL = 'Tcm_Naive_CD8_count'
+EFFECTOR_CT_COLS = ['Tem_Trm_CD8_count', 'Tem_Temra_CD8_count']  # MAIT excluded
+
+
+def add_naive_ratio(adata):
+    """naive_ratio = naive / (naive + effector) CD8T cells per donor, from the
+    {minor_ct}_count columns baked into the bulk pseudobulk (see bulkify/script.py)."""
+    naive = adata.obs[NAIVE_CT_COL].astype(float)
+    effector = adata.obs[EFFECTOR_CT_COLS].astype(float).sum(axis=1)
+    total = naive + effector
+    adata.obs['naive_ratio'] = np.where(total > 0, naive / total, np.nan)
+    return adata
+
+
 def retrieve_feature_data(
-                          dataset, 
-                          cell_type, 
-                          analysis_name, 
-                          condition=None, 
+                          dataset,
+                          cell_type,
+                          analysis_name,
+                          condition=None,
                           suffix=''
                           ):
     # Validate analysis_name exists
@@ -163,7 +171,7 @@ def retrieve_feature_data(
     except ValueError as e:
         raise ValueError(f'Analysis name {analysis_name} not found in CONFIG_FA') from e
 
-    if analysis_name in ['ge_major_b', 'ge_sub_b']:
+    if get_config_fa(analysis_name)['feature_type'] == 'gene_expression':
         granularity = get_config_fa(analysis_name)['granularity']
         data_type = get_config_fa(analysis_name)['data_type']
         adata = retrieve_adata(dataset=dataset, 
@@ -174,10 +182,15 @@ def retrieve_feature_data(
                                granularity=granularity)
         
     else:
-        file_path = f'{FEATURE_DATA_DIR}/{analysis_name}/{dataset}_{cell_type}{suffix}.h5ad'
+        # tfa_major_b_ctNaiveToEffector reuses tfa_major_b's cached TF-activity features
+        # (no recompute), it only adds a naive_ratio covariate for the association step.
+        source_analysis = FA_ANALYSIS_FEATURE_SOURCE.get(analysis_name, analysis_name)
+        file_path = f'{FEATURE_DATA_DIR}/{source_analysis}/{dataset}_{cell_type}{suffix}.h5ad'
         if os.path.exists(file_path) == False:
             raise ValueError(f'File {file_path} does not exist')
         adata = ad.read_h5ad(file_path)
+        if analysis_name == 'tfa_major_b_ctNaiveToEffector':
+            adata = add_naive_ratio(adata)
     # Filter by condition
     if condition is not None and 'condition' in adata.obs.columns:
         if condition not in adata.obs['condition'].unique():
@@ -403,63 +416,53 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
 
     return stats_df
 
-def run_meta_analysis(stats_all, meta_association_type='max', min_degree=2, temp_dir='../results_folder/tf_activity/'):
-    os.makedirs(temp_dir, exist_ok=True)
-    # ---------- prepare
-    assert stats_all.shape[0]> 0, 'No stats for meta analysis'
-    print('Meta analysis...')
-    stats_all_c = stats_all.copy()
-    stats_all_c.rename(columns={'p_value': 'pvalue'}, inplace=True)
-    
-    # -------- actual run
+def _fisher_meta(p_values, slopes):
+    """Fisher's method on per-cohort p-values, plus mean rho and sign agreement.
+
+    Returns (meta p, mean rho, all cohorts same sign). Fisher saturates at these cohort
+    sizes on its own, so selection relies on the sign-agreement and |rho| > CORR_THRESHOLD
+    filters applied downstream in retrieve_stats.
+    """
+    meta_p = combine_pvalues(np.clip(p_values, 1e-20, None), method='fisher')[1]
+    sign = np.sign(slopes)
+    return meta_p, float(np.mean(slopes)), bool((sign > 0).all() or (sign < 0).all())
+
+
+def run_meta_analysis(stats_all, min_degree=2):
+    """Meta-analysis across cohorts, per gene x cell type.
+
+    Merges meta_p, meta_p_adj (BH within cell type), pooled_rho and sign_consistent
+    into stats_all. Fisher alone calls ~all TFs significant at these cohort sizes; a
+    feature counts as significant only once retrieve_stats also requires sign agreement
+    across cohorts and |pooled_rho| > CORR_THRESHOLD.
+    """
+    assert stats_all.shape[0] > 0, 'No stats for meta analysis'
+    print('Meta analysis (Fisher + sign agreement + |rho| threshold)...')
+    df = stats_all
     if min_degree is not None:
-        stats_all_c = stats_all_c.groupby(['gene', 'cell_type']).filter(lambda group: group['dataset'].nunique() >= min_degree)
-    
-    cell_types = stats_all_c['cell_type'].unique()
-    df_meta_store = []
-    for cell_type in cell_types:
-        df = stats_all_c[stats_all_c['cell_type'] == cell_type]
-        df['pvalue'] = df['pvalue'] + 1E-20 # to avoid 0 p value
-        
-        file_path = f'{temp_dir}/stats_{cell_type}.csv'
-        df.to_csv(file_path, index=False)
-        out_path = f'{temp_dir}/stats_{cell_type}_meta.csv'
-
-        Rscript_file = f'{HIRA_DIR}/src/feature_association//meta_analysis/script.R'
-        # Run the R script with the provided file paths
-        try:
-            subprocess.run(
-                ["Rscript", Rscript_file, file_path, out_path, meta_association_type],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"Error while running R script: {Rscript_file}")
-            print("STDOUT:", e.stdout.decode())  # Standard Output
-            print("STDERR:", e.stderr.decode())  # Error Output from R
-            raise
-        df_meta = pd.read_csv(out_path)
-
-        assert df_meta.isna().sum().sum() == 0, f'NaN values found in meta analysis results for {cell_type}'
-        df_meta['cell_type'] = cell_type
-        print(cell_type, df_meta.shape)
-        df_meta_store.append(df_meta)
-    if df_meta_store:
-        df_meta_all = pd.concat(df_meta_store)
-    else:
-        df_meta_all = pd.DataFrame() 
-    
-    if df_meta_all.shape[0]==0:
+        df = df.groupby(['gene', 'cell_type']).filter(lambda g: g['dataset'].nunique() >= min_degree)
+    if df.empty:
         print(f"No meta analysis results for {stats_all['cell_type'].unique()}")
         return None
-    stats_all = stats_all.merge(df_meta_all, on=['gene', 'cell_type'], how='left')
-    return stats_all
+
+    meta = pd.DataFrame(
+        [(gene, cell_type, *_fisher_meta(g['p_value'].values, g['slope'].values))
+         for (gene, cell_type), g in df.groupby(['gene', 'cell_type'], sort=False)],
+        columns=['gene', 'cell_type', 'meta_p', 'pooled_rho', 'sign_consistent'],
+    )
+    meta['meta_p_adj'] = meta.groupby('cell_type')['meta_p'].transform(
+        lambda p: multipletests(p.values, method='fdr_bh')[1])
+    assert meta.isna().sum().sum() == 0, 'NaN values found in meta analysis results'
+    for cell_type, n in meta.groupby('cell_type').size().items():
+        print(cell_type, n)
+
+    return stats_all.merge(meta, on=['gene', 'cell_type'], how='left')
+
 
 def wrapper_meta_analysis(analysis_name, stats_features, par):
     feature_col = 'gene'
     min_degree = par['META_MIN_COHORT']
-    def run_func(min_degree, meta_association_type):
+    def run_func(min_degree):
         stats_store = []
         for cell_type in stats_features['cell_type'].unique():
             stats = stats_features[(stats_features['cell_type'] == cell_type) & (stats_features['condition']=='healthy')]
@@ -474,9 +477,8 @@ def wrapper_meta_analysis(analysis_name, stats_features, par):
             nan_sim = stats['p_value'].isna().sum()
             if nan_sim>0:
                 raise ValueError(f'NaN p-values found in stats in {cell_type}: {nan_sim} NaNs')
-            meta_stats = run_meta_analysis(stats, temp_dir=par['temp_dir'], meta_association_type=meta_association_type, min_degree=min_degree)
-            pval_col = 'meta_p_adj'
-            meta_stats = compute_trend(analysis_name, meta_stats, pval_col=pval_col, slope_col='slope', col=feature_col)
+            meta_stats = run_meta_analysis(stats, min_degree=min_degree)
+            meta_stats = compute_trend(analysis_name, meta_stats, col=feature_col)
             stats_store.append(meta_stats)
         if len(stats_store) > 0:
             stats_discovery = pd.concat(stats_store)
@@ -485,18 +487,17 @@ def wrapper_meta_analysis(analysis_name, stats_features, par):
         else:
             return pd.DataFrame()
     
-    meta_association_type='fisher'
-    print(f'Running meta analysis for all datasets, min degree  {min_degree}, meta_association_type {meta_association_type}')
-    stats = run_func(min_degree, meta_association_type)
+    print(f'Running meta analysis for all datasets, min degree {min_degree}')
+    stats = run_func(min_degree)
 
     #- save
     return stats
 
-def wrapper_association_with_age_condition(analysis_name, 
-                                par, 
-                                association_type, 
-                                test_type=None, 
-                                condition='healthy', 
+def wrapper_association_with_age_condition(analysis_name,
+                                par,
+                                association_type,
+                                test_type=None,
+                                condition='healthy',
                                 features=None,
                                 config=None):
     """
@@ -542,11 +543,17 @@ def wrapper_association_with_age_condition(analysis_name,
             
             if issparse(adata.X):
                 adata.X = adata.X.toarray()
-            
+
             # Determine statistics based on configuration
             if association_type == 'continous':
                 print('Aging analysis for', cell_type, 'in', dataset)
-                stats = association_with_age(adata, association_type='spearman')
+                extra_covariates = ['naive_ratio'] if 'naive_ratio' in adata.obs.columns else None
+                categorical_covariates = CONFOUND_COVARIATES.get(dataset, [])
+                for c in categorical_covariates:
+                    if c not in adata.obs.columns and c in COARSENED_COVARIATES:
+                        adata.obs[c] = coarsen(adata.obs[COARSENED_COVARIATES[c]])
+                stats = association_with_age(adata, association_type='partial_spearman', extra_covariates=extra_covariates,
+                                              categorical_covariates=categorical_covariates)
                 stats['condition'] = condition
                 stats['comparison'] = 'aging'
             elif association_type == 'grouped':
@@ -678,7 +685,7 @@ def wrapper_tf_activity(analysis_name, par):
     config = get_config_fa(analysis_name)
     data_type = config['data_type']
     granularity = config['granularity']
-    per_donor_agg = analysis_name in ['tfa_major_b', 'tfa_sub_b', 'tfa_major_sc']
+    per_donor_agg = analysis_name in ['tfa_major_sc']
     # mc has multiple metacells per donor; must still collapse to one sample/donor to avoid pseudoreplication
     aggregate_per_donor = per_donor_agg or analysis_name == 'tfa_major_mc'
     load_data_type = 'sc' if per_donor_agg else data_type
@@ -1302,13 +1309,51 @@ def wrapper_ccc(analysis_name, par, n_jobs=1):
         print(f'  ✓ {dataset}: Combined {comm_adata_combined.shape[0]} donors × {comm_adata_combined.shape[1]} L-R pairs')
 
 
-def association_with_age(adata, association_type, gene_col='gene'):
+def shrink_residualize(y, codes, k):
+    """Empirical-Bayes partial pooling: residualize y on a categorical grouping
+    (codes: 0..k-1) by shrinking each group's mean deviation toward the grand mean
+    by its reliability var_between/(var_between + var_within/n_g). Degenerates to a
+    full fixed effect for large, even groups and to ~no adjustment for many small
+    groups, so unlike raw dummy OLS it can't overfit incidental small-group params
+    (see src/exp_analysis/confounders.py and temp/confounder_adjustment for validation)."""
+    y = np.asarray(y, dtype=float)
+    N = len(y)
+    grand_mean = y.mean()
+    sums = np.zeros(k)
+    np.add.at(sums, codes, y)
+    n_g = np.bincount(codes, minlength=k).astype(float)
+    group_mean = sums / n_g
+    ss_between = (n_g * (group_mean - grand_mean) ** 2).sum()
+    ss_total = ((y - grand_mean) ** 2).sum()
+    ss_within = max(ss_total - ss_between, 0)
+    msb = ss_between / max(k - 1, 1)
+    msw = ss_within / max(N - k, 1)
+    n0 = (N - (n_g ** 2).sum() / N) / max(k - 1, 1)
+    var_between = max((msb - msw) / n0, 0) if n0 > 0 else 0
+    shrink = var_between / (var_between + msw / n_g + 1e-300)
+    shrunk_group_mean = grand_mean + shrink * (group_mean - grand_mean)
+    return y - shrunk_group_mean[codes] + grand_mean
+
+
+def association_with_age(adata, association_type, gene_col='gene', extra_covariates=None, categorical_covariates=None):
     '''
     Calculate p-values for the linear regression or Spearman correlation
     of the top tfs across datasets with ageing, and apply FDR correction
     (Benjamini-Hochberg). Includes safeguards and prints diagnostics when
     values are invalid.
+
+    extra_covariates: optional list of adata.obs columns to additionally
+    control for in the partial_spearman residualization, alongside cell_count
+    (e.g. a cell-type ratio, to rule out a composition-shift confound).
+
+    categorical_covariates: optional list of adata.obs columns (e.g. a batch/site
+    id) to control for in the partial_spearman residualization via shrink_residualize,
+    applied after the numeric covariates. Unlike extra_covariates these are never
+    rankdata()'d -- that would silently treat category labels as ordinal.
     '''
+    covariate_cols = ['cell_count'] + list(extra_covariates or [])
+    categorical_covariates = list(categorical_covariates or [])
+
     def process_gene(gene):
         mask_gene = adata.var_names == gene
         adata_sub = adata[:, mask_gene]
@@ -1316,9 +1361,13 @@ def association_with_age(adata, association_type, gene_col='gene'):
         df = adata_sub.to_df()
         df = df.reset_index(drop=True)
         df['age'] = adata_sub.obs['age'].values
+        for c in covariate_cols:
+            df[c] = adata_sub.obs[c].values
+        for c in categorical_covariates:
+            df[c] = adata_sub.obs[c].values
 
-        # Remove NaN values (donors missing this feature/subtype)
-        valid_mask = ~df[gene].isna()
+        # Remove NaN values (donors missing this feature/subtype or a covariate)
+        valid_mask = ~df[[gene] + covariate_cols + categorical_covariates].isna().any(axis=1)
         df = df[valid_mask]
         
         if len(df) < 10:
@@ -1343,14 +1392,41 @@ def association_with_age(adata, association_type, gene_col='gene'):
             print(f"[SKIP] {gene}: expression constant → assigning p=1.0, slope=0.0")
             p_value, slope = 1.0, 0.0
         else:
+            # if association_type == 'linear':
+            #     X = sm.add_constant(df['age'])
+            #     fit = sm.OLS(df[gene], X).fit()
+            #     slope, p_value = fit.params['age'], fit.pvalues['age']
+            
             if association_type == 'linear':
-                X = sm.add_constant(df['age'])
+                X = sm.add_constant(df[['age', 'cell_count']])
                 fit = sm.OLS(df[gene], X).fit()
                 slope, p_value = fit.params['age'], fit.pvalues['age']
             elif association_type == 'spearman':
                 slope, p_value = spearmanr(ages, expression)
+            elif association_type == 'partial_spearman':
+                # Spearman of age vs feature, adjusted for pseudobulk depth (and any
+                # extra_covariates, e.g. cell-type ratio): rank-transform everything,
+                # residualize age-ranks and feature-ranks on the covariate ranks via OLS,
+                # then correlate the residuals. rho stays in [-1, 1] so the Fisher-z
+                # meta-analysis downstream stays valid (one df lost, see _random_effects).
+                ra, rx = rankdata(ages), rankdata(expression)
+                rc = np.column_stack([rankdata(df[c].values) for c in covariate_cols])
+                if not np.all(np.std(rc, axis=0) == 0):  # skip if covariates all constant
+                    X = sm.add_constant(rc)
+                    resid = lambda y: sm.OLS(y, X).fit().resid
+                    ra, rx = resid(ra), resid(rx)
+                for c in categorical_covariates:
+                    codes, uniques = pd.factorize(df[c].astype(str).values)
+                    if len(uniques) > 1:
+                        ra = shrink_residualize(ra, codes, len(uniques))
+                        rx = shrink_residualize(rx, codes, len(uniques))
+                if np.std(ra) == 0 or np.std(rx) == 0:
+                    print(f"[SKIP] {gene}: no variance left after covariate adjustment")
+                    slope, p_value = 0.0, 1.0
+                else:
+                    slope, p_value = pearsonr(ra, rx)
             else:
-                raise ValueError("association_type must be 'linear' or 'spearman'")
+                raise ValueError("association_type must be 'linear', 'spearman' or 'partial_spearman'")
 
             # Handle invalid results
             if p_value is None or np.isnan(p_value) or p_value < 0 or p_value > 1:
@@ -1388,39 +1464,16 @@ def association_with_age(adata, association_type, gene_col='gene'):
     
     return stats_df
 
-def compute_trend(analysis_name, df, pval_col='meta_p_adj', slope_col='slope', col='gene'):
-    # Compute -log10(p_value_adj) for dot size
+def compute_trend(analysis_name, df, pval_col='meta_p_adj', slope_col='pooled_rho', col='gene'):
+    """Label each gene x cell type by the direction of its pooled effect."""
     df["neg_log10_adj_pval"] = -np.log10(df[pval_col])
-    if 'trend' in df.columns:
-        df.drop('trend', inplace=True, axis=1)
-    increase_trend = get_config_fa(analysis_name)['trend_labels'][0] if 'trend_labels' in get_config_fa(analysis_name) else 'Increase in aging'
-    decrease_trend = get_config_fa(analysis_name)['trend_labels'][1] if 'trend_labels' in get_config_fa(analysis_name) else 'Decrease in aging'
-    # Function to assign trend based on slope sign and min_degree
-    def determine_trend(x):
-        pos = (x > 0).sum()
-        neg = (x < 0).sum()
-        total = len(x)
-        threshold = total
-        
-        # print(pos, neg, total, threshold)
-        if pos >= (threshold):
-            return increase_trend
-        elif neg >= (threshold):
-            return decrease_trend
-        else:
-            return 'Inconsistent'
-
-    # Apply the function group-wise
-    trend = df.groupby([col, 'cell_type'])[slope_col].apply(determine_trend).reset_index(name='trend')
-    # trend = trend.dropna()
-
-    df = df.merge(trend, on=[col, 'cell_type'], how='left')
+    labels = get_config_fa(analysis_name).get('trend_labels', ['Increase in aging', 'Decrease in aging'])
     df["trend"] = pd.Categorical(
-        df["trend"], 
-        categories=['Increase in aging', 'Decrease in aging', "Inconsistent"], 
-        ordered=True
+        np.where(df[slope_col] > 0, labels[0], labels[1]),
+        categories=labels, ordered=True
     )
     return df
+
 
 def tf_activity_local(net, adata, tf_all=None):
     net = net.pivot(index='source', columns='target', values='weight').fillna(0)

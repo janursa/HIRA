@@ -87,13 +87,19 @@ This `sbatch`-submits one SLURM job per dataset via `src/grn_inference/run_grn_i
 Computes features (TF activity, gene expression, etc.) and tests their association with age/condition, aggregating across cohorts via meta-analysis where applicable.
 
 ```bash
-sbatch scripts/feature_analysis.sh
+bash scripts/feature_association/wrapper_feature_analysis.sh [analysis_name] [task ...]
 ```
 
+This `sbatch`-submits one SLURM job per task (`aging soundlife perez_sle parsebioscience op
+CXCL9`), so they run in parallel; `il10_ruxolitinib` is chained after `op` and
+`parsebioscience` since it reads their results. Consensus GRNs are built once by the wrapper
+before submitting. Pass task names to submit only a subset, and re-run the wrapper per
+feature type (e.g. once with `tfa_major_mc`, once with `ge_major_mc`). The `ge_*` feature
+types only support `aging` — the condition/perturbation plots are unimplemented for them, so
+the wrapper submits `aging` alone for those.
+
 `analysis_name` (default `tfa_major_mc`) selects the feature type and the data it runs on; the
-full vocabulary is `CONFIG_FA` in `src/config.py`, described by `ANALYSIS_DEF` next to it —
-e.g. `tfa_major_mc` (same, metacells),
-`ge_major_b` (gene expression), `ct_freq` (cell type composition).
+full vocabulary is `CONFIG_FA` in `src/config.py`.
 
 ## Aging clocks
 

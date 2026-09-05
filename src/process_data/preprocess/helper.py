@@ -224,7 +224,7 @@ def format_data(adata, dataset_name):
     adata = remove_attributes(adata, keep_layers=(dataset_name == 'op'))
     adata.obs[bulk_group_col] = adata.obs[bulk_group].astype(str).agg('_'.join, axis=1)
     return adata
-def basic_qc(adata, run_test, max_pct_mt=20.0):
+def basic_qc(adata, run_test, max_pct_mt=20.0, doublets=False):
     print('Shape before filtering:', adata.shape, flush=True)
     adata.var["mt"] = adata.var_names.str.startswith("MT-")
     sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
@@ -234,6 +234,16 @@ def basic_qc(adata, run_test, max_pct_mt=20.0):
     sc.pp.filter_cells(adata, max_genes=5000)
     if not run_test:
         adata = adata[adata.obs['pct_counts_mt'] < max_pct_mt].copy()
+    if doublets and not run_test:
+        # ponytail: scanpy's scrublet, batched per bulk_group, no extra dependency.
+        # Per-group so doublets are simulated within a sample; cross-sample doublets
+        # can't exist. Only enabled for CXCL9 (smallest cohort, not pre-QC'd upstream);
+        # the demuxed public cohorts already had cross-donor doublets removed.
+        sc.pp.scrublet(adata, batch_key='bulk_group')
+        n_doublet = int(adata.obs['predicted_doublet'].sum())
+        print(f'Scrublet: removing {n_doublet:,} predicted doublets '
+              f'({100*n_doublet/adata.n_obs:.1f}%)', flush=True)
+        adata = adata[~adata.obs['predicted_doublet']].copy()
     # No gene filtering here: the donor-scaled min_cells made the detection threshold
     # depend on cohort donor count (4.8x spread). Keeping var identical across chunks
     # also makes the ad.concat(join='inner') below exact. Genes are filtered once

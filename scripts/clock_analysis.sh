@@ -5,7 +5,7 @@ set -e
 
 mkdir -p $(python -c "import sys; sys.path.insert(0, 'src'); from config import PLOTS_DIR, CLOCKS_DIR; print(PLOTS_DIR, CLOCKS_DIR)")
 
-# python src/feature_association/consensus_nets.py
+python src/feature_association/consensus_nets.py
 
 echo "--------------------------------------------------------------train clocks--------------------------------------------------------------"
 python src/clock/run_train.py

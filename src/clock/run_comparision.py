@@ -122,7 +122,7 @@ if __name__ == "__main__":
 
     # Plot each metric in a separate figure
     
-    for metric in ['R2', 'Spearman']:
+    for metric in ['Spearman']:
         fig, axes = plt.subplots(1, n_datasets, figsize=(2.5 * n_datasets, 1.7), sharey=True)
 
         if n_datasets == 1:

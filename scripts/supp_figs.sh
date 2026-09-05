@@ -1,6 +1,6 @@
 #!/bin/bash
 # Supplementary tables and figures. Needs stages 1-5 (see scripts/readme.md) to have run:
-# activation_vs_expression additionally needs the ge_major_b feature analysis.
+# activation_vs_expression additionally needs the gene-expression analysis named by REF_GE_ANALYSIS.
 # Usage: bash scripts/supp_figs.sh [analysis_name]
 set -e
 

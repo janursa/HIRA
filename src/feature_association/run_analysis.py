@@ -12,7 +12,7 @@ import argparse
 import sys
 import warnings
 
-from hira.src.config import SUB_CTS, FEATURES_DIR, MAJOR_CTS, DISCOVERY_COHORTS, DATA_TYPES, FEATURE_TYPES, get_config, META_MIN_COHORT, get_config_fa, get_available_fa_analyses, MAJOR_CT_LABEL, SUB_CT_LABEL
+from hira.src.config import SUB_CTS, MAJOR_CTS, DISCOVERY_COHORTS, DATA_TYPES, FEATURE_TYPES, get_config, META_MIN_COHORT, get_config_fa, get_available_fa_analyses, MAJOR_CT_LABEL, SUB_CT_LABEL
 from hira.src.feature_association.helper import (
     wrapper_tf_activity,
     wrapper_ct_tf_markers,
@@ -45,7 +45,9 @@ def calculate_features(analysis_name, par):
     """Calculate features based on type."""
     if analysis_name in ['tfa_major_b', 'tfa_sub_b', 'tfa_major_mc', 'tfa_major_sc']:
         wrapper_tf_activity(analysis_name, par)
-    elif analysis_name in ['ge_sub_b', 'ge_major_b']:
+    elif analysis_name == 'tfa_major_b_ctNaiveToEffector':
+        pass  # reuses tfa_major_b's cached TF-activity features, see retrieve_feature_data
+    elif get_config_fa(analysis_name)['feature_type'] == 'gene_expression':
         pass
     elif analysis_name == 'gene_score':
         wrapper_genesets_scores(par)
@@ -136,7 +138,6 @@ def run_multi_cohort_analysis(
     print(args.analysis_name, args.cell_types, define_cell_types(args.analysis_name, args.cell_types))
     par = {
         **args.__dict__,
-        'temp_dir': f'{FEATURES_DIR}/tmp/',
         'META_MIN_COHORT': META_MIN_COHORT,
         'condition': 'healthy',
         'cell_types': define_cell_types(args.analysis_name, args.cell_types),
@@ -236,7 +237,6 @@ def main():
         default=None,
         help='List of cell types to analyze (e.g., CD4T CD8T). If not specified, uses all cell types based on analysis configuration.'
     )
-    
     args = parser.parse_args()
 
     datasets = args.datasets

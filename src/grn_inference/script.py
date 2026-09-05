@@ -47,12 +47,9 @@ def wrapper_grn(task, par):
         adata = adata[:, mask_genes].to_memory()
     adata = basic_qc(adata, min_cells_per_gene=par['min_cells_per_gene'], min_genes_per_cell=par['min_genes_per_cell'], max_genes_per_cell=par['max_genes_per_cell'])
 
-    # Infer GRN
-    if par['data_type'] == 'sc':
-        X_norm = sc.pp.normalize_total(adata, inplace=False)['X']
-        X_norm = sc.pp.log1p(X_norm, copy=True)
-    else:
-        X_norm = adata.X
+    # Infer GRN. retrieve_adata already returns lognorm X (see utils.util.retrieve_adata),
+    # so no normalization here.
+    X_norm = adata.X
 
     net = main_inference(X_norm, adata.var_names)
     
@@ -62,7 +59,11 @@ def wrapper_grn(task, par):
     net['gene_size'] = adata.shape[1]
 
     # Store a generous superset; pruning/truncation is a load-time choice (see retrieve_net).
-    net = net.sort_values(by='weight', ascending=False, key=abs).head(par['top_n_edges'])
+    # Truncate *within* each motif-support class, so a skeleton/promotor filter at load time
+    # gets its own strongest edges instead of whatever survived a global top-N.
+    top = lambda d: d.sort_values(by='weight', ascending=False, key=abs).head(par['top_n_edges']).index
+    keep = top(net).union(top(net[net['skeleton_based']])).union(top(net[net['promotor_based']]))
+    net = net.loc[keep]
     print('Shape of the inferred network: ', net.shape, flush=True)
     net.to_csv(save_file_name, index=False)
     

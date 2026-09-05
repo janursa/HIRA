@@ -89,6 +89,7 @@ SUB_CTS = list(mapping_minor_2_major.keys())
 MAJOR_CTS = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
 CONFIG_FA = {
     'tfa_major_b': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL},
+    'tfa_major_b_ctNaiveToEffector': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL, 'cell_types': ['CD8T']},
     'tfa_major_sc': {'data_type': 'sc', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL},
     'tfa_major_mc': {'data_type': 'metacell', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL},
     'tfa_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'tf_activity', 'granularity': SUB_CT_LABEL},
@@ -96,6 +97,7 @@ CONFIG_FA = {
                         'trend_labels': ['Higher in this group', 'Lower in this group'],
                         'cell_types': ['CD4T', 'CD8T', 'B', 'MONO']},
     'ge_major_b': {'data_type': 'bulk', 'feature_type': 'gene_expression', 'granularity': MAJOR_CT_LABEL},
+    'ge_major_mc': {'data_type': 'metacell', 'feature_type': 'gene_expression', 'granularity': MAJOR_CT_LABEL},
     'ge_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'gene_expression', 'granularity': SUB_CT_LABEL},
     'tfa_peg': {'data_type': 'sc', 'feature_type': 'tfa_peg', 'granularity': MAJOR_CT_LABEL, 'cell_types': ['CD8T']},
     'ct_freq': {'data_type': 'sc', 'feature_type': 'ct_freq', 'granularity': SUB_CT_LABEL, 'cell_types': ['CD8T', 'CD4T']},
@@ -115,6 +117,7 @@ ANALYSIS_DEF = {
     'tfa_sub_b': 'TF activity features from sub cell type analysis',
     'ct_tf_markers': 'TF markers for each sub cell types',
     'ge_major_b': 'Gene expression features from major cell type analysis',
+    'ge_major_mc': 'Gene expression features from major cell type analysis (metacell pseudobulk, no per-donor median)',
     'ge_sub_b': 'Gene expression features from sub cell type analysis',
     'tfa_peg': 'TF activity association with progenitor-effector gradient',
     'ct_freq': 'Cell type composition (frequency)',
@@ -143,8 +146,6 @@ CLOCK_TEST_COHORTS = [
                 'aida',
                 'perez_sle',
                 'zhang'
-                # 'onek1k',
-                # 'abf300'
                 ]
 NET_WEIGHT_THRESHOLD = None  # 0.05 # Minimum absolute weight for edges in GRN 
 # Motif-support pruning at load time. Applied before NET_MAX_SIZE, so the truncation
@@ -158,6 +159,16 @@ META_MIN_COHORT = 2
 CONSENSUS_MIN_DEGREE = 2 
 CORR_THRESHOLD = 0.1 # minimum absolute correlation for feature association with age
 TF_MIN_TARGET = 5
+# Per-dataset categorical confounders (donor metadata correlated with age, found via
+# src/exp_analysis/confounders.py) to control for in association_with_age(), in addition
+# to cell_count. 'site' isn't a raw obs column for aida -- see COARSENED_COVARIATES.
+CONFOUND_COVARIATES = {
+    'aida': ['site'],
+    'onek1k': ['batch_info'],
+}
+# covariate name -> raw obs column it's derived from by stripping a trailing batch index
+# (coarsen() in src/utils/util.py), for covariates not present in obs as-is.
+COARSENED_COVARIATES = {'site': 'batch_info'} 
 
 DATASET_NAME_MAPPING = {
     "data1": "onek1k",

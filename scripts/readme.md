@@ -9,16 +9,24 @@ Run in order; each stage consumes the previous one's output. Paths from `src/con
 | 2 | Raw data | `bash scripts/process_data/acquire/download_data.sh <cohort>` | `$HIRA_RAW_DIR/` |
 | 3 | Preprocess | `bash scripts/process_data/wrapper_run_preprocess.sh` | `$HIRA_BASE_DIR/datasets/{sc,bulk,bulk_minor,metacell}/` |
 | 4 | GRN inference | `bash scripts/grn_inference/wrapper_grn_inference.sh` | `results_folder/grns/` |
-| 5 | Feature association | `sbatch scripts/feature_analysis.sh <analysis_name>` | `results_folder/features/`, `results_folder/plots/` |
+| 5 | Feature association | `bash scripts/feature_association/wrapper_feature_analysis.sh <analysis_name>` | `results_folder/features/`, `results_folder/plots/` |
 | 6 | Aging clocks | `bash scripts/clock_analysis.sh` | `results_folder/clock/`, `results_folder/plots/` |
 | 7 | Supplementary figures | `bash scripts/supp_figs.sh` | `results_folder/plots/`, `results_folder/features/` |
 
 Stages 3, 4 and 5 submit SLURM jobs; the rest run locally.
 
 `<file>` for stage 1 and `<cohort>` for stage 2: run the script with no argument to list them.
-`<analysis_name>` for stage 5 (default `tfa_major_b`) comes from `CONFIG_FA` in `src/config.py`:
-`tfa_major_b tfa_major_sc tfa_major_mc tfa_sub_b ct_tf_markers ge_major_b ge_sub_b tfa_peg
+Stage 5 submits one job per task (`aging soundlife perez_sle parsebioscience op CXCL9`, plus
+`il10_ruxolitinib` chained after `op`/`parsebioscience`); append task names to run a subset.
+The `ge_*` feature types run `aging` only — their condition plots are not implemented.
+`<analysis_name>` for stage 5 (default `tfa_major_mc`) comes from `CONFIG_FA` in `src/config.py`:
+`tfa_major_b tfa_major_sc tfa_major_mc tfa_sub_b ct_tf_markers ge_major_b ge_major_mc ge_sub_b tfa_peg
 ct_freq ct_pol_dist ccc_sub_b ccc_major_b`.
+
+Confounder analysis (age-correlated donor metadata, informs `CONFOUND_COVARIATES` in
+`src/config.py`): `bash scripts/exp_analysis/confounders.sh [--cohorts ...]`, writes
+`results_folder/exp_analysis/confounders_{overall,by_celltype}.csv` and `confounders.png`.
+See `report/confounder_analysis.md`.
 
 Supplementary figures also run individually: `python src/process_data/dataset_stats.py`,
 `python src/grn_inference/plot_overlap.py`,

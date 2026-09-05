@@ -149,7 +149,7 @@ def main(par):
                 raw = raw.tocsr() if sp.issparse(raw) else sp.csr_matrix(raw)
                 chunk.X = raw.astype(np.int32)
                 del chunk.layers['counts']
-            chunk = basic_qc(chunk, par['run_test'])
+            chunk = basic_qc(chunk, par['run_test'], doublets=(dataset == 'CXCL9'))
             chunk = annotate_celltypes(chunk, dataset)
             if 'annotation_qc' in chunk.uns:
                 qc_reports.append(chunk.uns.pop('annotation_qc'))
