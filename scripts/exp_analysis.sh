@@ -28,6 +28,10 @@ python src/feature_association/activation_vs_expression.py --tfa-analysis "$anal
 echo "---------------------------------------------------------- Cohort age-confounders -----------------------------------------------------------------"
 python src/exp_analysis/confounders.py "$@"
 
+echo "---------------------------------------------------------- Naive/effector ratio vs aging TFs (sbatch) -----------------------------------------------------------------"
+sbatch scripts/exp_analysis/run_naive_effector.sh
+echo "Submitted naive_effector"
+
 echo "---------------------------------------------------------- Clock stress tests (sbatch) -----------------------------------------------------------------"
 for v in baseline gradientboosting nn wholegenome; do
     sbatch scripts/exp_analysis/run_clock_stress.sh "$v"

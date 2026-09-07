@@ -9,10 +9,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from hira.src.clock.plots import plot_scatter_age_vs_predictedAge
 from sklearn.metrics import r2_score
-from hira import CLOCK_TEST_COHORTS, wrapper_clock_predictions, CLOCK_PLOTS_DIR as PLOTS_DIR, MAJOR_CTS, surrogate_names, palette_datasets_pretty, colors_blind
+from hira import CLOCK_TEST_COHORTS, wrapper_clock_predictions, CLOCK_PLOTS_DIR as PLOTS_DIR, surrogate_names, palette_datasets_pretty, colors_blind, get_clock_cell_types
 from hira.src.clock.helper import save_clock_stats
 
-obs = wrapper_clock_predictions(MAJOR_CTS, CLOCK_TEST_COHORTS, condition='healthy', only_sig_genes=True)
+obs = wrapper_clock_predictions(get_clock_cell_types(), CLOCK_TEST_COHORTS, condition='healthy', only_sig_genes=True)
 
 fold_scores = {}
 all_preds = []
@@ -63,7 +63,7 @@ def plot_scores(cv_scores, metric, figsize=[2.5, 2]):
     return fig
 
 # Plot R²
-scores_df['cell_type'] = pd.Categorical(scores_df['cell_type'], categories=MAJOR_CTS, ordered=True)
+scores_df['cell_type'] = pd.Categorical(scores_df['cell_type'], categories=get_clock_cell_types(), ordered=True)
 fig = plot_scores(scores_df, 'r2', figsize=(2.2, 2))
 file_name = f'{PLOTS_DIR}/clock_validation_r2.png'
 print('r2 scores fig: ',file_name)
@@ -79,7 +79,7 @@ fig.savefig(file_name,
 
 predictions_df['dataset'] = predictions_df['dataset'].apply(lambda name: surrogate_names.get(name, name))
 
-for cell_type in MAJOR_CTS:
+for cell_type in get_clock_cell_types():
     fig, ax = plt.subplots(1, 1, figsize=(3, 2.5), sharey=True)
     df = predictions_df[predictions_df['cell_type'] == cell_type]
     plot_scatter_age_vs_predictedAge(df, dataset='', ax=ax, hue='dataset', palette=palette_datasets_pretty, s=30, alpha=0.7)

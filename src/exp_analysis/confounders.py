@@ -1,5 +1,5 @@
 """Age-associated confounders per cohort: which donor-metadata columns (batch/site,
-sex, race, condition, QC metrics) correlate with age, independent of any real biology.
+condition, QC metrics) correlate with age, independent of any real biology.
 A covariate this confounded with age leaks into any age-association result computed
 without adjusting for it -- association_with_age() in feature_association/helper.py
 only adjusts for cell_count.
@@ -21,11 +21,13 @@ import pandas as pd
 from scipy import stats
 import matplotlib.pyplot as plt
 
-from hira.src.config import DISCOVERY_COHORTS, CONFOUNDERS_DIR, CONFOUNDERS_PLOTS_DIR, MAJOR_CT_LABEL, CONFOUND_COVARIATES
+from hira.src.config import (DISCOVERY_COHORTS, CONFOUNDERS_DIR, CONFOUNDERS_PLOTS_DIR, MAJOR_CT_LABEL,
+                            CONFOUND_COVARIATES, surrogate_names)
 from hira.src.utils.util import retrieve_adata, coarsen
 
 EXCLUDE = {'age', 'age_group', 'donor_age', 'cell_count', MAJOR_CT_LABEL, 'dataset',
-           'donor_id', 'donor_id_old', 'orig.ident', 'sum_by', 'bulk_group'}
+           'donor_id', 'donor_id_old', 'orig.ident', 'sum_by', 'bulk_group',
+           'race'}
 R2_FLAG = 0.05
 P_FLAG = 0.05
 
@@ -66,6 +68,10 @@ def analyze_cohort(dataset):
             coarse = coarsen(donors[col])
             if coarse.nunique() < donors[col].nunique():
                 variants.append((f'{col}__site', coarse))
+        # batch_info__site is a coarsening of batch_info -- report only the variant that
+        # is actually used as a confounder in association_with_age()
+        if len(variants) > 1 and any(is_selected(dataset, n) for n, _ in variants):
+            variants = [(n, v) for n, v in variants if is_selected(dataset, n)]
         for name, values in variants:
             r2, p, kind, n_groups = test_covariate(age, values)
             rows.append({'cohort': dataset, 'covariate': name, 'type': kind,
@@ -100,11 +106,12 @@ def is_selected(cohort, covariate):
 
 def plot_covariates(overall, out_path):
     df = overall.dropna(subset=['R2']).copy()
-    df['label'] = df['cohort'] + ':' + df['covariate']
+    df['label'] = (df['cohort'].map(lambda c: surrogate_names.get(c, c)) + ':'
+                   + df['covariate'].map(lambda c: 'site' if c.endswith('__site') else c))
     df['status'] = np.select(
         [df.apply(lambda r: is_selected(r['cohort'], r['covariate']), axis=1), df['flagged']],
-        ['selected', 'flagged'], default='not flagged')
-    colors = {'selected': '#1b7837', 'flagged': '#f4a582', 'not flagged': '#bbbbbb'}
+        ['Selected', 'Flagged'], default='Not flagged')
+    colors = {'Selected': '#1b7837', 'Flagged': '#f4a582', 'Not flagged': '#bbbbbb'}
 
     n = len(df)
     fig, ax = plt.subplots(figsize=(3, 3 + 0.5 * max(0, (n - 10) // 5)))
@@ -116,8 +123,10 @@ def plot_covariates(overall, out_path):
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.margins(y=0.1)
-    handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in colors.values()]
-    ax.legend(handles, colors.keys(), frameon=False, loc='upper left', bbox_to_anchor=(1, 1), fontsize=9)
+    present = [k for k in colors if (df['status'] == k).any()]
+    if len(present) > 1:  # a one-entry legend says nothing
+        handles = [plt.Rectangle((0, 0), 1, 1, color=colors[k]) for k in present]
+        ax.legend(handles, present, frameon=False, loc='upper left', bbox_to_anchor=(1, 1), fontsize=9)
     for tick in ax.get_xticklabels() + ax.get_yticklabels():
         tick.set_fontname('Arial')
         tick.set_fontsize(10)
@@ -135,6 +144,8 @@ def main():
     overall_parts, by_ct_parts = [], []
     for dataset in args.cohorts:
         df, obs = analyze_cohort(dataset)
+        if df.empty:  # no candidate covariates left for this cohort
+            continue
         overall_parts.append(df)
         flagged = df.loc[df['flagged'], 'covariate'].tolist()
         if flagged:

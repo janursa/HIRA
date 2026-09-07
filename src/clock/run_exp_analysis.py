@@ -17,11 +17,14 @@ from hira.src.network_analysis.plots import dotplot_category_color
 from hira.src.config import surrogate_names, REF_TFA_ANALYSIS, REF_GE_ANALYSIS
 
 def features_stats():
+    from grnimmuneclock import retrieve_function
+    from hira import get_clock_cell_types
+
     features_dict = {}
-    for cell_type in MAJOR_CTS:
-        net = retrieve_net_consensus(cell_type=cell_type)
-        print(cell_type, net.shape)
-        features_dict[cell_type] = net['target'].unique().tolist()
+    for cell_type in get_clock_cell_types():
+        model, gene_names = retrieve_function(cell_type=cell_type, model_dir=CLOCKS_DIR if USE_LOCAL_CLOCK else None, version=CLOCK_V)
+        print(cell_type, len(gene_names))
+        features_dict[cell_type] = list(gene_names)
     from hira.src.utils.plots import plot_interactions, create_interaction_df
 
     interaction_main_df = create_interaction_df(features_dict)
@@ -170,7 +173,8 @@ def wrapper_trend(top_features_dict, top_feature_values_dict, feature_type, data
             aa = plot_features_vs_datasets(cell_type=cell_type, features=features, analysis_name=REF_TFA_ANALYSIS, sizes=(90, 100), plots_dir=PLOTS_DIR)
 def plot_coeff():
     from grnimmuneclock import retrieve_function
-    for cell_type in MAJOR_CTS:
+    from hira import get_clock_cell_types
+    for cell_type in get_clock_cell_types():
         model, gene_names = retrieve_function(cell_type=cell_type, model_dir=CLOCKS_DIR if USE_LOCAL_CLOCK else None, version=CLOCK_V)
         coefs = model.named_steps["ridge"].coef_
         abs_coefs = np.abs(coefs)

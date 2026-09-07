@@ -182,7 +182,8 @@ def plot_directional_consistency_scatter(
                                         min_tfs=5,
                                         annotate_extreme=True,
                                         ylabel_per_panel=True,
-                                        y_pad=1.2
+                                        y_pad=1.2,
+                                        x_pad=1.05
                                         ):
     
     if len(stats) == 0:
@@ -345,7 +346,7 @@ def plot_directional_consistency_scatter(
         y_max = max(abs(cell_data[f'{association_col}_ref'].min()), abs(cell_data[f'{association_col}_ref'].max()))
         
         # Add some padding
-        x_max *= 1.05
+        x_max *= x_pad
         y_max *= y_pad
         
         ax.set_xlim(-x_max, x_max)

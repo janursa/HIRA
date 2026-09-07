@@ -43,10 +43,13 @@ COHORT_STATS_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}cohort_stats/"
 GRN_OVERLAP_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}grn_overlap/"
 ACTIVATION_VS_EXPRESSION_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}activation_vs_expression/"
 CONFOUNDERS_PLOTS_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}confounders/"
+NAIVE_EFFECTOR_PLOTS_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}naive_effector/"
 EXP_ANALYSIS_DIR = f"{OUTPUT_DIR}/exp_analysis/"  # non-plot outputs (tables) per task
 CONFOUNDERS_DIR = f"{EXP_ANALYSIS_DIR}confounders/"
+NAIVE_EFFECTOR_DIR = f"{EXP_ANALYSIS_DIR}naive_effector/"
 for _d in (CLOCK_PLOTS_DIR, AGING_PLOTS_DIR, CONDITION_PLOTS_DIR, COMPARISON_PLOTS_DIR, CLOCK_STATS_DIR,
-           COHORT_STATS_DIR, GRN_OVERLAP_DIR, ACTIVATION_VS_EXPRESSION_DIR, CONFOUNDERS_PLOTS_DIR, CONFOUNDERS_DIR):
+           COHORT_STATS_DIR, GRN_OVERLAP_DIR, ACTIVATION_VS_EXPRESSION_DIR, CONFOUNDERS_PLOTS_DIR, CONFOUNDERS_DIR,
+           NAIVE_EFFECTOR_PLOTS_DIR, NAIVE_EFFECTOR_DIR):
     os.makedirs(_d, exist_ok=True)
 
 CLOCK_V = 'V1'
@@ -96,6 +99,7 @@ mapping_minor_2_major = {
 }
 SUB_CTS = list(mapping_minor_2_major.keys())
 MAJOR_CTS = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
+CLOCK_MIN_SIG_GENES = 50  # cell types with fewer age-significant genes are excluded from clock training
 CONFIG_FA = {
     'tfa_major_b': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL},
     'tfa_major_b_ctNaiveToEffector': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL, 'cell_types': ['CD8T', 'CD4T', 'MONO']},

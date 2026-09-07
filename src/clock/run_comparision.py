@@ -8,7 +8,7 @@ Writes: PLOTS_DIR/ comparison scatter + metrics
 import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sns
-from hira import MAJOR_CTS, CLOCKS_DIR, OUTPUT_DIR, CLOCK_PLOTS_DIR as PLOTS_DIR, surrogate_names, colors_blind
+from hira import CLOCKS_DIR, OUTPUT_DIR, CLOCK_PLOTS_DIR as PLOTS_DIR, surrogate_names, colors_blind, get_clock_cell_types
 from hira import wrapper_clock_predictions
 from hira.src.clock.plots import plot_scatter_age_vs_predictedAge
 from hira.src.utils.util import retrieve_adata
@@ -22,7 +22,7 @@ version = 'comparitive'
 
 def train_clocks():
     
-    cell_types = MAJOR_CTS
+    cell_types = get_clock_cell_types()
     data_type = 'bulk'
     reg_type = 'ridge'
     tune_model = True
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     test_datasets = ['perez_sle', 'aida']
     train_clocks()
     W_median_prediction = extract_w_results()
-    predictions_all = wrapper_clock_predictions(MAJOR_CTS, evaluate_datasets=test_datasets, version=version, only_sig_genes=True)
+    predictions_all = wrapper_clock_predictions(get_clock_cell_types(), evaluate_datasets=test_datasets, version=version, only_sig_genes=True)
     test_predictions = predictions_all[predictions_all['condition']=='healthy'] # only healthy samples?
 
     print(f"Test predictions shape: {test_predictions.shape}")

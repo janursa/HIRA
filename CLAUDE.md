@@ -5,7 +5,7 @@
 - run feature association: scripts/feature_association
 - run clock analysis: scripts/clock_analysis
 - run data preprocessing: scripts/preprocess
-- run grn inference: scripts/grn_inference
+- run grn inference: scripts/grn_inference (reads sc data directly, not bulk -- can run without waiting for bulkify)
 - run any explanatory/stress analysis: scripts/exp_analysis
 
 

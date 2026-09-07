@@ -190,6 +190,7 @@ def wrapper_plots_tfa_major_condition(args, stats, stats_sig):
             annotate_extreme=False,
             ylabel_per_panel=False,
             y_pad=1.4,
+            x_pad=1.25,
             output_dir=args.output_dir
         )
 

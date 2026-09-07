@@ -5,13 +5,13 @@ Writes: CLOCKS_DIR/<cell_type>/ (one model per MAJOR_CTS entry, version CLOCK_V)
 """
 import anndata as ad
 from grnimmuneclock import train_aging_clock
-from hira import MAJOR_CTS, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK
+from hira import CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK, get_clock_cell_types
 from hira.src.utils.util import retrieve_adata
 
 
 if __name__ == "__main__":
 
-    cell_types = MAJOR_CTS
+    cell_types = get_clock_cell_types()
     train_datasets = CLOCK_TRAINING_COHORTS
     data_type = 'bulk'
     reg_type = 'ridge'

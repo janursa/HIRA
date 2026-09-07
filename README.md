@@ -64,6 +64,13 @@ tables (confounders) go under `results_folder/exp_analysis/`.
   `plots/exp_analysis/confounders/confounders.png`.
   See `report/confounder_analysis.md`. Pass extra args after `analysis_name`, e.g.
   `bash scripts/exp_analysis.sh tfa_major_b --cohorts ...`.
+- **Naive/effector ratio vs aging TFs** (sbatch-submitted) — reruns the age-association step on
+  the cached `tfa_major_b` TF-activity features with a per-donor `naive_ratio` covariate
+  (naive/(naive+effector) cell counts, CD4T/CD8T/MONO), then checks how many of `tfa_major_b`'s
+  significant TFs survive the correction. Analysis config: `tfa_major_b_ctNaiveToEffector` in
+  `src/config.py`; only ever run from here, not from the main feature-association stage →
+  `exp_analysis/naive_effector/survival.csv`, `plots/exp_analysis/naive_effector/survival.png`
+  (per-cell-type survived vs. lost counts).
 - **Clock stress test** (bottom of the script, sbatch-submitted) — retrains the clock under
   one perturbed setting at a time (model family, metacell instead of pseudobulk, whole genome
   instead of GRN targets) and checks whether the baseline's CV, SLE and rejuvenation readouts

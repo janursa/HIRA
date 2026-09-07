@@ -3,7 +3,7 @@ from scipy.stats import linregress, spearmanr, norm, rankdata, pearsonr, combine
 import pandas as pd
 import os
 import scipy
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import gc
 
 import scanpy as sc
@@ -497,6 +497,62 @@ def wrapper_meta_analysis(analysis_name, stats_features, par):
     #- save
     return stats
 
+def _association_for_cell_type(task):
+    """Per-cell-type worker for wrapper_association_with_age_condition, run in a
+    separate process (see ProcessPoolExecutor there) since each cell type's
+    per-gene association test is independent and CPU-bound."""
+    (cell_type, datasets, analysis_name, condition, suffix, features,
+     granularity, association_type, config, test_type) = task
+
+    stats_store = []
+    for dataset in datasets:
+        adata = retrieve_feature_data(
+            dataset=dataset,
+            cell_type=cell_type,
+            analysis_name=analysis_name,
+            condition=condition,
+            suffix=suffix,
+        )
+        # - sanity check
+        cell_types_in_data = adata.obs[granularity].unique()
+        assert len(cell_types_in_data) == 1 and cell_types_in_data[0] == cell_type, f'Cell type mismatch in {dataset}, {cell_type}'
+        adata = adata[:, adata.var_names.isin(features)] if features is not None else adata
+
+        if adata.shape[0] < 3:
+            raise ValueError(f'Not enough samples for {cell_type} in {dataset}, only {adata.shape[0]} samples')
+
+        if issparse(adata.X):
+            adata.X = adata.X.toarray()
+
+        if association_type == 'continous':
+            print('Aging analysis for', cell_type, 'in', dataset)
+            extra_covariates = ['naive_ratio'] if 'naive_ratio' in adata.obs.columns else None
+            categorical_covariates = CONFOUND_COVARIATES.get(dataset, [])
+            for c in categorical_covariates:
+                if c not in adata.obs.columns and c in COARSENED_COVARIATES:
+                    adata.obs[c] = coarsen(adata.obs[COARSENED_COVARIATES[c]])
+            stats = association_with_age(adata, association_type='partial_spearman', extra_covariates=extra_covariates,
+                                          categorical_covariates=categorical_covariates)
+            stats['condition'] = condition
+            stats['comparison'] = 'aging'
+        elif association_type == 'grouped':
+            print('Condition analysis for', cell_type, 'in', dataset)
+            stats = associate_with_condition(
+                adata,
+                config,
+                test_type=test_type
+            )
+        else:
+            raise ValueError(f'Unknown association type: {association_type}')
+        if stats is None or len(stats) == 0:
+            raise ValueError(f'No stats calculated for {cell_type} in {dataset}, something went wrong')
+
+        stats['dataset'] = dataset
+        stats['cell_type'] = cell_type
+        stats_store.append(stats)
+    return stats_store
+
+
 def wrapper_association_with_age_condition(analysis_name,
                                 par,
                                 association_type,
@@ -526,58 +582,19 @@ def wrapper_association_with_age_condition(analysis_name,
 
     analys_cfg = get_config_fa(analysis_name)
     granularity = analys_cfg['granularity']
+    tasks = [
+        (cell_type, datasets, analysis_name, condition, suffix, features,
+         granularity, association_type, config, test_type)
+        for cell_type in cell_types
+    ]
     stats_store = []
-    for cell_type in tqdm(cell_types, desc='cell types'):
-        for dataset in datasets:      
-            adata = retrieve_feature_data(
-                dataset=dataset, 
-                cell_type=cell_type, 
-                analysis_name=analysis_name, 
-                condition=condition,
-                suffix=suffix,
-            )
-            # - sanity check
-            cell_types_in_data = adata.obs[granularity].unique()
-            assert len(cell_types_in_data) == 1 and cell_types_in_data[0] == cell_type, f'Cell type mismatch in {dataset}, {cell_type}'
-            adata = adata[:, adata.var_names.isin(features)] if features is not None else adata
+    if len(tasks) == 1:
+        stats_store.extend(_association_for_cell_type(tasks[0]))
+    else:
+        with ProcessPoolExecutor(max_workers=min(len(tasks), 5)) as executor:
+            for result in tqdm(executor.map(_association_for_cell_type, tasks), total=len(tasks), desc='cell types'):
+                stats_store.extend(result)
 
-            # Filter by cell type
-            if adata.shape[0] < 3:
-                raise ValueError(f'Not enough samples for {cell_type} in {dataset}, only {adata.shape[0]} samples')
-            
-            if issparse(adata.X):
-                adata.X = adata.X.toarray()
-
-            # Determine statistics based on configuration
-            if association_type == 'continous':
-                print('Aging analysis for', cell_type, 'in', dataset)
-                extra_covariates = ['naive_ratio'] if 'naive_ratio' in adata.obs.columns else None
-                categorical_covariates = CONFOUND_COVARIATES.get(dataset, [])
-                for c in categorical_covariates:
-                    if c not in adata.obs.columns and c in COARSENED_COVARIATES:
-                        adata.obs[c] = coarsen(adata.obs[COARSENED_COVARIATES[c]])
-                stats = association_with_age(adata, association_type='partial_spearman', extra_covariates=extra_covariates,
-                                              categorical_covariates=categorical_covariates)
-                stats['condition'] = condition
-                stats['comparison'] = 'aging'
-            elif association_type == 'grouped':
-                # Condition analysis using config
-                print('Condition analysis for', cell_type, 'in', dataset)
-                stats = associate_with_condition(
-                    adata, 
-                    config, 
-                    test_type=test_type
-                )
-                
-            else:
-                raise ValueError(f'Unknown analysis type: {association_type}')
-            if stats is None or len(stats) == 0:
-                raise ValueError(f'No stats calculated for {cell_type} in {dataset}, something went wrong')
-
-            stats['dataset'] = dataset
-            stats['cell_type'] = cell_type
-            stats_store.append(stats)
-    
     assert len(stats_store) > 0, 'No stats calculated, something went wrong'
     
     if len(stats_store) == 1:

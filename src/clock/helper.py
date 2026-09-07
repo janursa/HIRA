@@ -10,9 +10,26 @@ from hira.src.utils.util import retrieve_adata
 from hira.src.config import (
     CLOCKS_DIR,
     CLOCK_STATS_DIR,
-    USE_LOCAL_CLOCK, 
-    CLOCK_V
+    USE_LOCAL_CLOCK,
+    CLOCK_V,
+    MAJOR_CTS,
+    REF_GE_ANALYSIS,
+    CLOCK_MIN_SIG_GENES,
 )
+
+
+def get_clock_cell_types():
+    """MAJOR_CTS restricted to cell types with >= CLOCK_MIN_SIG_GENES age-significant genes
+    (ge_major_b) -- too few sig genes makes the clock unreliable, so we skip training it."""
+    from hira.src.feature_association.helper import retrieve_sig_stats  # local: avoids circular import
+    cell_types = []
+    for cell_type in MAJOR_CTS:
+        n_sig = retrieve_sig_stats(analysis_name=REF_GE_ANALYSIS, cell_type=cell_type)['gene'].nunique()
+        if n_sig < CLOCK_MIN_SIG_GENES:
+            print(f'Skipping {cell_type} clock: only {n_sig} sig genes (<{CLOCK_MIN_SIG_GENES})')
+        else:
+            cell_types.append(cell_type)
+    return cell_types
 
 
 def save_clock_stats(df, name):
