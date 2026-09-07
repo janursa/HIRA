@@ -14,6 +14,7 @@ import sys
 
 import anndata as ad
 import pytest
+import scanpy as sc
 
 STAGE_DIR = os.path.dirname(os.path.abspath(__file__))  # tests/preprocessing/
 DATA_DIR = os.path.join(STAGE_DIR, 'data')
@@ -22,7 +23,7 @@ from _repro_utils import PARENT_DIR, compare_adata  # noqa: E402
 
 sys.path.insert(0, PARENT_DIR)
 from hira.src.process_data.preprocess.helper import basic_qc, annotate_celltypes  # noqa: E402
-from hira.src.utils.util import bulkify_func  # noqa: E402
+from hira.src.utils.util import bulkify_func, filter_rb_mt_genes  # noqa: E402
 from hira.src.config import get_config, MAJOR_CT_LABEL  # noqa: E402
 from hira.src.process_data.bulkify.script import normalize, qc_bulk  # noqa: E402
 
@@ -36,12 +37,13 @@ def _run_preprocessing():
     adata = ad.read_h5ad(os.path.join(FIXTURE_DIR, 'input.h5ad'))
     adata = basic_qc(adata, run_test=False)
     adata = annotate_celltypes(adata, DATASET)
+    sc.pp.filter_genes(adata, min_counts=1)
     return adata
 
 
 def _run_bulkify(sc_adata):
     bulk_group = get_config(DATASET).bulk_group
-    bulk = bulkify_func(sc_adata.copy(), covariates=bulk_group + [MAJOR_CT_LABEL])
+    bulk = bulkify_func(filter_rb_mt_genes(sc_adata.copy()), covariates=bulk_group + [MAJOR_CT_LABEL])
     bulk = normalize(bulk)
     bulk = qc_bulk(bulk, run_test=False)
     return bulk

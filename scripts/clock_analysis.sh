@@ -32,8 +32,4 @@ echo "--------------------------------------------------------------comparision:
 python src/clock/clock_analysis.py --dataset op --analysis-type perturbation --cell-types CD4T CD8T 
 
 echo "--------------------------------------------------------------comparision: CLCX9 --------------------------------------------------------------"
-python src/clock/clock_analysis.py --dataset CXCL9 --analysis-type perturbation --cell-types CD4T CD8T
-
-
-echo "--------------------------------------------------------------comparision: soundlife --------------------------------------------------------------"
-python src/clock/clock_analysis.py --dataset soundlife --config-label aging_cmv_neg --analysis-type aging --cell-types CD4T CD8T 
+python src/clock/clock_analysis.py --dataset CXCL9 --analysis-type perturbation --cell-types CD4T CD8T 

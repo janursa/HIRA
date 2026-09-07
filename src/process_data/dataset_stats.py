@@ -1,7 +1,7 @@
 """Cohort composition summary table and figures for the supplement.
 
 Usage: python src/process_data/dataset_stats.py
-Writes into PLOTS_DIR: datasets_summary_table.png, datasets_summary_{Cells,Donors}.png,
+Writes into PLOTS_DIR/exp_analysis/cohort_stats/: datasets_summary_table.png, datasets_summary_{Cells,Donors}.png,
 datasets_age_distribution.png, sex_distribution.png, race_composition.png,
 disease_composition_<dataset>.png
 """
@@ -13,7 +13,7 @@ import seaborn as sns
 
 from hira.src.config import (
     AGING_COHORTS,
-    PLOTS_DIR,
+    COHORT_STATS_DIR,
     colors_blind,
     palette_datasets_pretty,
     palette_genders,
@@ -177,7 +177,7 @@ def plot_disease(dataset='perez_sle'):
 
 
 def _save(name, dpi=300):
-    file_name = os.path.join(PLOTS_DIR, name)
+    file_name = os.path.join(COHORT_STATS_DIR, name)
     print(f'Saving to {file_name}')
     plt.savefig(file_name, bbox_inches='tight', dpi=dpi, transparent=True)
     plt.close()
@@ -185,8 +185,6 @@ def _save(name, dpi=300):
 
 
 if __name__ == '__main__':
-    os.makedirs(PLOTS_DIR, exist_ok=True)
-
     stats = collect_stats()
     print(stats.to_string(index=False))
     print(f"Total: {stats['Cells'].sum()} cells, {stats['Donors'].sum()} donors")

@@ -37,7 +37,8 @@ def retrieve_adata(dataset,
                    cell_type=None, 
                    age_limit=20, 
                    condition=None, 
-                   only_net_genes=False, 
+                   only_net_genes=False,
+                   only_sig_genes=False,
                    granularity=MAJOR_CT_LABEL,
                    mask_condition_col='condition', 
                    test_mode=False,
@@ -80,6 +81,17 @@ def retrieve_adata(dataset,
         print('Filtering to only genes in the GRN network...')
         net = retrieve_net_consensus(cell_type=cell_type)
         mask_genes &= adata.var_names.isin(net['target'].unique())
+    if only_sig_genes:
+        from hira.src.feature_association.helper import retrieve_sig_stats  # local: avoids circular import
+        sig_genes = retrieve_sig_stats(analysis_name='ge_major_b', cell_type=cell_type)['gene'].unique()
+        MIN_SIG_GENES = 10  # ponytail: below this the sig-stats pool is too sparse to train on; fall back to consensus net targets
+        if len(sig_genes) < MIN_SIG_GENES:
+            print(f'Only {len(sig_genes)} sig genes for {cell_type} (<{MIN_SIG_GENES}); falling back to consensus net targets')
+            net = retrieve_net_consensus(cell_type=cell_type)
+            mask_genes &= adata.var_names.isin(net['target'].unique())
+        else:
+            print('Filtering to only genes significantly associated with aging...')
+            mask_genes &= adata.var_names.isin(sig_genes)
     # For datasets with pre-mapped labels, use them instead of CellTypist-assigned Major_CT
     # if dataset in ['soundlife', 'parsebioscience'] and 'Major_CT_original' in obs.columns:
     #     print('Remove meeee - using original major cell type labels for soundlife and parsebioscience')

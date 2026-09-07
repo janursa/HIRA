@@ -21,9 +21,8 @@ if env_file.exists():
             os.environ.setdefault(k, v)
 
 from hira.src.feature_association.helper import retrieve_sig_stats, retrieve_stats, retrieve_feature_data
-# aliased: names starting with `test_` would otherwise be collected by pytest as test functions
-from hira.src.utils.util import test_unpaired as run_unpaired_test, test_mixed_effects as run_mixed_effects_test, retrieve_adata
-from hira.src.config import get_config, REF_GE_ANALYSIS, CLOCKS_DIR, CLOCK_V, PRIOR_DIR, MAJOR_CTS
+from hira.src.config import (REF_GE_ANALYSIS, CLOCKS_DIR, CLOCK_STATS_DIR, CLOCK_V,
+                             PRIOR_DIR, MAJOR_CTS)
 from grnimmuneclock import AgingClock
 
 # Which TF-activity analysis these claims are checked against (tfa_major_b).
@@ -103,13 +102,31 @@ def clock(cell_type):
     return AgingClock(cell_type)
 
 
+# These tests re-run no analysis: every clock number below is read from the CSVs the clock
+# pipeline writes next to its figures (src/clock/helper.py::save_clock_stats), so a test
+# failure means the figure is wrong, not that the test computed something different.
 @lru_cache(maxsize=None)
-def predict(dataset, cell_type):
-    # matches the pipeline's own src/clock/helper.py::wrapper_predict_age input: raw
-    # GRN-gene expression via retrieve_adata, not tfa_major_b (TF activity) -- the clock
-    # is trained on gene expression.
-    adata = retrieve_adata(dataset=dataset, data_type='bulk', cell_type=cell_type, only_net_genes=True)
-    return clock(cell_type).predict(adata.copy()).obs.copy()
+def clock_stats(name):
+    path = Path(CLOCK_STATS_DIR) / f'{name}.csv'
+    if not path.exists():
+        pytest.fail(f'{path} missing -- run scripts/clock_analysis.sh')
+    return pd.read_csv(path)
+
+
+def predictions(dataset, cell_type=None):
+    """Predicted ages the clock pipeline wrote for this dataset."""
+    df = clock_stats(f'predictions_{dataset}')
+    return df if cell_type is None else df[df['cell_type'] == cell_type]
+
+
+def perturbation(dataset, cell_type, ctr, treatment):
+    """(p_value, delta) for one contrast, exactly as annotated on the clock figure."""
+    df = clock_stats(f'perturbation_{dataset}')
+    hit = df[(df['cell_type'] == cell_type) & (df['ctr'] == ctr) & (df['treatment'] == treatment)]
+    if hit.empty:
+        pytest.fail(f'{dataset}/{cell_type}: no "{treatment}" vs "{ctr}" row in perturbation_{dataset}.csv '
+                    f'(available treatments: {sorted(df[df["cell_type"] == cell_type]["treatment"].unique())})')
+    return float(hit['p_value'].iloc[0]), float(hit['delta'].iloc[0])
 
 
 # ===========================================================================
@@ -161,7 +178,7 @@ def test_total_cells_across_cohorts():
 
 def test_perez_sle_case_control_composition():
     """'PBMCs from 162 SLE cases and 99 healthy controls' -> 261 individuals."""
-    obs = predict('perez_sle', 'CD8T')
+    obs = predictions('perez_sle', 'CD8T')
     counts = obs['condition'].astype(str).value_counts()
     print(f'\n[claim] Perez: 162 SLE + 99 healthy | actual: {counts.to_dict()}')
     n_sle = int(counts.get('SLE', 0)) or int(counts.get('systemic lupus erythematosus', 0))
@@ -428,14 +445,15 @@ def test_clock_model_feature_coverage():
 def test_clock_accuracy_cd4t_cd8t():
     """'GRN-informed clocks predicted chronological age with ... Spearman correlations of
     approximately 0.8 in both CD4+ and CD8+ T cells' on held-out test cohorts (Fig 3A)"""
-    from scipy.stats import spearmanr
+    scores = clock_stats('cv_scores')
     for ct in ['CD4T', 'CD8T']:
         for cohort in ['aida', 'perez_sle']:  # zhang not cached locally, see test_test_cohort_data_available
-            obs = predict(cohort, ct)
-            if 'condition' in obs.columns and obs['condition'].nunique() > 1:
-                obs = obs[obs['condition'].astype(str).str.lower().isin(['healthy', 'normal'])]
-            sp = spearmanr(obs['age'].astype(float), obs['predicted_age'])[0]
-            print(f'\n[claim] Spearman~0.8 in {ct} | actual on {cohort}: {sp:.3f} (n={len(obs)})')
+            row = scores[(scores['cell_type'] == ct) & (scores['dataset'] == cohort)]
+            if row.empty:
+                pytest.fail(f'no CV score for {ct}/{cohort} in cv_scores.csv '
+                            f'(have: {sorted(scores["dataset"].unique())})')
+            sp, n = float(row['spearman'].iloc[0]), int(row['n'].iloc[0])
+            print(f'\n[claim] Spearman~0.8 in {ct} | actual on {cohort}: {sp:.3f} (n={n})')
             assert sp > 0.6, f'{ct}/{cohort} predicted-vs-true-age Spearman={sp:.3f}, expected ~0.8'
 
 # ===========================================================================
@@ -445,7 +463,7 @@ def test_clock_accuracy_cd4t_cd8t():
 def test_sle_cohort_size():
     """'We analyzed transcriptomes from 261 individuals, including healthy controls and
     patients with SLE'"""
-    obs = predict('perez_sle', 'CD8T')
+    obs = predictions('perez_sle', 'CD8T')
     n = obs['donor_id'].nunique() if 'donor_id' in obs.columns else len(obs)
     print(f'\n[claim] 261 SLE-cohort individuals | actual: {n}')
     assert 200 <= n <= 320, f'{n} donors in perez_sle CD8T, expected ~261'
@@ -454,11 +472,15 @@ def test_sle_cohort_size():
 def test_sle_accelerates_cd8t_aging_in_young_patients():
     """'CD8+ T from individuals younger than 50 years, in whom predicted age increased by
     approximately +6 years (FDR = 1x10^-11)'"""
-    obs = predict('perez_sle', 'CD8T')
-    obs['age'] = obs['age'].astype(float)
-    young = obs[obs['age'] < 50]
-    p, delta = run_unpaired_test(young, ctr='healthy', treatment='SLE')
-    print(f'\n[claim] SLE CD8T<50yo: +6yr, p=1e-11 | actual: {delta:+.1f}yr, p={p:.2e} (n={len(young)})')
+    # the figure bins at 50 and compares |predicted - actual| (age residual), not raw predicted age
+    df = clock_stats('disease_bins_perez_sle')
+    row = df[(df['cell_type'] == 'CD8T') & (df['age_bin'] == 'Young')]  # Young = age < 50
+    if row.empty:
+        pytest.fail(f'no <50y CD8T row in disease_bins_perez_sle.csv (bins: {sorted(df["age_bin"].unique())})')
+    delta, p = float(row['delta_residual'].iloc[0]), float(row['p_value_adj'].iloc[0])
+    n = int(row['n_ctr'].iloc[0] + row['n_cond'].iloc[0])
+    print(f'\n[claim] SLE CD8T<50yo: +6yr, p=1e-11 | actual: {delta:+.1f}yr residual shift, '
+          f'p_adj={p:.2e} (n={n})')
     assert delta > 0, f'expected SLE to accelerate predicted age in young CD8T, got {delta:+.1f}yr'
     assert p < 0.05, f'expected a significant SLE effect in young CD8T, got p={p:.2e}'
 
@@ -570,12 +592,9 @@ def test_parsebioscience_cached_conditions():
 def test_il10_reduces_predicted_age():
     """'decreasing predicted biological age by 4.9 years in CD4+ T cells and by 2.0 years in
     CD8+ T cells (FDR < 0.0001)'"""
-    config = get_config('parsebioscience')
     expected_years = {'CD4T': -4.9, 'CD8T': -2.0}
     for ct in ['CD4T', 'CD8T']:
-        obs = predict('parsebioscience', ct)
-        p, delta = run_mixed_effects_test(obs, ctr='PBS', treatment='IL-10',
-                                       target_variable='predicted_age', group_key='donor_id', config=config)
+        p, delta = perturbation('parsebioscience', ct, 'PBS', 'IL-10')
         print(f'\n[claim] IL-10 {ct}: {expected_years[ct]:+.1f}yr, FDR<1e-4 | actual: {delta:+.1f}yr, p={p:.2e}')
         assert delta < 0, (
             f'manuscript reports IL-10 REDUCES predicted age in {ct} by {abs(expected_years[ct])}yr; '
@@ -621,12 +640,13 @@ def test_il10_strongest_age_reducing_perturbation():
     """'Among all perturbations, IL-10 produced the strongest age-reducing effect in T cells'
     (of the 90 screened cytokines)."""
     for ct in ['CD4T', 'CD8T']:
-        obs = predict('parsebioscience', ct)
-        conditions = [c for c in obs['condition'].astype(str).unique() if c != 'PBS']
+        df = clock_stats('perturbation_parsebioscience')
+        df = df[(df['cell_type'] == ct) & (df['ctr'] == 'PBS')]
+        conditions = sorted(df['treatment'].unique())
         if len(conditions) < 90:
-            pytest.fail(f'only {len(conditions)} non-control conditions cached for parsebioscience '
-                        f'({sorted(conditions)}); the full 90-cytokine screen is needed to rank IL-10')
-        effects = {c: _perturbation_effect('parsebioscience', ct, 'PBS', c)[1] for c in conditions}
+            pytest.fail(f'only {len(conditions)} non-control conditions tested for parsebioscience '
+                        f'({conditions}); the full 90-cytokine screen is needed to rank IL-10')
+        effects = dict(zip(df['treatment'], df['delta']))
         ranked = sorted(effects.items(), key=lambda kv: kv[1])
         print(f'\n[claim] IL-10 strongest age-reducing cytokine in {ct} | actual top-5: '
               f'{[(c, round(d, 2)) for c, d in ranked[:5]]}')
@@ -641,20 +661,14 @@ def test_il10_strongest_age_reducing_perturbation():
 
 def test_ruxolitinib_reduces_predicted_age_op():
     """'ruxolitinib ... showed a age-reversal effect of ~9 years in CD4+ T cells (FDR = 0.023)'"""
-    config = get_config('op')
-    obs = predict('op', 'CD4T')
-    p, delta = run_mixed_effects_test(obs, ctr='DMSO', treatment='Ruxolitinib',
-                                   target_variable='predicted_age', group_key='donor_id', config=config)
+    p, delta = perturbation('op', 'CD4T', 'DMSO', 'Ruxolitinib')
     print(f'\n[claim] Ruxolitinib (op) CD4T: -9yr, FDR=0.023 | actual: {delta:+.1f}yr, p={p:.2e}')
     assert delta < 0, f'expected ruxolitinib to reduce predicted age in CD4T, got {delta:+.1f}yr'
     assert p < 0.05, f'expected a significant ruxolitinib effect in CD4T (op), got p={p:.2e}'
 
 
 def _perturbation_effect(dataset, cell_type, ctr, treatment):
-    """Predicted-age shift (treatment - control) with the pipeline's own mixed-effects test."""
-    return run_mixed_effects_test(predict(dataset, cell_type), ctr=ctr, treatment=treatment,
-                                  target_variable='predicted_age', group_key='donor_id',
-                                  config=get_config(dataset))
+    return perturbation(dataset, cell_type, ctr, treatment)
 
 
 def test_cgm097_accelerates_predicted_age_op():
@@ -763,10 +777,7 @@ def test_cxcl9_donor_count():
 
 def test_lps_accelerates_predicted_age_ex_vivo():
     """'LPS induced a pronounced immune age acceleration of ~8 years ... (P = 1e-16; Fig. 4C)'"""
-    config = get_config('CXCL9')
-    obs = predict('CXCL9', 'CD4T')
-    p, delta = run_mixed_effects_test(obs, ctr='RPMI', treatment='LPS',
-                                   target_variable='predicted_age', group_key='donor_id', config=config)
+    p, delta = perturbation('CXCL9', 'CD4T', 'RPMI', 'LPS')
     print(f'\n[claim] LPS (CXCL9) CD4T: +8yr, P=1e-16 | actual: {delta:+.1f}yr, p={p:.2e}')
     assert delta > 0, f'manuscript reports LPS INCREASES predicted age by ~8yr; current pipeline gives {delta:+.1f}yr (wrong sign)'
     assert p < 0.05, f'expected a significant LPS effect, got p={p:.2e}'
@@ -775,10 +786,7 @@ def test_lps_accelerates_predicted_age_ex_vivo():
 
 def test_ruxolitinib_reduces_baseline_predicted_age_ex_vivo():
     """'Ruxolitinib reduced predicted age under baseline conditions (~2 years, P = 0.048)'"""
-    config = get_config('CXCL9')
-    obs = predict('CXCL9', 'CD4T')
-    p, delta = run_mixed_effects_test(obs, ctr='RPMI', treatment='RPMI + ruxolitinib',
-                                   target_variable='predicted_age', group_key='donor_id', config=config)
+    p, delta = perturbation('CXCL9', 'CD4T', 'RPMI', 'RPMI + ruxolitinib')
     print(f'\n[claim] Ruxolitinib (CXCL9) baseline CD4T: -2yr, P=0.048 | actual: {delta:+.1f}yr, p={p:.2e}')
     assert p < 0.05, f'manuscript claims this reaches significance (P=0.048), got p={p:.2e}'
 
@@ -786,10 +794,7 @@ def test_ruxolitinib_reduces_baseline_predicted_age_ex_vivo():
 def test_ruxolitinib_attenuates_lps_induced_aging_ex_vivo():
     """'directionally consistent attenuation of the LPS-induced increase in predicted age
     (~2.5 years, P = 0.12)' -- manuscript notes this one did NOT reach significance."""
-    config = get_config('CXCL9')
-    obs = predict('CXCL9', 'CD4T')
-    p, delta = run_mixed_effects_test(obs, ctr='LPS', treatment='LPS + ruxolitinib',
-                                   target_variable='predicted_age', group_key='donor_id', config=config)
+    p, delta = perturbation('CXCL9', 'CD4T', 'LPS', 'LPS + ruxolitinib')
     print(f'\n[claim] Ruxolitinib (CXCL9) vs LPS CD4T: -2.5yr, P=0.12 (n.s.) | actual: '
           f'{delta:+.1f}yr, p={p:.2e}')
     assert delta < 0, f'expected ruxolitinib to attenuate the LPS-induced increase, got {delta:+.1f}yr'

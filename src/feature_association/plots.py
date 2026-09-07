@@ -136,6 +136,37 @@ def plot_aging_overlap(analysis_name, stats_sig, cell_types, args):
         plt.close()
         print(f"    Saved: {output_path}")
 
+def _annotate_extreme_tfs(ax, cell_data, association_col, n=5):
+    """Circle the n most extreme TFs at each x-end and print their names."""
+    from matplotlib.patches import Ellipse
+    xs, ys = f'{association_col}_sl', f'{association_col}_ref'
+    x_range = np.diff(ax.get_xlim())[0]
+    y_range = np.diff(ax.get_ylim())[0]
+    for side in (1, -1):
+        sub = cell_data.nlargest(n, xs) if side > 0 else cell_data.nsmallest(n, xs)
+        if len(sub) == 0:
+            continue
+        cx, cy = sub[xs].mean(), sub[ys].mean()
+        w = (sub[xs].max() - sub[xs].min()) + 0.10 * x_range
+        h = (sub[ys].max() - sub[ys].min()) + 0.10 * y_range
+        ax.add_patch(Ellipse((cx, cy), w, h, fill=False, edgecolor='indianred', lw=0.5, linestyle='--', zorder=5))
+        # ponytail: grow the limits so the ellipse never gets clipped by the axes
+        ax.set_xlim(min(ax.get_xlim()[0], cx - w / 2 - 0.02 * x_range),
+                    max(ax.get_xlim()[1], cx + w / 2 + 0.02 * x_range))
+        ax.set_ylim(min(ax.get_ylim()[0], cy - h / 2 - 0.02 * y_range),
+                    max(ax.get_ylim()[1], cy + h / 2 + 0.02 * y_range))
+        genes = list(sub['gene'])
+        # ponytail: 3 names per line keeps the block narrower than the ellipse
+        label = '\n'.join(', '.join(genes[i:i + 3]) for i in range(0, len(genes), 3))
+        # ponytail: label always points to the plot centre, so it never runs off the top/bottom edge
+        y_mid = sum(ax.get_ylim()) / 2
+        inward_down = cy > y_mid
+        anchor, va, dy = ((cx, cy - h / 2), 'top', -3) if inward_down else ((cx, cy + h / 2), 'bottom', 3)
+        ax.annotate(label, xy=anchor, xytext=(0, dy), textcoords='offset points',
+                    ha='center', va=va, fontsize=6, color='black', clip_on=False, zorder=6)
+        print(f"    extreme TFs ({'positive' if side > 0 else 'negative'}): {', '.join(genes)}")
+
+
 def plot_directional_consistency_scatter(
                                         stats, 
                                         stats_ref,
@@ -147,7 +178,11 @@ def plot_directional_consistency_scatter(
                                         label_opposing = 'Opposing',
                                         output_dir = PLOTS_DIR,
                                         save_suffix = '',
-                                        pvalue_col='p_value_adj'
+                                        pvalue_col='p_value_adj',
+                                        min_tfs=5,
+                                        annotate_extreme=True,
+                                        ylabel_per_panel=True,
+                                        y_pad=1.2
                                         ):
     
     if len(stats) == 0:
@@ -241,9 +276,20 @@ def plot_directional_consistency_scatter(
     
     # Combine all cell types
     combined_data = pd.concat(all_cell_data, ignore_index=True)
-    
+
+    # ponytail: a panel with a handful of TFs says nothing -- drop it and shrink the figure
+    counts = combined_data['cell_type'].value_counts()
+    dropped = [ct for ct in included_cell_types if counts.get(ct, 0) < min_tfs]
+    if dropped:
+        print(f"  Dropping cell types with < {min_tfs} TFs: {dropped}")
+    included_cell_types = [ct for ct in included_cell_types if counts.get(ct, 0) >= min_tfs]
+    if not included_cell_types:
+        print(f"  Warning: no cell type has >= {min_tfs} TFs. Skipping plot.")
+        return
+    combined_data = combined_data[combined_data['cell_type'].isin(included_cell_types)]
+
     # Create grouped plot
-    fig, axes = plt.subplots(1, len(included_cell_types), figsize=(2 * len(included_cell_types) + 1, 2.7), sharey=False)
+    fig, axes = plt.subplots(1, len(included_cell_types), figsize=(2 * len(included_cell_types) + 2, 3.2), sharey=False)
     
     if len(included_cell_types) == 1:
         axes = [axes]
@@ -300,20 +346,16 @@ def plot_directional_consistency_scatter(
         
         # Add some padding
         x_max *= 1.05
-        y_max *= 1.2  # Increased from 1.05 to 1.5 for more vertical space
+        y_max *= y_pad
         
         ax.set_xlim(-x_max, x_max)
         ax.set_ylim(-y_max, y_max)
         
         ax.set_xlabel(x_label, fontsize=10)
-        ax.set_ylabel(y_label, fontsize=10)
-        # if idx == 0:
-        #     ax.set_ylabel(y_label, fontsize=10)
-        # else:
-        #     ax.set_ylabel('')
+        ax.set_ylabel(y_label if (ylabel_per_panel or idx == 0) else '', fontsize=10)
         
         cell_type_display = surrogate_names.get(cell_type, cell_type)
-        ax.set_title(f'{cell_type_display}', fontsize=12, pad=30)
+        ax.set_title(f'{cell_type_display}', fontsize=12, pad=42)
         ax.grid(False)
 
         from matplotlib.lines import Line2D
@@ -333,11 +375,15 @@ def plot_directional_consistency_scatter(
                        markeredgecolor='darkgreen', markeredgewidth=0.5,
                        label=label_consistent.format(len(consistent)))
             )
-        ax.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 1.35), 
+        ax.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 1.24), 
                  frameon=False, fontsize=8, ncol=2, columnspacing=-.2)
+
+        print(f"  {cell_type}:")
+        if annotate_extreme:
+            _annotate_extreme_tfs(ax, cell_data, association_col)
     
     plt.tight_layout()
-    output_path = os.path.join(output_dir, f'consistency_scatter{save_suffix}.png')
+    output_path = os.path.join(output_dir, f'consistency_scatter_{save_suffix}.png' if save_suffix else 'consistency_scatter.png')
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"  Saved: {output_path}")
@@ -598,11 +644,11 @@ def plot_heatmap_overal(stats_aging, analysis_name):
                         second_col='dataset', 
                         second_col_palette=palette_datasets,
                         bbox_to_anchor=(1.07, 1.07),
-                        bbox_to_anchor_col2=(1.05, .9),
-                        bbox_to_anchor_col1=(1.05, 0.61),
+                        bbox_to_anchor_col2=(1.05, .85),
+                        bbox_to_anchor_col1=(1.05, 0.52),
                         trend_colors = ['#B0BF1A', '#E52B50'],
                         trend_names = trends,
-                        figsize=(4, 7),
+                        figsize=(4, 5.5),
                         map_names={**{'cell_type':'Cell type', 'dataset': 'Dataset'}, **surrogate_names})
     file_name = f"{AGING_PLOTS_DIR}/overall_heatmap_{analysis_name}.png"
     print(f"Saving figure to {file_name}")
@@ -673,13 +719,14 @@ def plot_interaction_of_features_between_cell_types(args):
     # plt.title(surrogate_names[race], pad=40, fontsize=10, fontweight='bold')
 
     ttypes = ['CD8T', 'CD4T', 'NK']
-    mask = interaction_main_df[ttypes].sum(axis=1)==len(ttypes)
-    features = mask[mask].index.unique()
-    print(len(features))
-    for cell_type in ttypes:
-        plot_features_vs_datasets(cell_type=cell_type, datasets=DISCOVERY_COHORTS, features=features, 
-                                    sizes=(90, 100), analysis_name=args.analysis_name
-                                    )
+    if all(t in interaction_main_df.columns for t in ttypes):
+        mask = interaction_main_df[ttypes].sum(axis=1)==len(ttypes)
+        features = mask[mask].index.unique()
+        print(len(features))
+        for cell_type in ttypes:
+            plot_features_vs_datasets(cell_type=cell_type, datasets=DISCOVERY_COHORTS, features=features,
+                                        sizes=(90, 100), analysis_name=args.analysis_name
+                                        )
     if False: ### Shared sig TFs between CD8T and CD4T
         from hira.src.feature_association.plots import plot_joint_scatter
         ttypes = ['CD8T', 'CD4T']
@@ -695,7 +742,8 @@ def plot_interaction_of_features_between_cell_types(args):
 
 def plot_case_tf(args):
     from hira.src.feature_association.plots import plot_feature_values_all_datasets
-    selected_cell_types = ['CD8T', 'CD4T', 'NK'] # ['CD8T', 'CD4T', 'NK'] #Tcm_Naive_CD8
+    selected_cell_types = [ct for ct in ['CD8T', 'CD4T', 'NK']
+                           if ct in get_config_fa(args.analysis_name).get('cell_types', MAJOR_CTS)]
     datasets = DISCOVERY_COHORTS
     plot_genexpression = True
     show_cbar=False
@@ -733,7 +781,7 @@ def sig_features_counts(df, figsize=None, palette=None, ax=None):
     df_counts = df.groupby(['cell_type', 'trend']).size().reset_index(name='count')
     if ax is None:
         if figsize is None:
-            figsize = (.3*x_label_count+1, 2.5)
+            figsize = (.3*x_label_count+1, 2)
         fig, ax = plt.subplots(1, 1, figsize=figsize)
     sns.barplot(data=df_counts, x='cell_type', y='count', alpha=.8, hue='trend', palette=palette, ax=ax)
     # ax.set_ylabel('Gene count')
@@ -900,13 +948,14 @@ def plot_trend_sle_case(adata, tf='LEF1', cell_type='CD8T'):
     plt.tight_layout()
 
 def plot_tf_act_central_tfs(df, all_groups, palette_all, feature_col='gene', figsize=(3.5, 5), plot_centrality=True,
-                                ax2_margins={'y': 0.1, 'x': 0.1}, hide_ylabels=False, show_legend=True):
+                                ax2_margins={'y': 0.1, 'x': 0.1}, hide_ylabels=False, show_legend=True,
+                                width_ratios=(1.2, .8)):
     
     # stats_d_sig = stats_d[stats_d['p_value_adj'] < 0.05]
     # --- Plot ---
     tfs = df[feature_col].unique()
     if plot_centrality:
-        fig, axes = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': [1.2, .8]})
+        fig, axes = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': list(width_ratios)})
     else:
         fig, axes = plt.subplots(1, 1, figsize=figsize)
 

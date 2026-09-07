@@ -24,7 +24,7 @@ if __name__ == "__main__":
         print(f"{'='*60}")
 
         adata_train = ad.concat([
-            retrieve_adata(dataset=dataset, data_type=data_type, cell_type=cell_type, only_net_genes=True)
+            retrieve_adata(dataset=dataset, data_type=data_type, cell_type=cell_type, only_sig_genes=True)
             for dataset in train_datasets
         ])
 

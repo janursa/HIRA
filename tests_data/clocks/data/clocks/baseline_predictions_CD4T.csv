@@ -1,5 +1,5 @@
 dataset,donor_id,age,predicted_age
-fixture_a,Data12_sample29,30,30.00109322963938
-fixture_a,Data12_sample51,80,79.99925299411534
-fixture_b,Data12_sample52,80,79.99897183393306
-fixture_b,Data12_sample60,29,29.00068194231223
+fixture_a,Data12_sample29,30,30.00108777827807
+fixture_a,Data12_sample51,80,79.99921507930027
+fixture_b,Data12_sample52,80,79.99899475422878
+fixture_b,Data12_sample60,29,29.000702388192842

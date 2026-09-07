@@ -31,6 +31,7 @@ from hira.src.config import (
 )
 
 from hira.src.config import get_config
+from hira.src.clock.helper import save_clock_stats
 from hira.src.utils.util import test_mixed_effects, test_paired, test_unpaired
 from hira.src.clock.plots import (
     wrapper_age_acceleration_disease,
@@ -210,7 +211,11 @@ def perform_statistical_tests(obs_pert, experiments, dataset, test_type='mixed-e
             
             for (label, corr_pval, slope) in zip(test_labels, corrected_pvals, slopes):
                 pval_map[label] = (corr_pval, slope)
-    
+
+    save_clock_stats(pd.DataFrame(
+        [{'dataset': dataset, 'cell_type': ct, 'ctr': ctr, 'treatment': tr,
+          'p_value': p, 'delta': d, 'test_type': test_type, 'p_value_type': pvalue_show_type}
+         for (ct, ctr, tr), (p, d) in pval_map.items()]), f'perturbation_{dataset}')
     return pval_map
 
 
@@ -319,7 +324,8 @@ def analyze_disease(obs, dataset, output_dir, cell_types, config=None):
     
     # Age-stratified analysis - all cell types
     print("Generating combined age-stratified plot...")
-    wrapper_plot_age_acceleration_disease_bins(obs_filtered, disease_dataset=dataset, ctr=ctr, cond=cond)
+    bin_stats = wrapper_plot_age_acceleration_disease_bins(obs_filtered, disease_dataset=dataset, ctr=ctr, cond=cond)
+    save_clock_stats(bin_stats, f'disease_bins_{dataset}')
     output_path = os.path.join(output_dir, f'clock_{dataset}_bins.png')
     plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
     plt.close()
@@ -370,6 +376,7 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
         hue_column = age_group_column
     
     # Generate scatter plots for each cell type
+    stats_rows = []
     for cell_type in cell_types:
         obs_ct = obs[obs['cell_type'] == cell_type].copy()
         if len(obs_ct) == 0:
@@ -379,7 +386,9 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
         print(f"\nGenerating aging scatter plot for {cell_type}...")
         
         # Perform unpaired t-test comparing predicted ages between age groups
-        age_groups = sorted(obs_ct[age_group_column].unique())
+        # order by actual age, not alphabetically -- 'Old' sorts before 'Young'
+        age_groups = list(obs_ct.groupby(age_group_column, observed=True)['age'].mean()
+                          .sort_values().index)
         
         if len(age_groups) == 2:
             young_group, old_group = age_groups[0], age_groups[1]
@@ -405,6 +414,10 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
                 print(f"    {pretty_names.get(young_group, young_group)}: {young_pred.mean():.1f} ± {young_pred.std():.1f} (n={len(young_pred)})")
                 print(f"    {pretty_names.get(old_group, old_group)}: {old_pred.mean():.1f} ± {old_pred.std():.1f} (n={len(old_pred)})")
                 print(f"    Difference (old - young): {mean_diff:.1f}, p={p_value:.3e} {stars}")
+                stats_rows.append({'dataset': dataset, 'cell_type': cell_type,
+                                   'young_group': young_group, 'old_group': old_group,
+                                   'delta_predicted_age': mean_diff, 'p_value': p_value,
+                                   'n_young': len(young_pred), 'n_old': len(old_pred)})
             else:
                 p_value = None
                 stars = None
@@ -493,7 +506,9 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
             ax = axes[idx]
             
             # Perform unpaired t-test for this cell type
-            age_groups = sorted(obs_ct[age_group_column].unique())
+            # order by actual age, not alphabetically -- 'Old' sorts before 'Young'
+            age_groups = list(obs_ct.groupby(age_group_column, observed=True)['age'].mean()
+                              .sort_values().index)
             
             if len(age_groups) == 2:
                 young_group, old_group = age_groups[0], age_groups[1]
@@ -561,6 +576,7 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
                 if ax.get_legend():
                     ax.get_legend().remove()
         
+        save_clock_stats(pd.DataFrame(stats_rows), f'aging_{dataset}')
         output_path = os.path.join(output_dir, f'clock_{dataset}_aging_combined.png')
         plt.tight_layout()
         plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
@@ -581,6 +597,14 @@ def analyze_perturbation(obs_pert, dataset, output_dir, experiments, pval_map,
         print(f"\n{cell_type}:")
         print(f"  Rejuvenating: {len(rejuvenating)}")
         print(f"  Aging: {len(aging)}")
+        # nothing significant -> no figure is written, so drop any stale one from an earlier run
+        for group, name in [(rejuvenating, 'rejuvenating'), (aging, 'acceleration')]:
+            if not group:
+                suffix = '_mocked' if (mock_names and name == 'rejuvenating') else ''
+                stale = os.path.join(output_dir, f'clock_{dataset}_{cell_type}_{name}{suffix}.png')
+                if os.path.exists(stale):
+                    os.remove(stale)
+                    print(f"  Removed stale plot: {stale}")
         # Plot rejuvenating effects
         if len(rejuvenating) > 0:
             name_mapping = pretty_names if pretty_names else {}
@@ -758,7 +782,7 @@ def main():
     args = parser.parse_args()
     
     # Set output directory
-    output_dir = PLOTS_DIR
+    output_dir = os.path.join(PLOTS_DIR, args.dataset)
     os.makedirs(output_dir, exist_ok=True)
     
     # Load configuration
@@ -773,12 +797,15 @@ def main():
     # Get predictions
     print("\nLoading predictions...")
     obs = wrapper_clock_predictions(
-        args.cell_types, 
-        [args.dataset]
+        args.cell_types,
+        [args.dataset],
+        only_sig_genes=True
     )
     
     if len(obs) == 0:
         raise ValueError("Error: No predictions loaded. Check that data files exist.")
+
+    save_clock_stats(obs.reset_index(), f'predictions_{args.dataset}')
     
     if args.analysis_type == 'disease':
         # obs = obs[obs['age_group'] == 'young']  # Filter out young samples for disease analysis

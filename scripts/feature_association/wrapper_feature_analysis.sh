@@ -49,7 +49,7 @@ if [ -n "$dep" ]; then
     echo "submitted il10_ruxolitinib -> $out (after$dep)"
 fi
 
-# supp_figs.sh (activation_vs_expression) needs REF_GE_ANALYSIS alongside the TFA run
+# exp_analysis.sh (activation_vs_expression) needs REF_GE_ANALYSIS alongside the TFA run
 if [ "$analysis_name" != "$REF_GE" ]; then
     out=$(sbatch --parsable $WORKER "$REF_GE" aging)
     echo "submitted $REF_GE aging -> $out"

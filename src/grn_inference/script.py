@@ -17,7 +17,7 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import subprocess
 
-from hira.src.config import MAJOR_CTS, PRIOR_DIR
+from hira.src.config import MAJOR_CTS, PRIOR_DIR, EXCLUDE_RB_MT_GENES
 from hira.src.grn_inference.inference import main as main_inference
 from hira import get_config
 
@@ -39,7 +39,8 @@ def wrapper_grn(task, par):
         sampled_indices.extend(group_df.sample(n=sample_size, random_state=0).index.tolist())
     adata = adata[sampled_indices].copy()
     print('Shape after sampling: ', adata.shape, flush=True)
-    adata = filter_rb_mt_genes(adata)
+    if EXCLUDE_RB_MT_GENES:
+        adata = filter_rb_mt_genes(adata)
 
     if False:
         obs = adata.obs.copy()

@@ -4,6 +4,8 @@ Plot group wrappers for different aging and condition analyses.
 Each wrapper contains the plotting logic for a specific analysis type.
 """
 
+import os
+import matplotlib.pyplot as plt
 from hira.src.feature_association.plots import (
     wrapper_sig_features_counts, 
     plot_heatmap_overal, 
@@ -165,6 +167,7 @@ def wrapper_plots_tfa_major_condition(args, stats, stats_sig):
         plot_overview_heatmap,
         wrapper_plot_central_tfs_condition,
         plot_disease_case_tfs,
+        plot_disease_age_split_scatter,
         plot_ctr_condition_donor_level,
         plot_pathway_analysis
     )
@@ -184,6 +187,9 @@ def wrapper_plots_tfa_major_condition(args, stats, stats_sig):
             agreement='same',
             label_consistent='Consistent',
             label_opposing='Opposing',
+            annotate_extreme=False,
+            ylabel_per_panel=False,
+            y_pad=1.4,
             output_dir=args.output_dir
         )
 
@@ -218,6 +224,13 @@ def wrapper_plots_tfa_major_condition(args, stats, stats_sig):
             cell_type = 'CD8T'
             case_tfs = ['LEF1']
             plot_disease_case_tfs(args, cell_type=cell_type, case_tfs=case_tfs)
+            for case_tf in case_tfs:
+                plot_disease_age_split_scatter(args.dataset, analysis_name, cell_type, case_tf)
+                plt.tight_layout()
+                out = os.path.join(args.output_dir, f'sle_age_split_{case_tf}_{cell_type}.png')
+                plt.savefig(out, bbox_inches='tight', dpi=300, transparent=True)
+                plt.close()
+                print(f"  Saved: {out}")
             
         else:
             pass

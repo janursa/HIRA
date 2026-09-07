@@ -2,7 +2,7 @@
 networks across cell types.
 
 Usage: python src/grn_inference/plot_overlap.py [--level edge|source|target]
-Writes into PLOTS_DIR: grn_<level>_overlap_<cell_type>.png, consensus_grn_<level>_overlap.png
+Writes into PLOTS_DIR/exp_analysis/grn_overlap/: grn_<level>_overlap_<cell_type>.png, consensus_grn_<level>_overlap.png
 """
 import argparse
 import os
@@ -12,8 +12,8 @@ import pandas as pd
 
 from hira.src.config import (
     DISCOVERY_COHORTS,
+    GRN_OVERLAP_DIR,
     MAJOR_CTS,
-    PLOTS_DIR,
     palette_datasets_pretty,
     palette_major_cts,
     surrogate_names,
@@ -66,7 +66,7 @@ def plot_consensus_overlap(level='edge', cell_types=MAJOR_CTS):
 
 
 def _save(name):
-    file_name = os.path.join(PLOTS_DIR, name)
+    file_name = os.path.join(GRN_OVERLAP_DIR, name)
     print(f'Saving to {file_name}')
     plt.savefig(file_name, dpi=300, bbox_inches='tight', transparent=True)
     plt.close()
@@ -78,6 +78,5 @@ if __name__ == '__main__':
     parser.add_argument('--level', default='edge', choices=['edge', 'source', 'target'])
     args = parser.parse_args()
 
-    os.makedirs(PLOTS_DIR, exist_ok=True)
     plot_cohort_overlap(args.level)
     plot_consensus_overlap(args.level)

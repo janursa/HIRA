@@ -144,15 +144,19 @@ def retrieve_sig_stats(**kwargs):
 # analysis_name -> cached tf_activity feature dir to read from, when it differs from
 # analysis_name itself (i.e. the analysis only changes the association step, not the features)
 FA_ANALYSIS_FEATURE_SOURCE = {'tfa_major_b_ctNaiveToEffector': 'tfa_major_b'}
-NAIVE_CT_COL = 'Tcm_Naive_CD8_count'
-EFFECTOR_CT_COLS = ['Tem_Trm_CD8_count', 'Tem_Temra_CD8_count']  # MAIT excluded
+NAIVE_EFFECTOR_COLS = {
+    'CD8T': ('Tcm_Naive_CD8_count', ['Tem_Trm_CD8_count', 'Tem_Temra_CD8_count']),  # MAIT excluded
+    'CD4T': ('Tcm_Naive_CD4_count', ['Tem_Effector_CD4_count']),
+    'MONO': ('Classic_MONO_count', ['NonClassic_MONO_count']),
+}
 
 
-def add_naive_ratio(adata):
-    """naive_ratio = naive / (naive + effector) CD8T cells per donor, from the
+def add_naive_ratio(adata, cell_type):
+    """naive_ratio = naive / (naive + effector) cells per donor, from the
     {minor_ct}_count columns baked into the bulk pseudobulk (see bulkify/script.py)."""
-    naive = adata.obs[NAIVE_CT_COL].astype(float)
-    effector = adata.obs[EFFECTOR_CT_COLS].astype(float).sum(axis=1)
+    naive_col, effector_cols = NAIVE_EFFECTOR_COLS[cell_type]
+    naive = adata.obs[naive_col].astype(float)
+    effector = adata.obs[effector_cols].astype(float).sum(axis=1)
     total = naive + effector
     adata.obs['naive_ratio'] = np.where(total > 0, naive / total, np.nan)
     return adata
@@ -190,7 +194,7 @@ def retrieve_feature_data(
             raise ValueError(f'File {file_path} does not exist')
         adata = ad.read_h5ad(file_path)
         if analysis_name == 'tfa_major_b_ctNaiveToEffector':
-            adata = add_naive_ratio(adata)
+            adata = add_naive_ratio(adata, cell_type)
     # Filter by condition
     if condition is not None and 'condition' in adata.obs.columns:
         if condition not in adata.obs['condition'].unique():

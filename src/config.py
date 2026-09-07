@@ -32,12 +32,21 @@ OUTPUT_DIR = os.path.join(HIRA_DIR, 'results_folder')
 GRNS_DIR = f'{OUTPUT_DIR}/grns'
 FEATURES_DIR = f'{OUTPUT_DIR}/features/'
 CLOCKS_DIR = f"{OUTPUT_DIR}/clock/"
+CLOCK_STATS_DIR = f"{OUTPUT_DIR}/clock/stats/"  # summary numbers behind the clock figures
 PLOTS_DIR = f"{OUTPUT_DIR}/plots/"
 CLOCK_PLOTS_DIR = f"{PLOTS_DIR}clock/"
 AGING_PLOTS_DIR = f"{PLOTS_DIR}aging/"
 CONDITION_PLOTS_DIR = f"{PLOTS_DIR}condition/"
 COMPARISON_PLOTS_DIR = f"{PLOTS_DIR}comparisons/"
-for _d in (CLOCK_PLOTS_DIR, AGING_PLOTS_DIR, CONDITION_PLOTS_DIR, COMPARISON_PLOTS_DIR):
+EXP_ANALYSIS_PLOTS_DIR = f"{PLOTS_DIR}exp_analysis/"  # one subfolder per scripts/exp_analysis.sh task
+COHORT_STATS_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}cohort_stats/"
+GRN_OVERLAP_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}grn_overlap/"
+ACTIVATION_VS_EXPRESSION_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}activation_vs_expression/"
+CONFOUNDERS_PLOTS_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}confounders/"
+EXP_ANALYSIS_DIR = f"{OUTPUT_DIR}/exp_analysis/"  # non-plot outputs (tables) per task
+CONFOUNDERS_DIR = f"{EXP_ANALYSIS_DIR}confounders/"
+for _d in (CLOCK_PLOTS_DIR, AGING_PLOTS_DIR, CONDITION_PLOTS_DIR, COMPARISON_PLOTS_DIR, CLOCK_STATS_DIR,
+           COHORT_STATS_DIR, GRN_OVERLAP_DIR, ACTIVATION_VS_EXPRESSION_DIR, CONFOUNDERS_PLOTS_DIR, CONFOUNDERS_DIR):
     os.makedirs(_d, exist_ok=True)
 
 CLOCK_V = 'V1'
@@ -89,7 +98,7 @@ SUB_CTS = list(mapping_minor_2_major.keys())
 MAJOR_CTS = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
 CONFIG_FA = {
     'tfa_major_b': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL},
-    'tfa_major_b_ctNaiveToEffector': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL, 'cell_types': ['CD8T']},
+    'tfa_major_b_ctNaiveToEffector': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL, 'cell_types': ['CD8T', 'CD4T', 'MONO']},
     'tfa_major_sc': {'data_type': 'sc', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL},
     'tfa_major_mc': {'data_type': 'metacell', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL},
     'tfa_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'tf_activity', 'granularity': SUB_CT_LABEL},
@@ -153,11 +162,12 @@ NET_WEIGHT_THRESHOLD = None  # 0.05 # Minimum absolute weight for edges in GRN
 # 'promotor' = promoter motifs only, None = no pruning.
 NET_SKELETON = 'skeleton'  # 'skeleton' | 'promotor' | None
 NET_MAX_SIZE = 100_000
+EXCLUDE_RB_MT_GENES = False  # drop MT-*/ribosomal-protein genes before pseudobulking + GRN inference
 CLOCK_CV_SCORING = 'spearman'  # 'r2' or 'spearman'
 TUNE_CLOCK = True
 META_MIN_COHORT = 2
 CONSENSUS_MIN_DEGREE = 2 
-CORR_THRESHOLD = 0.1 # minimum absolute correlation for feature association with age
+CORR_THRESHOLD = 0.2 # minimum absolute correlation for feature association with age
 TF_MIN_TARGET = 5
 # Per-dataset categorical confounders (donor metadata correlated with age, found via
 # src/exp_analysis/confounders.py) to control for in association_with_age(), in addition

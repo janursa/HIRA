@@ -5,7 +5,7 @@ Needs two feature analyses to have been run: a TF-activity one and a gene-expres
 
 Usage: python src/feature_association/activation_vs_expression.py \
            [--tfa-analysis tfa_major_mc] [--ge-analysis ge_major_mc] [--dataset aida]
-Writes: PLOTS_DIR/activation_vs_expression.png
+Writes: PLOTS_DIR/exp_analysis/activation_vs_expression/activation_vs_expression.png
 """
 import argparse
 import os
@@ -13,7 +13,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-from hira.src.config import PLOTS_DIR, REF_GE_ANALYSIS
+from hira.src.config import ACTIVATION_VS_EXPRESSION_DIR, REF_GE_ANALYSIS
 from hira.src.feature_association.helper import retrieve_sig_stats
 from hira.src.feature_association.plots import plot_activation_vs_expression
 
@@ -46,7 +46,6 @@ if __name__ == '__main__':
     parser.add_argument('--cell-type', default='CD8T')
     args = parser.parse_args()
 
-    os.makedirs(PLOTS_DIR, exist_ok=True)
     df = build_frame(args.tfa_analysis, args.ge_analysis, args.dataset)
     df = df[df['cell_type'] == args.cell_type]
 
@@ -59,6 +58,6 @@ if __name__ == '__main__':
     plt.legend([], [], frameon=False)
     plt.suptitle(f'TF activation vs expression ({args.cell_type})', y=.95, fontsize=12, weight='bold')
     plt.tight_layout()
-    file_name = os.path.join(PLOTS_DIR, 'activation_vs_expression.png')
+    file_name = os.path.join(ACTIVATION_VS_EXPRESSION_DIR, 'activation_vs_expression.png')
     print(f'Saving to {file_name}')
     plt.savefig(file_name, dpi=300)

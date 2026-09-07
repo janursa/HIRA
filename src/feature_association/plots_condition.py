@@ -5,8 +5,10 @@ Plotting functions for condition analysis.
 
 import os
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
+from scipy.stats import linregress
 from pandas.api.types import CategoricalDtype
 from hira.src.config import surrogate_names, MAJOR_CTS, SUB_CTS, palette_major_cts, palette_sub_cts
 from hira import retrieve_sig_stats, retrieve_stats, retrieve_feature_data
@@ -73,6 +75,44 @@ def plot_healthy_disease_trend(dataset, analysis_name, cell_type, case_tf, condi
     ax.set_xlabel('Age')
     
     return ax
+
+
+AGE_SPLIT = 50
+AGE_SPLIT_COLORS = ['#4C72D0', '#F5921B']
+
+
+def _pval_stars(p):
+    return '***' if p < 1e-3 else '**' if p < 1e-2 else '*' if p < 0.05 else ''
+
+
+def plot_disease_age_split_scatter(dataset, analysis_name, cell_type, case_tf,
+                                   condition='SLE', condition_col='condition',
+                                   axes=None, figsize=(2.7, 1.6)):
+    """TF activity vs age within one condition, split into younger/older than AGE_SPLIT."""
+    adata = retrieve_feature_data(dataset=dataset, cell_type=cell_type,
+                                  analysis_name=analysis_name, condition=None)
+    if case_tf not in adata.var_names:
+        return None
+    df = adata.obs[['age', condition_col]].copy()
+    df['value'] = np.asarray(adata[:, case_tf].X).flatten()
+    df = df[df[condition_col] == condition]
+
+    if axes is None:
+        _, axes = plt.subplots(1, 2, figsize=figsize, sharey=True)
+    panels = [(f'age < {AGE_SPLIT}', df[df['age'] < AGE_SPLIT]),
+              (f'age > {AGE_SPLIT}', df[df['age'] >= AGE_SPLIT])]
+    for ax, color, (label, sub) in zip(axes, AGE_SPLIT_COLORS, panels):
+        ax.scatter(sub['age'], sub['value'], s=18, color=color, alpha=.7, linewidth=0)
+        fit = linregress(sub['age'], sub['value'])
+        x = np.array([sub['age'].min(), sub['age'].max()])
+        ax.plot(x, fit.slope * x + fit.intercept, color='black', linestyle='--', linewidth=1.5)
+        ax.set_title(f'{label}\np = {fit.pvalue:.3g}{_pval_stars(fit.pvalue)}', fontsize=9)
+        ax.spines[['top', 'right']].set_visible(False)
+        ax.set_yticks([])
+        ax.margins(x=0.2, y=0.15)
+    axes[0].set_ylabel('TF activity')
+    axes[0].set_xlabel('Age')
+    return axes
 
 
 def plot_overview_heatmap(stats, args):
@@ -164,7 +204,7 @@ def wrapper_plot_central_tfs_condition(stats, cell_types, group_col, args):
             stats_all, 
             all_groups=groups, 
             palette_all=palette_all, 
-            figsize=(2.5, 4), 
+            figsize=(3.0 if args.dataset == 'perez_sle' else 2.5, 4), 
             ax2_margins={'x': 0.2, 'y': 0.02}, 
             hide_ylabels=False, 
             plot_centrality=True, 

@@ -11,17 +11,17 @@ donor subset (by_celltype table), to check whether cell-type-driven donor dropou
 shifts the confound.
 
 Usage: python src/exp_analysis/confounders.py [--cohorts aida perez_sle onek1k abf300]
-Writes: OUTPUT_DIR/exp_analysis/confounders_overall.csv, confounders_by_celltype.csv
+Writes: OUTPUT_DIR/exp_analysis/confounders/confounders_overall.csv, confounders_by_celltype.csv
+        PLOTS_DIR/exp_analysis/confounders/confounders.png
 """
 import argparse
-import os
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 import matplotlib.pyplot as plt
 
-from hira.src.config import DISCOVERY_COHORTS, OUTPUT_DIR, MAJOR_CT_LABEL, CONFOUND_COVARIATES
+from hira.src.config import DISCOVERY_COHORTS, CONFOUNDERS_DIR, CONFOUNDERS_PLOTS_DIR, MAJOR_CT_LABEL, CONFOUND_COVARIATES
 from hira.src.utils.util import retrieve_adata, coarsen
 
 EXCLUDE = {'age', 'age_group', 'donor_age', 'cell_count', MAJOR_CT_LABEL, 'dataset',
@@ -143,11 +143,9 @@ def main():
     overall = pd.concat(overall_parts, ignore_index=True).sort_values(['cohort', 'R2'], ascending=[True, False])
     by_ct = pd.concat(by_ct_parts, ignore_index=True) if by_ct_parts else pd.DataFrame()
 
-    out_dir = f'{OUTPUT_DIR}/exp_analysis'
-    os.makedirs(out_dir, exist_ok=True)
-    overall.to_csv(f'{out_dir}/confounders_overall.csv', index=False)
-    by_ct.to_csv(f'{out_dir}/confounders_by_celltype.csv', index=False)
-    plot_covariates(overall, f'{out_dir}/confounders.png')
+    overall.to_csv(f'{CONFOUNDERS_DIR}confounders_overall.csv', index=False)
+    by_ct.to_csv(f'{CONFOUNDERS_DIR}confounders_by_celltype.csv', index=False)
+    plot_covariates(overall, f'{CONFOUNDERS_PLOTS_DIR}confounders.png')
 
     pd.set_option('display.width', 160)
     print(overall.to_string(index=False))
@@ -156,9 +154,9 @@ def main():
     if len(by_ct):
         print('\n--- Per-cell-type R2 for flagged covariates ---')
         print(by_ct.to_string(index=False))
-    print(f'\nWrote {out_dir}/confounders_overall.csv')
-    print(f'Wrote {out_dir}/confounders_by_celltype.csv')
-    print(f'Wrote {out_dir}/confounders.png')
+    print(f'\nWrote {CONFOUNDERS_DIR}confounders_overall.csv')
+    print(f'Wrote {CONFOUNDERS_DIR}confounders_by_celltype.csv')
+    print(f'Wrote {CONFOUNDERS_PLOTS_DIR}confounders.png')
 
 
 if __name__ == '__main__':

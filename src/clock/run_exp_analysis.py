@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import anndata as ad
 from hira import MAJOR_CTS, CLOCK_PLOTS_DIR as PLOTS_DIR, PRIOR_DIR, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK, palette_major_cts, USE_LOCAL_CLOCK, DISCOVERY_COHORTS
 from hira import retrieve_net_consensus
 from hira.src.network_analysis.plots import dotplot_category_color
@@ -190,9 +189,10 @@ def plot_coeff():
         plt.savefig(file_name, dpi=300, transparent=True, bbox_inches='tight')
         plt.close()
 
-def tf_act_analysis(n_features=5, sig_threshold=0.05):
-    from grnimmuneclock import retrieve_function
-    from hira import retrieve_stats
+def tf_act_analysis(sig_threshold=0.05, n_repeats=50, min_targets=5, n_display=5):
+    from grnimmuneclock import retrieve_function, permutation_gene_importance, tf_activity_from_coefs
+    from hira import retrieve_stats, retrieve_sig_stats, retrieve_adata, CLOCK_TEST_COHORTS
+    from scipy import sparse
     from scipy.stats import fisher_exact
 
     dataset = DISCOVERY_COHORTS[0]
@@ -204,43 +204,83 @@ def tf_act_analysis(n_features=5, sig_threshold=0.05):
     for cell_type in ['CD8T', 'CD4T']:
         model, gene_names = retrieve_function(cell_type=cell_type, model_dir=CLOCKS_DIR if USE_LOCAL_CLOCK else None, version=CLOCK_V)
         coefs = model.named_steps["ridge"].coef_
+        clock_df = pd.DataFrame({'gene': gene_names, 'clock_coef': coefs})
 
-        abs_coefs = np.abs(coefs)
-        top_idx = np.argsort(abs_coefs)[-n_features:][::-1]
-        top_genes = [str(gene_names[i]) for i in top_idx]
+        # --- gene selection: out-of-sample permutation-importance p-value per gene, held out
+        # on CLOCK_TEST_COHORTS (the same cohorts run_cv.py validates the clock on), scored by
+        # Spearman rho. The clock's own gene set is already restricted to age-significant
+        # genes at training time (retrieve_adata(only_sig_genes=True)), so there's no need to
+        # re-filter for significance here -- just cross-check the two sets still agree below.
+        X_parts, y_parts = [], []
+        for ds in CLOCK_TEST_COHORTS:
+            adata_ds = retrieve_adata(dataset=ds, data_type='bulk', cell_type=cell_type, condition='healthy')
+            Xd = pd.DataFrame(adata_ds.X.toarray() if sparse.issparse(adata_ds.X) else np.asarray(adata_ds.X),
+                               columns=adata_ds.var_names, index=adata_ds.obs_names).reindex(columns=gene_names, fill_value=0)
+            X_parts.append(Xd.values)
+            y_parts.append(adata_ds.obs['age'].astype(float).values)
+        X = np.vstack(X_parts)
+        y = np.concatenate(y_parts)
 
-        top_genes_dict[cell_type] = top_genes
-        top_weights_dict[cell_type] = coefs[top_idx]
+        padj, spearman_full = permutation_gene_importance(model, X, y, n_repeats=n_repeats)
+        clock_df['importance_padj'] = padj
+        print(f"[{cell_type}] held-out Spearman rho={spearman_full:.3f} (n={len(y)})")
 
-        # calculate TF activity against a freshly rebuilt consensus GRN (force=True avoids a stale cached file)
-        import decoupler as dc
+        # cross-check: every clock feature should be a sig gene from training (a few sig
+        # genes can be missing from the clock -- e.g. dropped by the inner-join across
+        # CLOCK_TRAINING_COHORTS -- so this is a subset check, not equality). Skip entirely
+        # where retrieve_adata fell back to consensus-net targets for too few sig genes
+        # (currently B cells only), and skip if sig stats aren't available at all.
+        try:
+            sig_genes = set(retrieve_sig_stats(analysis_name=REF_GE_ANALYSIS, cell_type=cell_type, multi_cohort=True)['gene'])
+        except Exception:
+            sig_genes = None
+        if sig_genes is not None and cell_type != 'B':
+            assert set(gene_names) <= sig_genes, f"{cell_type}: clock has features that aren't significant genes"
+
+        # keep genes with real out-of-sample attribution AND a concordant empirical trend
+        # (not re-checking significance here -- see cross-check above)
+        emp_ge = retrieve_stats(analysis_name=REF_GE_ANALYSIS, cell_type=cell_type, multi_cohort=True).drop_duplicates(subset='gene').set_index('gene')
+        gdf = clock_df.join(emp_ge, on='gene', how='inner')
+        gdf['agree'] = np.sign(gdf['clock_coef']) == np.sign(gdf['pooled_rho'])
+        final_genes = gdf[(gdf['importance_padj'] < sig_threshold) & gdf['agree']].copy()
+        print(f"[{cell_type}] {(gdf['importance_padj'] < sig_threshold).sum()}/{len(gdf)} genes have significant "
+              f"out-of-sample attribution; {len(final_genes)} are also concordant with the empirical trend")
+
+        top_genes = final_genes.reindex(final_genes['clock_coef'].abs().sort_values(ascending=False).index).head(n_display)
+        top_genes_dict[cell_type] = top_genes['gene'].tolist()
+        top_weights_dict[cell_type] = top_genes['clock_coef'].values
+
+        # TF activity from the final gene set's coefficients, against a freshly rebuilt
+        # consensus GRN (force=True avoids a stale cached file), restricted to TFs already
+        # significant with age when that's available -- else tested against all TFs in the net.
+        try:
+            age_sig_tfs = set(retrieve_sig_stats(analysis_name=REF_TFA_ANALYSIS, cell_type=cell_type, multi_cohort=True)['gene'].unique())
+        except Exception:
+            age_sig_tfs = None
         net = retrieve_net_consensus(cell_type=cell_type, force=True)
+        net = net[net['target'].isin(set(final_genes['gene']))]
+        if age_sig_tfs is not None:
+            net = net[net['source'].isin(age_sig_tfs)]
 
-        obs = pd.DataFrame({'sample': [1]})
-        var = pd.DataFrame({'genes': gene_names})
-        var.index = var['genes']
-
-        X=[[float(c) for c in coefs]]
-        adata = ad.AnnData(np.asarray(X), obs=obs, var=var)
-        dc.mt.ulm(adata, net, tmin=5)
-        tf_acts_df = adata.obsm['score_ulm']
-        tf_padj_df = adata.obsm['padj_ulm']
-        tfs = tf_acts_df.columns
-        ulm_score = pd.Series(tf_acts_df.values[0], index=tfs)
-        ulm_padj = pd.Series(tf_padj_df.values[0], index=tfs)
+        tf_df = tf_activity_from_coefs(final_genes['gene'].values, final_genes['clock_coef'].values, net, min_targets=min_targets)
+        ulm_score = tf_df.set_index('tf')['score']
+        ulm_padj = tf_df.set_index('tf')['padj']
+        tfs = tf_df['tf']
+        print(f"[{cell_type}] {len(age_sig_tfs) if age_sig_tfs is not None else 'all'} candidate TFs -> {len(tfs)} testable on the final gene set "
+              f"-> {(ulm_padj < sig_threshold).sum()} ULM-significant")
 
         # restrict top-n selection to TFs whose ULM score is itself significant
         sig_tfs = ulm_padj[ulm_padj < sig_threshold].index
-        if len(sig_tfs) < n_features:
+        if len(sig_tfs) < n_display:
             print(f"[{cell_type}] only {len(sig_tfs)} TFs pass ULM padj<{sig_threshold}; "
-                  f"falling back to all {len(tfs)} TFs for top-{n_features} selection")
+                  f"falling back to all {len(tfs)} testable TFs for top-{n_display} selection")
             sig_tfs = tfs
-        top_tfs = ulm_score.loc[sig_tfs].abs().sort_values(ascending=False).head(n_features).index.tolist()
+        top_tfs = ulm_score.loc[sig_tfs].abs().sort_values(ascending=False).head(n_display).index.tolist()
 
         top_tfs_dict[cell_type] = top_tfs
         top_acts_dict[cell_type] = ulm_score.loc[top_tfs].values
 
-        # --- sign-concordance of ULM-inferred regulation vs. empirical aging trend, across ALL TFs ---
+        # --- sign-concordance of ULM-inferred regulation vs. empirical aging trend, across testable TFs ---
         # meta-analyzed across the natural-aging discovery cohorts (per-cohort stats files don't exist for these)
         emp_stats_raw = retrieve_stats(analysis_name=REF_TFA_ANALYSIS, cell_type=cell_type, multi_cohort=True)
         emp_stats = emp_stats_raw.groupby('gene').agg(
@@ -286,6 +326,6 @@ def tf_act_analysis(n_features=5, sig_threshold=0.05):
 
 if __name__ == "__main__":
     # plot_coeff()
-    # features_dict = features_stats()
-    # gsea(features_dict)
-    tf_act_analysis(n_features=10)
+    features_dict = features_stats()
+    gsea(features_dict)
+    tf_act_analysis(n_display=10)

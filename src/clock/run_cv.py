@@ -10,8 +10,9 @@ import seaborn as sns
 from hira.src.clock.plots import plot_scatter_age_vs_predictedAge
 from sklearn.metrics import r2_score
 from hira import CLOCK_TEST_COHORTS, wrapper_clock_predictions, CLOCK_PLOTS_DIR as PLOTS_DIR, MAJOR_CTS, surrogate_names, palette_datasets_pretty, colors_blind
+from hira.src.clock.helper import save_clock_stats
 
-obs = wrapper_clock_predictions(MAJOR_CTS, CLOCK_TEST_COHORTS, condition='healthy')
+obs = wrapper_clock_predictions(MAJOR_CTS, CLOCK_TEST_COHORTS, condition='healthy', only_sig_genes=True)
 
 fold_scores = {}
 all_preds = []
@@ -31,6 +32,10 @@ scores_df = pd.DataFrame.from_dict(fold_scores, orient='index')
 scores_df.index = pd.MultiIndex.from_tuples(scores_df.index, names=['cell_type', 'dataset'])
 predictions_df = pd.concat(all_preds)
 scores_df = scores_df.reset_index()  # make cell_type and dataset columns
+scores_df['n'] = [len(obs[(obs['cell_type'] == ct) & (obs['dataset'] == ds)])
+                  for ct, ds in zip(scores_df['cell_type'], scores_df['dataset'])]
+save_clock_stats(scores_df, 'cv_scores')
+save_clock_stats(predictions_df.reset_index(), 'cv_predictions')
 scores_df['dataset'] = scores_df['dataset'].map(lambda name: surrogate_names.get(name, name))
 
 def plot_scores(cv_scores, metric, figsize=[2.5, 2]):

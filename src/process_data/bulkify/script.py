@@ -8,7 +8,7 @@ import argparse
 import anndata as ad
 import numpy as np
 import pandas as pd
-from hira.src.config import get_config, SUB_CT_LABEL, MAJOR_CT_LABEL
+from hira.src.config import get_config, SUB_CT_LABEL, MAJOR_CT_LABEL, EXCLUDE_RB_MT_GENES
 from hira.src.utils.util import bulkify_func, filter_rb_mt_genes
 
 def normalize(adata):
@@ -57,7 +57,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     adata = ad.read_h5ad(args.sc_dataset_file)
-    adata = filter_rb_mt_genes(adata)
+    if EXCLUDE_RB_MT_GENES:
+        adata = filter_rb_mt_genes(adata)
     dataset = adata.obs['dataset'].unique()[0]
     cfg = get_config(dataset)
     bulk_group = cfg.bulk_group

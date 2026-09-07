@@ -33,7 +33,7 @@ def train_clocks():
         print(f"{'='*60}")
         
         adata_train = ad.concat([
-            retrieve_adata(dataset=dataset, data_type=data_type, cell_type=cell_type, only_net_genes=True)
+            retrieve_adata(dataset=dataset, data_type=data_type, cell_type=cell_type, only_sig_genes=True)
             for dataset in W_train_datasets
         ])
 
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     test_datasets = ['perez_sle', 'aida']
     train_clocks()
     W_median_prediction = extract_w_results()
-    predictions_all = wrapper_clock_predictions(MAJOR_CTS, evaluate_datasets=test_datasets, version=version)
+    predictions_all = wrapper_clock_predictions(MAJOR_CTS, evaluate_datasets=test_datasets, version=version, only_sig_genes=True)
     test_predictions = predictions_all[predictions_all['condition']=='healthy'] # only healthy samples?
 
     print(f"Test predictions shape: {test_predictions.shape}")

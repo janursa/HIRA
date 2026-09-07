@@ -141,6 +141,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    args.output_dir = os.path.join(args.output_dir, args.dataset)
     os.makedirs(args.output_dir, exist_ok=True)
     
     # Get configuration

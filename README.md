@@ -3,9 +3,6 @@
 Analysis pipeline for immune aging: cell-type-resolved GRN inference, aging clocks,
 feature association, pathway/motif/trajectory analysis.
 
-Stages run in order — priors, raw data, preprocessing, GRN inference, feature association,
-clocks, supplementary figures. `scripts/readme.md` is the one-table index of all of them.
-
 ## Setup
 
 ```bash
@@ -17,8 +14,6 @@ pip install -r requirements.txt
 pip install -e GRNimmuneClock/
 ```
 
-The `hira` package is the repo directory itself (not a package inside it), so its
-*parent* directory must be on `PYTHONPATH`:
 
 ```bash
 export PYTHONPATH="$(dirname "$(pwd)"):$PYTHONPATH"
@@ -30,19 +25,57 @@ Verify with `python -c "import hira"`.
 
 Set these in `.env`
 
-- `HIRA_DIR` — repo root. Required, no default.
-- `HIRA_BASE_DIR` — where heavy data (datasets/priors/per-cell feature matrices) lives,
-  outside the repo. Required, no default. Lightweight results (GRNs, summary stats,
+- `HIRA_DIR` — abs path of the repo. Required. 
+- `HIRA_BASE_DIR` — where heavy data (datasets/priors) should be stored? Required. Lightweight results (GRNs, summary stats,
   clock models, plots) are git-tracked and always live in `<HIRA_DIR>/results_folder`.
-- `HIRA_RAW_DIR` — root of the raw data lake that preprocessing reads cohort input
-  files from (see Data Acquisition below). Defaults to `/vol/projects/CIIM`.
+- `HIRA_RAW_DIR` — the abs path of the downloaded public cohorts (see Data acquisition below). Defaults to `/vol/projects/CIIM`.
+
+Everything else — cell types, cohort lists, feature definitions, clock settings — is in `src/config.py`.
+
+## Pipeline stages
+
+Run in order; each stage consumes the previous one's output.
+
+| # | Stage | Command | Writes |
+|---|---|---|---|
+| 1 | Prior files | `bash scripts/prior/acquire.sh <file>` | `$HIRA_BASE_DIR/prior/` |
+| 2 | Raw data | `bash scripts/process_data/acquire/download_data.sh <cohort>` | `$HIRA_RAW_DIR/` |
+| 3 | Preprocess | `bash scripts/process_data/wrapper_run_preprocess.sh` | `$HIRA_BASE_DIR/datasets/{sc,bulk,bulk_minor,metacell}/` |
+| 4 | GRN inference | `bash scripts/grn_inference/wrapper_grn_inference.sh` | `results_folder/grns/` |
+| 5 | Feature association | `bash scripts/feature_association/wrapper_feature_analysis.sh [analysis_name] [task ...]` | `results_folder/features/`, `results_folder/plots/` |
+| 6 | Aging clocks | `bash scripts/clock_analysis.sh` | `results_folder/clock/`, `results_folder/plots/` |
+| 7 | Supplementary + stress analyses | `bash scripts/exp_analysis.sh [analysis_name]` | `results_folder/plots/exp_analysis/`, `results_folder/exp_analysis/`, `results_folder/features/`, `results_folder/clock_stress/`
+
+Stages 3–5 `sbatch`-submit one SLURM job per dataset/task.
 
 
-## Data Acquisition
+### Explanatory / stress analyses
 
-Preprocessing (`scripts/process_data/run_preprocess.sh`) reads raw per-cohort files from
-`$HIRA_RAW_DIR` (default `/vol/projects/CIIM`). To fetch a cohort's raw data, or
-print manual access instructions where a download can't be automated:
+Not part of the main chain; each reads the outputs above. All run from `scripts/exp_analysis.sh`.
+Each task's plots get their own subfolder under `results_folder/plots/exp_analysis/`; non-plot
+tables (confounders) go under `results_folder/exp_analysis/`.
+
+- **Supplementary tables/figures** — cohort stats (`plots/exp_analysis/cohort_stats/`), GRN overlap
+  (`plots/exp_analysis/grn_overlap/`), discovery-vs-validation (`results_folder/features/`),
+  activation-vs-expression (`plots/exp_analysis/activation_vs_expression/`).
+- **Confounders** — age-correlated donor metadata, informs `CONFOUND_COVARIATES` in
+  `src/config.py` →
+  `exp_analysis/confounders/confounders_{overall,by_celltype}.csv` and
+  `plots/exp_analysis/confounders/confounders.png`.
+  See `report/confounder_analysis.md`. Pass extra args after `analysis_name`, e.g.
+  `bash scripts/exp_analysis.sh tfa_major_b --cohorts ...`.
+- **Clock stress test** (bottom of the script, sbatch-submitted) — retrains the clock under
+  one perturbed setting at a time (model family, metacell instead of pseudobulk, whole genome
+  instead of GRN targets) and checks whether the baseline's CV, SLE and rejuvenation readouts
+  still hold. Submits one job per variant, then
+  `python src/exp_analysis/clock_stress.py --aggregate` combines and plots them →
+  `results_folder/clock_stress/`. 
+
+## Data acquisition
+
+Preprocessing reads raw per-cohort files from `$HIRA_RAW_DIR` (default `/vol/projects/CIIM`).
+To fetch a cohort's raw data, or print manual access instructions where a download can't be
+automated:
 
 ```bash
 bash scripts/process_data/acquire/download_data.sh <cohort>
@@ -60,79 +93,40 @@ bash scripts/process_data/acquire/download_data.sh <cohort>
 | SoundLife (`soundlife`) | manual, private | not publicly hosted — obtained via direct data transfer from study authors |
 | CXCL9 (`CXCL9`) | internal | CIIM-only, no public source |
 
-To use raw files from a location other than `$HIRA_RAW_DIR`'s default layout,
-either set `HIRA_RAW_DIR` in `.env`, or set `INPUT_FILE_OVERRIDE` when invoking
-`run_preprocess.sh` to point at a single custom path. Downloaded files may need light
-column-name harmonization (donor/age/condition fields) to match what
-`src/process_data/preprocess/helper.py:format_data` expects — it already
-recognizes several common CELLxGENE/Synapse schema variants.
+To use raw files from a location other than `$HIRA_RAW_DIR`'s default layout, either set
+`HIRA_RAW_DIR` in `.env`, or set `INPUT_FILE_OVERRIDE` when invoking `run_preprocess.sh` to
+point at a single custom path. Downloaded files may need light column-name harmonization
+(donor/age/condition fields) to match what
+`src/process_data/preprocess/helper.py:format_data` expects — it already recognizes several
+common CELLxGENE/Synapse schema variants.
 
-## Input data
-Once raw data downloaded, preprocessing scripts does quality control, cell type annotation, and pseudobulking and
-write them under `<HIRA_BASE_DIR>/datasets/{sc,bulk,bulk_minor,metacell}/<dataset>.h5ad`.
+## Repo layout
 
-## GRN inference
-
-Infers per-cell-type gene regulatory networks from the datasets under `<HIRA_BASE_DIR>/datasets/`.
-Edit the dataset list and paths in `scripts/grn_inference/wrapper_grn_inference.sh`, then submit:
-
-```bash
-bash scripts/grn_inference/wrapper_grn_inference.sh
+```
+scripts/    bash entry points — one per stage above, sbatch wrappers included
+src/        all python
+  config.py            paths, cohort lists, cell types, CONFIG_FA feature definitions
+  process_data/        QC, cell type annotation, pseudobulk/metacell, prior file builders
+  grn_inference/       per-cell-type GRN inference
+  feature_association/ feature computation + age/condition association, meta-analysis, plots
+  clock/               clock training, CV, comparison against published clocks
+  exp_analysis/        confounder and clock stress analyses
+  pathway_analysis/    gene-set / aging-hallmark enrichment over associated features
+  network_analysis/    shared plot primitives (dotplots, category colouring) used by the above
+  utils/               shared IO and plotting helpers
+tests_code/ regression + determinism tests, one folder per stage (see tests_code/readme.md)
+tests_data/ heavy test fixtures (git-lfs), symlinked into tests_code/<stage>/data
+GRNimmuneClock/  submodule — the installable clock package
 ```
 
-This `sbatch`-submits one SLURM job per dataset via `src/grn_inference/run_grn_inference.sh`.
-
-## Age-associated TF activity and gene expression analysis
-
-Computes features (TF activity, gene expression, etc.) and tests their association with age/condition, aggregating across cohorts via meta-analysis where applicable.
-
-```bash
-bash scripts/feature_association/wrapper_feature_analysis.sh [analysis_name] [task ...]
-```
-
-This `sbatch`-submits one SLURM job per task (`aging soundlife perez_sle parsebioscience op
-CXCL9`), so they run in parallel; `il10_ruxolitinib` is chained after `op` and
-`parsebioscience` since it reads their results. Consensus GRNs are built once by the wrapper
-before submitting. Pass task names to submit only a subset, and re-run the wrapper per
-feature type (e.g. once with `tfa_major_mc`, once with `ge_major_mc`). The `ge_*` feature
-types only support `aging` — the condition/perturbation plots are unimplemented for them, so
-the wrapper submits `aging` alone for those.
-
-`analysis_name` (default `tfa_major_mc`) selects the feature type and the data it runs on; the
-full vocabulary is `CONFIG_FA` in `src/config.py`.
-
-## Aging clocks
-
-Trains the per-cell-type Ridge clocks (via the `GRNimmuneClock` submodule), runs
-cross-validation, compares against published clocks, and applies them to the disease and
-perturbation cohorts.
-
-```bash
-bash scripts/clock_analysis.sh
-```
-
-Relevant config: `CLOCK_V` (model version), `TUNE_CLOCK` (Optuna alpha search),
-`CLOCK_CV_SCORING`, `CLOCK_TRAINING_COHORTS`. Trained models land in `results_folder/clock/`
-and are copied into the package by `python src/clock/build_package_data.py`, which also
-regenerates the consensus GRNs and example dataset shipped with `GRNimmuneClock`.
-
-## Supplementary figures
-
-Cohort composition stats, GRN overlap plots, and the discovery-vs-validation TF tables:
-
-```bash
-bash scripts/supp_figs.sh
-```
-
-## Results layout
-
-`results_folder/` is git-tracked and holds everything lightweight:
+Results (`results_folder/`, git-tracked, everything lightweight):
 
 - `grns/` — per-cohort and consensus GRNs
 - `features/` — association statistics and supplementary tables
 - `clock/` — trained clock models and predictions
-- `plots/` — all figures, `plots/assembled/` for multi-panel manuscript figures
-
+- `exp_analysis/` — confounder tables; `clock_stress/` — stress test outputs
+- `plots/` — all figures, `plots/exp_analysis/` for the supplementary-analysis plots (one subfolder
+  per task), `plots/assembled/` for multi-panel manuscript figures
 
 ## License
 

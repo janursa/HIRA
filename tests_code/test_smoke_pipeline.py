@@ -1,12 +1,11 @@
 """
 Smoke test for the hira package: import sanity + a synthetic end-to-end
-run of basic_qc -> bulkify_func against the same schema checks used in
-test_zhang_preprocessing.py. No real datasets required.
+run of basic_qc -> bulkify_func with schema checks. No real datasets required.
 
 Usage
 -----
     cd <hira repo root>
-    python scripts/tests/test_smoke_pipeline.py
+    python tests_code/test_smoke_pipeline.py
 
 Exits 0 if all checks pass, 1 otherwise.
 """
@@ -20,8 +19,8 @@ import hira  # noqa: F401  (import sanity check for the whole package)
 from hira.src.config import HIRA_DIR, DATA_DIR, PRIOR_DIR, OUTPUT_DIR
 from hira.src.utils.util import basic_qc, bulkify_func
 
-sys.path.insert(0, 'scripts/tests')
-from test_zhang_preprocessing import check_sc, check_bulk, REQUIRED_SC_OBS_COLS  # noqa: E402
+REQUIRED_SC_OBS_COLS = ['donor_id', 'age', 'sex', 'Major_CT', 'Sub_CT', 'dataset']
+REQUIRED_BULK_OBS_COLS = ['donor_id', 'age', 'Major_CT', 'cell_count']
 
 
 def make_synthetic_sc(n_cells=200, n_genes=50, seed=0):
@@ -44,7 +43,7 @@ def make_synthetic_sc(n_cells=200, n_genes=50, seed=0):
     return ad.AnnData(X=X, obs=obs, var=var)
 
 
-def main():
+def test_smoke_pipeline():
     print(f'[config] HIRA_DIR={HIRA_DIR}')
     print(f'[config] DATA_DIR={DATA_DIR}')
     print(f'[config] PRIOR_DIR={PRIOR_DIR}')
@@ -62,21 +61,17 @@ def main():
     scanpy_module.pp.normalize_total(bulk, target_sum=1e4)
     scanpy_module.pp.log1p(bulk)
 
-    # Reuse the reference-comparison checks from test_zhang_preprocessing.py:
-    # compare the synthetic SC/bulk against themselves (new == ref) to confirm
-    # the check logic and the inlined basic_qc/bulkify_func agree on schema.
-    ref_sc = sc_qc.copy()
     for col in REQUIRED_SC_OBS_COLS:
-        assert col in ref_sc.obs.columns, f'missing required SC obs column: {col}'
-    sc_ok = check_sc(sc_qc, ref_sc)
-
-    ref_bulk = bulk.copy()
-    bulk_ok = check_bulk(bulk, ref_bulk, sc_qc)
-
-    assert sc_ok and bulk_ok, 'schema checks failed on synthetic data'
+        assert col in sc_qc.obs.columns, f'missing required SC obs column: {col}'
+        assert not sc_qc.obs[col].isna().any(), f'NaN in SC obs column: {col}'
+    for col in REQUIRED_BULK_OBS_COLS:
+        assert col in bulk.obs.columns, f'missing required bulk obs column: {col}'
+        assert not bulk.obs[col].isna().any(), f'NaN in bulk obs column: {col}'
+    # bulk is aggregated from sc, so the gene spaces must be identical
+    assert set(bulk.var_names) == set(sc_qc.var_names), 'bulk gene space differs from sc'
     print('\nSMOKE TEST PASSED')
-    sys.exit(0)
 
 
 if __name__ == '__main__':
-    main()
+    test_smoke_pipeline()
+    sys.exit(0)

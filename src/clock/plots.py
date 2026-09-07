@@ -342,6 +342,7 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, ctr, cond):
 
     cell_types = obs_disease['cell_type'].unique()
     n_cell_types = len(cell_types)
+    stats_rows = []
 
     fig, axes = plt.subplots(1, n_cell_types, figsize=(1.5 * n_cell_types+2, 2.5), sharey=True)
 
@@ -397,6 +398,10 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, ctr, cond):
                 mean_diff = cond_vals.mean() - ctr_vals.mean()
                 pvals.append(pval)
                 positions.append(age_bin)
+                stats_rows.append({'dataset': disease_dataset, 'cell_type': cell_type,
+                                   'age_bin': age_bin, 'ctr': ctr, 'cond': cond,
+                                   'delta_residual': mean_diff, 'p_value': pval,
+                                   'n_ctr': len(ctr_vals), 'n_cond': len(cond_vals)})
                 print(f"{age_bin:<12} {mean_diff:>+8.2f} yrs    {pval:<10.3e} {len(ctr_vals):<10} {len(cond_vals):<10}")
             else:
                 pvals.append(np.nan)
@@ -423,6 +428,9 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, ctr, cond):
         # Correct for multiple testing
         corrected = multipletests([p for p in pvals if not np.isnan(p)], method='bonferroni')
         corrected_pvals = dict(zip([pos for p, pos in zip(pvals, positions) if not np.isnan(p)], corrected[1]))
+        for row in stats_rows:
+            if row['cell_type'] == cell_type:
+                row['p_value_adj'] = corrected_pvals.get(row['age_bin'], np.nan)
         # Annotate significance with full brackets and stars
         for j, age_bin in enumerate(age_bin_order):
             if age_bin in corrected_pvals:
@@ -465,7 +473,9 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, ctr, cond):
     ax.legend(loc='upper left', bbox_to_anchor=(1, 1), title='Condition', frameon=False)
     # plt.suptitle(f"Age shift in {disease_name}", fontsize=13, y=1.05, weight='bold')
     plt.tight_layout()
-    # plt.show()
+    return pd.DataFrame(stats_rows)
+
+
 def plot_experiment(test_type, df_all, ctr, treatment, cell_type, pval_map, ax=None):
     if ax is None:
         fig, ax = plt.subplots(figsize=(2, 2))
