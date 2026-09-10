@@ -48,7 +48,7 @@ def plot_survival(summary, out_path):
     hatched top of each bar is the fraction lost to naive_ratio correction."""
     cell_types = [ct for ct in CELL_TYPES if ct in summary['cell_type'].unique()]
     x_label_count = len(cell_types)
-    fig, ax = plt.subplots(1, 1, figsize=(.3 * x_label_count + 1, 2))
+    fig, ax = plt.subplots(1, 1, figsize=(.3 * x_label_count + 2, 2))
 
     n_hue = len(TRENDS)
     group_w = 0.8
@@ -62,7 +62,7 @@ def plot_survival(summary, out_path):
             color = palette_trend_2[trend]
             ax.bar(x, n_survived, width=bar_w, color=color, alpha=.8)
             ax.bar(x, n_lost, width=bar_w, bottom=n_survived, color=color, alpha=.8,
-                   hatch='///', edgecolor='black', linewidth=0)
+                   hatch='//////', edgecolor='black', linewidth=0)
             total = n_survived + n_lost
             if total > 0:
                 pct_lost = 100 * n_lost / total
@@ -77,7 +77,7 @@ def plot_survival(summary, out_path):
     ax.spines['top'].set_visible(False)
 
     handles = [mpatches.Patch(facecolor=palette_trend_2[t], alpha=.8, label=t) for t in TRENDS]
-    handles.append(mpatches.Patch(facecolor='white', edgecolor='black', hatch='///',
+    handles.append(mpatches.Patch(facecolor='white', edgecolor='black', hatch='//////',
                                    label='Attributed to Naive decline'))
     ax.legend(handles=handles, loc=(1, 0.5), frameon=False, title='Trend', fontsize=9, title_fontsize=9)
 

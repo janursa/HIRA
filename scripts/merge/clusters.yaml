@@ -1,0 +1,33 @@
+# Groups of individual plots that belong together. When asked to show one of
+# these groups, read this file and send every listed plot together (e.g. via
+# SendUserFile) instead of generating a merged image.
+
+age_acceleration_rejuvenation:
+  description: Clock age acceleration/rejuvenation, one dot per donor, full perturbation lists (op Ruxolitinib, parsebioscience IL-10)
+  plots:
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/clock/op/clock_op_CD4T_acceleration.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/clock/op/clock_op_CD4T_rejuvenating_mocked.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/clock/op/clock_op_CD8T_acceleration.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/clock/op/clock_op_CD8T_rejuvenating_mocked.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/clock/parsebioscience/clock_parsebioscience_CD4T_acceleration.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/clock/parsebioscience/clock_parsebioscience_CD4T_rejuvenating.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/clock/parsebioscience/clock_parsebioscience_CD8T_acceleration.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/clock/parsebioscience/clock_parsebioscience_CD8T_rejuvenating.png
+
+consistency_scatter_vs_aging:
+  description: Directional consistency vs. aging scatter for SLE, op Ruxolitinib, CXCL9 (LPS, Ruxolitinib ctr:RPMI, Ruxolitinib ctr:LPS), soundlife, parsebioscience IL-10
+  plots:
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/condition/perez_sle/consistency_scatter_perez_sle_tfa_major_b.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/condition/op/consistency_scatter_op_tfa_major_b.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/condition/CXCL9/consistency_scatter_CXCL9_f_LPS__ctr__RPMI__tfa_major_b.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/condition/CXCL9/consistency_scatter_CXCL9_f_Ruxolitinib__ctr__RPMI__tfa_major_b.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/condition/CXCL9/consistency_scatter_CXCL9_f_Ruxolitinib__ctr__LPS__tfa_major_b.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/condition/soundlife/consistency_scatter_soundlife_tfa_major_b.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/condition/parsebioscience/consistency_scatter_parsebioscience_tfa_major_b.png
+
+central_age_associated_tfs:
+  description: Central age-associated TF dotplots for SLE, op Ruxolitinib, parsebioscience IL-10
+  plots:
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/condition/perez_sle/central_tfs_CD4T_perez_sle.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/condition/op/central_tfs_CD4T_op.png
+    - /home/jnourisa/projs/ongoing/hira/results_folder/plots/condition/parsebioscience/central_tfs_CD4T_parsebioscience.png

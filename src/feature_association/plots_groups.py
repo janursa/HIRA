@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 from hira.src.feature_association.plots import (
     wrapper_sig_features_counts, 
     plot_heatmap_overal, 
-    plot_central_features,
     plot_interaction_of_features_between_cell_types, 
     plot_case_tf, 
     gsea_analysis, 
@@ -31,7 +30,7 @@ def wrapper_plots_tfa_major_aging(args, stats_features, stats_features_sig, skip
     # plot_scatter_feature_vs_age(analysis_name, cell_types=['CD8T', 'CD4T'])
     plot_heatmap_overal(stats_features, analysis_name=args.analysis_name)
     wrapper_sig_features_counts(args)
-    plot_central_features(stats_features_sig, cell_types=['CD4T', 'CD8T', 'NK', 'MONO'], analysis_name=analysis_name)
+    # central TFs figure now assembled in scripts/assemble_figs/create_central_aging_source.py
     plot_interaction_of_features_between_cell_types(args)
     plot_case_tf(args)
     if not skip_pathway:
@@ -219,7 +218,9 @@ def wrapper_plots_tfa_major_condition(args, stats, stats_sig):
             output_dir=args.output_dir
         )
 
-        wrapper_plot_central_tfs_condition(stats, group_col='age_group', cell_types=cell_types, args=args)
+        # ponytail: 50 is the reported cutoff -- the 40 bins just crowd the panel
+        stats_bins = stats[~stats['age_group'].isin(['Younger than 40', 'Older than 40'])]
+        wrapper_plot_central_tfs_condition(stats_bins, group_col='age_group', cell_types=cell_types, args=args)
         cfg_fa = get_config_fa(analysis_name)
         if cfg_fa['feature_type'] == 'tf_activity' and cfg_fa['granularity'] == MAJOR_CT_LABEL:
             cell_type = 'CD8T'
@@ -229,7 +230,7 @@ def wrapper_plots_tfa_major_condition(args, stats, stats_sig):
                 plot_disease_age_split_scatter(args.dataset, analysis_name, cell_type, case_tf)
                 plt.tight_layout()
                 out = os.path.join(args.output_dir, f'sle_age_split_{case_tf}_{cell_type}.png')
-                plt.savefig(out, bbox_inches='tight', dpi=300, transparent=True)
+                plt.savefig(out, bbox_inches='tight', dpi=300)
                 plt.close()
                 print(f"  Saved: {out}")
             

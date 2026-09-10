@@ -179,7 +179,7 @@ def plot_disease(dataset='perez_sle'):
 def _save(name, dpi=300):
     file_name = os.path.join(COHORT_STATS_DIR, name)
     print(f'Saving to {file_name}')
-    plt.savefig(file_name, bbox_inches='tight', dpi=dpi, transparent=True)
+    plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
     plt.close()
     return file_name
 

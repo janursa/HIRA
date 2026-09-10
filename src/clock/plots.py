@@ -137,9 +137,8 @@ def wrapper_age_acceleration_disease(obs, disease_dataset, ctr, cond, figsize=(4
     from statsmodels.stats.multitest import multipletests
     import numpy as np
 
-    cell_types = MAJOR_CTS
-    
     obs_disease = obs[obs['dataset'] == disease_dataset].copy()
+    cell_types = [ct for ct in MAJOR_CTS if ct in obs_disease['cell_type'].unique()]
 
     obs_disease['age'] = obs_disease['age'].astype(float)
     # obs_disease['donor_id'] = obs_disease['donor_id'].astype(str)
@@ -431,6 +430,22 @@ def wrapper_plot_age_acceleration_disease_bins(obs, disease_dataset, ctr, cond):
         for row in stats_rows:
             if row['cell_type'] == cell_type:
                 row['p_value_adj'] = corrected_pvals.get(row['age_bin'], np.nan)
+
+        # ponytail: 40-cutoff bins are stats-only -- clock_age_shift_main reads them, nothing plots them
+        per_donor = obs_disease[obs_disease['cell_type'] == cell_type].groupby(
+            ['donor_id', 'condition']).agg({'age_residual': 'median', 'age': 'median'}).reset_index()
+        extra, raw = [], []
+        for label, m in [('Young40', per_donor['age'] < 40), ('Old40', per_donor['age'] >= 40)]:
+            cond_v = per_donor[m & (per_donor['condition'] == cond)]['age_residual'].values
+            ctr_v = per_donor[m & (per_donor['condition'] == ctr)]['age_residual'].values
+            if len(cond_v) >= 3 and len(ctr_v) >= 3:
+                raw.append(ttest_ind(cond_v, ctr_v, equal_var=False)[1])
+                extra.append({'dataset': disease_dataset, 'cell_type': cell_type, 'age_bin': label,
+                              'ctr': ctr, 'cond': cond, 'delta_residual': cond_v.mean() - ctr_v.mean(),
+                              'p_value': raw[-1], 'n_ctr': len(ctr_v), 'n_cond': len(cond_v)})
+        for row, padj in zip(extra, multipletests(raw, method='bonferroni')[1] if raw else []):
+            row['p_value_adj'] = padj
+        stats_rows.extend(extra)
         # Annotate significance with full brackets and stars
         for j, age_bin in enumerate(age_bin_order):
             if age_bin in corrected_pvals:
@@ -550,7 +565,8 @@ def plot_experiment(test_type, df_all, ctr, treatment, cell_type, pval_map, ax=N
 
 
 def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="Control", 
-            figsize=None,  name_mapping={}, max_len=25, highlight_treatments=None):
+            figsize=None,  name_mapping={}, max_len=25, highlight_treatments=None,
+            order=None, ax=None, p_as_stars=False):
     """
     Strip plot showing treatment-control differences for all significant treatments.
     Each dot is one donor/sample, colored by donor ID.
@@ -586,9 +602,10 @@ def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="C
         return None
 
     df_plot = pd.DataFrame(df_plot)
-    order = df_plot.groupby('treatment')['p_value'].mean().sort_values(
-        ascending=True
-    ).index
+    if order is None:
+        order = df_plot.groupby('treatment')['p_value'].mean().sort_values(
+            ascending=True
+        ).index
 
     # Plot strip
     extra_space = 1 if len(order) > 4 else 3
@@ -597,7 +614,8 @@ def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="C
         if len(order) < 5:
             width = 3
         figsize = (width, 3)
-    fig, ax = plt.subplots(figsize=figsize)
+    own_fig = ax is None
+    fig, ax = plt.subplots(figsize=figsize) if own_fig else (ax.figure, ax)
     # donors = sorted(df_plot['donor'].unique(), key=lambda x: int(x.split(' ')[1]))
     donors = sorted(df_plot['donor'].unique())
     donor_palette = dict(zip(donors, sns.color_palette("husl", len(donors))))
@@ -621,9 +639,11 @@ def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="C
         max_diff = df_plot[df_plot['treatment']==treatment]['diff'].max()
         ctr = treatment_to_ctr[treatment]  # get correct control
         pval, slope = pval_map.get((cell_type, ctr, treatment))
-        text = f"{pval:.2}"
+        # ponytail: dense panels have no room for "1.2e-08" -- stars instead
+        text = ('***' if pval < .001 else '**' if pval < .01 else '*') if p_as_stars else f"{pval:.2}"
         y_loc = max_diff + .1*max_diff
-        ax.text(i, y_loc, text, ha='center', va='bottom', fontsize=8, rotation=45)
+        ax.text(i, y_loc, text, ha='center', va='bottom', fontsize=8,
+                rotation=0 if p_as_stars else 45)
 
     # Set x-tick labels with color highlighting
     xticklabels = [name_mapping.get(t, t)[:max_len] for t in order]
@@ -649,5 +669,115 @@ def plot_group_strip(df_all, group_exps, group_name, cell_type, pval_map, ctr="C
     ax.spines[['top', 'right']].set_visible(False)
     bbox_to_anchor = (1.01, 1) if len(donors) <= 10 else (1.01, 1.2)
     ax.legend(title="", bbox_to_anchor=bbox_to_anchor, loc='upper left', frameon=False, labelspacing=0.2,)
-    plt.tight_layout()
+    if own_fig:
+        fig.tight_layout()
     return fig, ax
+
+# --- clock-derived (ORA) vs empirical TF activity -------------------------------------
+palette_ora_agreement = {'concordant': '#2E7D32', 'opposite direction': '#E52B50',
+                         'not empirically sig.': '#9E9E9E'}
+
+
+def _ora_agreement(df):
+    """Label each ORA hit by how it lines up with the empirical TF-activity result."""
+    return np.where(~df['emp_sig'].astype(bool), 'not empirically sig.',
+                    np.where(df['dir_match'].astype(bool), 'concordant', 'opposite direction'))
+
+
+def plot_tf_ora_concordance(ora_df, plots_dir, x_pad=1.05, y_pad=1.2):
+    """Clock-derived vs age-associated TFs, one panel per cell type.
+
+    Both axes are signed significance, styled like the SLE consistency scatter: x signs the
+    empirical meta p by the activity slope, y signs the ORA p by the direction of the clock
+    gene set the TF was enriched in, so agreement puts the point in the upper-right or
+    lower-left quadrant. Only TFs the empirical analysis calls significant are shown; the rest
+    are in the discrepancy plot.
+    """
+    from matplotlib.lines import Line2D
+    from hira.src.feature_association.plots import _annotate_extreme_tfs
+
+    df = ora_df[ora_df['ora_sig'] & ora_df['emp_sig'].astype(bool)].dropna(subset=['emp_padj']).copy()
+    # column names _annotate_extreme_tfs expects: '_sl' is the x axis, '_ref' the y axis
+    df['gene'] = df['tf']
+    df['-log10_p_adj_ref'] = -np.log10(df['ora_pval'].clip(lower=1e-300)) * np.where(df['direction'] == 'up', 1, -1)
+    df['-log10_p_adj_sl'] = -np.log10(df['emp_padj'].clip(lower=1e-300)) * np.sign(df['emp_slope'])
+    df['agreement'] = _ora_agreement(df)
+
+    cell_types = [ct for ct in MAJOR_CTS if ct in set(df['cell_type'])] or list(dict.fromkeys(df['cell_type']))
+    fig, axes = plt.subplots(1, len(cell_types), figsize=(2 * len(cell_types) + 2, 3.2), squeeze=False)
+    for ax, cell_type in zip(axes[0], cell_types):
+        sub = df[df['cell_type'] == cell_type]
+        for label, legend, color, edge in [('concordant', 'Concordant', 'darkseagreen', 'darkgreen'),
+                                           ('opposite direction', 'Opposing', 'indianred', 'darkred')]:
+            g = sub[sub['agreement'] == label]
+            if len(g):
+                ax.scatter(g['-log10_p_adj_sl'], g['-log10_p_adj_ref'], c=color, s=10, alpha=0.6,
+                           edgecolors=edge, linewidths=0.1,
+                           label=f'{legend} \n ({len(g)} TFs)')
+
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.axhline(y=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
+        ax.axvline(x=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
+
+        x_max = sub['-log10_p_adj_sl'].abs().max() * x_pad
+        y_max = sub['-log10_p_adj_ref'].abs().max() * y_pad
+        ax.set_xlim(-x_max, x_max)
+        ax.set_ylim(-y_max, y_max)
+
+        ax.set_xlabel('Age-associated TFs \n(significance)', fontsize=10)
+        ax.set_ylabel('TFs regulating aging clock \n(significance)', fontsize=10)
+        ax.set_title(surrogate_names.get(cell_type, cell_type), fontsize=12, pad=42)
+        ax.grid(False)
+
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles=[Line2D([0], [0], marker='o', color='w', markersize=5,
+                                  markerfacecolor=h.get_facecolor()[0], markeredgecolor=h.get_edgecolor()[0],
+                                  markeredgewidth=0.5, label=l) for h, l in zip(handles, labels)],
+                  loc='upper center', bbox_to_anchor=(0.5, 1.24), frameon=False, fontsize=8,
+                  ncol=2, columnspacing=-.2)
+
+        print(f"  {cell_type}:")
+        _annotate_extreme_tfs(ax, sub, '-log10_p_adj', rank_on='y')  # most clock-significant TFs
+    plt.tight_layout()
+    file_name = f'{plots_dir}/tf_ora_concordance.png'
+    print(f"Saving figure to {file_name}")
+    plt.savefig(file_name, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+
+def plot_tf_ora_discrepancy(ora_df, plots_dir, n_show=15):
+    """The ORA-significant TFs the empirical analysis does not corroborate: either its
+    activity trends the opposite way, or it never reached significance. Bars are the
+    empirical slope; the arrow in each label is the direction the clock implies.
+    """
+    df = ora_df[ora_df['ora_sig']].copy()
+    df['agreement'] = _ora_agreement(df)
+    df = df[df['agreement'] != 'concordant']
+
+    cell_types = list(dict.fromkeys(ora_df['cell_type']))
+    fig, axes = plt.subplots(1, len(cell_types), figsize=(3.6 * len(cell_types), 4.5), squeeze=False)
+    for ax, cell_type in zip(axes[0], cell_types):
+        sub = df[df['cell_type'] == cell_type].nsmallest(n_show, 'ora_pval').iloc[::-1]
+        if sub.empty:
+            ax.set_axis_off()
+            ax.set_title(f'{cell_type}\nno discrepancies', fontsize=10)
+            continue
+        labels = sub['tf'] + sub['direction'].map({'up': ' $\\uparrow$', 'down': ' $\\downarrow$'})
+        ax.barh(labels, sub['emp_slope'].fillna(0),
+                color=[palette_ora_agreement[a] for a in sub['agreement']], alpha=0.85)
+        ax.axvline(0, color='black', lw=0.6)
+        ax.set_title(f'{cell_type}  ({len(df[df["cell_type"] == cell_type])} discrepant)', fontsize=10)
+        ax.set_xlabel('Empirical TF activity slope')
+        ax.tick_params(axis='y', labelsize=7)
+        ax.spines[['top', 'right']].set_visible(False)
+
+    handles = [plt.Rectangle((0, 0), 1, 1, color=palette_ora_agreement[k])
+               for k in ('opposite direction', 'not empirically sig.')]
+    fig.legend(handles, ('opposite direction', 'not empirically sig.'), fontsize=7,
+               frameon=False, loc='lower center', ncol=2, bbox_to_anchor=(0.5, -0.04))
+    plt.tight_layout()
+    file_name = f'{plots_dir}/tf_ora_discrepancy.png'
+    print(f"Saving figure to {file_name}")
+    plt.savefig(file_name, dpi=300, bbox_inches='tight')
+    plt.close(fig)

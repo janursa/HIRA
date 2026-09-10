@@ -10,6 +10,9 @@ python src/feature_association/consensus_nets.py
 echo "--------------------------------------------------------------train clocks--------------------------------------------------------------"
 python src/clock/run_train.py
 
+echo "--------------------------------------------------------------bundle package data--------------------------------------------------------------"
+bash scripts/build_package_data.sh
+
 echo "--------------------------------------------------------------clocks: exp analysis--------------------------------------------------------------"
 python src/clock/run_exp_analysis.py
 

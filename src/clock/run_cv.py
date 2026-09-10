@@ -62,20 +62,14 @@ def plot_scores(cv_scores, metric, figsize=[2.5, 2]):
     )
     return fig
 
-# Plot R²
 scores_df['cell_type'] = pd.Categorical(scores_df['cell_type'], categories=get_clock_cell_types(), ordered=True)
-fig = plot_scores(scores_df, 'r2', figsize=(2.2, 2))
-file_name = f'{PLOTS_DIR}/clock_validation_r2.png'
-print('r2 scores fig: ',file_name)
-fig.savefig(file_name,
-            bbox_inches='tight', dpi=300, transparent=True)
 
 # Plot Spearman
 fig = plot_scores(scores_df, 'spearman', figsize=(2.2, 2))
 file_name = f'{PLOTS_DIR}/clock_validation_spearman.png'
 print('spearman scores fig: ',file_name)
 fig.savefig(file_name,
-            bbox_inches='tight', dpi=300, transparent=True)
+            bbox_inches='tight', dpi=300)
 
 predictions_df['dataset'] = predictions_df['dataset'].apply(lambda name: surrogate_names.get(name, name))
 
@@ -86,4 +80,4 @@ for cell_type in get_clock_cell_types():
     ax.legend(loc=(1.1, .2), frameon=False, title='Dataset')
     file_name = f'{PLOTS_DIR}/clock_scatter_{cell_type}_all_datasets.png'
     print(f'Scatter plot for {cell_type}: ', file_name)
-    fig.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+    fig.savefig(file_name, bbox_inches='tight', dpi=300)

@@ -115,7 +115,7 @@ def plot_disease_age_split_scatter(dataset, analysis_name, cell_type, case_tf,
     return axes
 
 
-def plot_overview_heatmap(stats, args):
+def plot_overview_heatmap(stats, args, show_legend=True):
     """Generate overview heatmap of minor cell types."""
     print("Generating overview heatmap...")
     
@@ -159,11 +159,11 @@ def plot_overview_heatmap(stats, args):
             annotate_x_ticks=False, 
             map_names={'cell_type': 'Cell type'},
             dendrogram_visible=False, 
-            show_legend=True,
+            show_legend=show_legend,
             palette_cols=palette_cols
         )    
     output_path = os.path.join(output_dir, f'overview_{dataset}.png')
-    plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+    plt.savefig(output_path, bbox_inches='tight', dpi=300)
     plt.close()
     print(f"  Saved: {output_path}")
 
@@ -216,7 +216,7 @@ def wrapper_plot_central_tfs_condition(stats, cell_types, group_col, args):
         
         output_path = os.path.join(args.output_dir, f'central_tfs_{cell_type}_{args.dataset}.png')
         output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
-        plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
         plt.close()
         print(f"    Saved: {output_path}")
 
@@ -246,7 +246,7 @@ def plot_disease_case_tfs(args, cell_type, case_tfs):
             ax.set_xlabel('')
         
         output_path = os.path.join(args.output_dir, f'healthy_disease_trend_{case_tf}_{cell_type}.png')
-        plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
         plt.close()
         print(f"  Saved: {output_path}")
 
@@ -404,7 +404,7 @@ def plot_ctr_condition_donor_level(args, cell_types):
                 f'case_donors_{comparison}_{cell_type}.png'
             )
             output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
-            plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+            plt.savefig(output_path, bbox_inches='tight', dpi=300)
             plt.close()
             print(f"    Saved: {output_path}")
 
@@ -436,7 +436,7 @@ def plot_pathway_analysis(stats_sig, args):
         plot_pathway_gsea(pathway_scores, palette=palette)
         
         output_path = os.path.join(output_dir, f'{dataset}_pathway_gsea.png')
-        plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
         plt.close()
         print(f"  Saved GSEA plot: {output_path}")
     else:

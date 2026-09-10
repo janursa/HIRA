@@ -2,6 +2,8 @@
 Regenerate the data files shipped inside the GRNimmuneClock package:
   - grnimmuneclock/data/consensus_grn_{CD4T,CD8T}.csv : consensus GRNs over DISCOVERY_COHORTS
   - grnimmuneclock/data/example_data.h5ad             : one pseudobulk sample from one bulk cohort
+  - grnimmuneclock/data/heldout_{CD4T,CD8T}.h5ad      : the held-out donors the interpretation runs on
+  - grnimmuneclock/data/aging_stats_{CD4T,CD8T}.csv   : per-gene empirical aging direction (pooled_rho)
   - grnimmuneclock/models/{CD4T,CD8T}/                : the published clock models
 
 Usage:
@@ -9,6 +11,7 @@ Usage:
 """
 import argparse
 import json
+import shutil
 from datetime import date
 from pathlib import Path
 
@@ -19,7 +22,7 @@ from scipy.sparse import issparse
 from scipy.stats import spearmanr
 
 from hira.src.config import HIRA_DIR, MAJOR_CT_LABEL, CLOCK_TRAINING_COHORTS, CLOCK_TEST_COHORTS, \
-    CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK
+    CLOCK_V, CLOCKS_DIR
 from hira.src.utils.util import retrieve_net_consensus, retrieve_adata
 
 PKG_DIR = Path(HIRA_DIR) / 'GRNimmuneClock' / 'grnimmuneclock'
@@ -50,20 +53,60 @@ def build_example(dataset='aida', cell_type='CD4T'):
     print(f'{out}: {adata.shape[0]} sample x {adata.shape[1]} genes from {dataset}/{cell_type}')
 
 
-def build_models(cell_types=('CD4T', 'CD8T')):
-    """Retrain and bundle the published models, same recipe as run_train.py, straight into
-    the package's own models dir so retrieve_function() (no model_dir override) picks them up."""
-    from grnimmuneclock import train_aging_clock, retrieve_function
+def build_heldout(cell_types=('CD4T', 'CD8T')):
+    """The exact held-out matrix run_exp_analysis.py computes permutation importance on,
+    restricted to each clock's feature space so the tutorial reproduces its t statistics.
+    Stored unrounded: permutation importance is a ratio over repeats, so even 3-decimal
+    rounding of the inputs moves individual t statistics by tens of units."""
+    from grnimmuneclock import retrieve_function
 
     for cell_type in cell_types:
-        adata_train = ad.concat([
-            retrieve_adata(dataset=d, data_type='bulk', cell_type=cell_type, only_sig_genes=True)
-            for d in CLOCK_TRAINING_COHORTS
-        ])
-        train_aging_clock(
-            adata=adata_train, cell_type=cell_type, version=CLOCK_V, output_dir=PKG_MODELS_DIR,
-            reg_type='ridge', tune_model=TUNE_CLOCK, scoring=CLOCK_CV_SCORING, verbose=True,
-        )
+        _, gene_names = retrieve_function(cell_type=cell_type, model_dir=CLOCKS_DIR, version=CLOCK_V)
+        X_parts, obs_parts = [], []
+        for d in CLOCK_TEST_COHORTS:
+            a = retrieve_adata(dataset=d, data_type='bulk', cell_type=cell_type, condition='healthy')
+            X = a.X.toarray() if issparse(a.X) else np.asarray(a.X)
+            idx = [f'{d}_{i}' for i in range(a.n_obs)]
+            X_parts.append(pd.DataFrame(X, columns=a.var_names, index=idx).reindex(columns=gene_names, fill_value=0))
+            obs_parts.append(pd.DataFrame({'age': a.obs['age'].astype(float).values, 'dataset': d}, index=idx))
+        out = ad.AnnData(pd.concat(X_parts).values.astype('float32'),
+                         obs=pd.concat(obs_parts), var=pd.DataFrame(index=list(gene_names)))
+        path = PKG_DATA_DIR / f'heldout_{cell_type}.h5ad'
+        out.write_h5ad(path, compression='gzip', compression_opts=9)
+        print(f'{path}: {out.shape[0]} donors x {out.shape[1]} genes from {", ".join(CLOCK_TEST_COHORTS)}')
+
+
+def build_aging_stats(cell_types=('CD4T', 'CD8T')):
+    """pooled_rho per clock gene -- the empirical aging direction used to sign permutation
+    importance before ULM."""
+    from grnimmuneclock import retrieve_function
+    from hira.src.feature_association.helper import retrieve_stats
+    from hira.src.config import REF_GE_ANALYSIS
+
+    for cell_type in cell_types:
+        _, gene_names = retrieve_function(cell_type=cell_type, model_dir=CLOCKS_DIR, version=CLOCK_V)
+        emp = retrieve_stats(analysis_name=REF_GE_ANALYSIS, cell_type=cell_type,
+                             multi_cohort=True).drop_duplicates(subset='gene').set_index('gene')
+        df = emp.reindex(list(gene_names))[['pooled_rho']].rename_axis('gene').dropna().reset_index()
+        path = PKG_DATA_DIR / f'aging_stats_{cell_type}.csv'
+        df.to_csv(path, index=False)
+        print(f'{path}: {len(df)}/{len(gene_names)} clock genes with empirical aging stats')
+
+
+def build_models(cell_types=('CD4T', 'CD8T')):
+    """Bundle the models run_train.py already wrote to CLOCKS_DIR -- copied, not retrained, so
+    the package ships exactly the clocks the figures were made with (tuning is not deterministic)."""
+    from grnimmuneclock import retrieve_function
+
+    for cell_type in cell_types:
+        src = Path(CLOCKS_DIR) / cell_type
+        dst = PKG_MODELS_DIR / cell_type
+        dst.mkdir(parents=True, exist_ok=True)
+        for name in (f'model_{CLOCK_V}.pkl', f'feature_names_{CLOCK_V}.txt'):
+            if not (src / name).exists():
+                raise FileNotFoundError(f'{src / name} missing -- run src/clock/run_train.py first')
+            shutil.copy2(src / name, dst / name)
+        print(f'{dst}: copied {CLOCK_V} model from {src}')
 
         model, gene_names = retrieve_function(cell_type=cell_type, model_dir=PKG_MODELS_DIR, version=CLOCK_V)
         y_true, y_pred = [], []
@@ -101,3 +144,5 @@ if __name__ == '__main__':
     build_grns()
     build_example(args.dataset, args.cell_type)
     build_models()
+    build_heldout()
+    build_aging_stats()

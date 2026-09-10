@@ -161,8 +161,8 @@ CLOCK_TEST_COHORTS = [
                 'zhang'
                 ]
 NET_WEIGHT_THRESHOLD = None  # 0.05 # Minimum absolute weight for edges in GRN 
-# Motif-support pruning at load time. Applied before NET_MAX_SIZE, so the truncation
-# keeps the strongest *supported* edges. 'skeleton' = ATAC+motif (skeleton_atac.csv),
+# Motif-support pruning at load time. Applied after NET_MAX_SIZE: the top-NET_MAX_SIZE
+# edges by weight are taken first, then kept only if supported. 'skeleton' = ATAC+motif (skeleton_atac.csv),
 # 'promotor' = promoter motifs only, None = no pruning.
 NET_SKELETON = 'skeleton'  # 'skeleton' | 'promotor' | None
 NET_MAX_SIZE = 100_000
@@ -171,14 +171,15 @@ CLOCK_CV_SCORING = 'spearman'  # 'r2' or 'spearman'
 TUNE_CLOCK = True
 META_MIN_COHORT = 2
 CONSENSUS_MIN_DEGREE = 2 
-CORR_THRESHOLD = 0.2 # minimum absolute correlation for feature association with age
-TF_MIN_TARGET = 5
+CORR_THRESHOLD = 0.1 # minimum absolute correlation for feature association with age
+TF_MIN_TARGET = 10
 # Per-dataset categorical confounders (donor metadata correlated with age, found via
 # src/exp_analysis/confounders.py) to control for in association_with_age(), in addition
 # to cell_count. 'site' isn't a raw obs column for aida -- see COARSENED_COVARIATES.
 CONFOUND_COVARIATES = {
     'aida': ['site'],
     'onek1k': ['batch_info'],
+    'soundlife': ['batch_id'],
 }
 # covariate name -> raw obs column it's derived from by stripping a trailing batch index
 # (coarsen() in src/utils/util.py), for covariates not present in obs as-is.

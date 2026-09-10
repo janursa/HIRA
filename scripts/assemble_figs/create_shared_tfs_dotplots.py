@@ -29,8 +29,10 @@ CELL_TYPES = ['CD4T', 'CD8T', 'NK']
 X_MARGIN = 0.15   # x padding around the dataset columns
 Y_MARGIN = 0.08   # vertical padding around the gene rows
 FIG_HEIGHT = 3.0
-FIG_WIDTH = 6.5
-SIZES = (35, 45)  # dots must stay under the row height of a 2.5in figure
+FIG_WIDTH = 7.0
+SIZES = (60, 110)
+N_TOTAL = 15      # rows kept overall, split consistent | divergent
+REQUIRED = ['GATA3', 'SATB1']
 
 
 def panel_data(cell_type, features, feature_type):
@@ -51,6 +53,28 @@ def panel_data(cell_type, features, feature_type):
     return stats_t
 
 
+def select(all_stats):
+    """Top TFs per block: consistent (one sign across cohorts/cell types) and divergent (sign flips)."""
+    s = -np.log10(all_stats['p_value_adj'].clip(lower=1e-300)) * np.sign(all_stats['slope'])
+    g = s.groupby(all_stats['gene'].astype(str))
+    strength, agree = g.apply(lambda v: v.abs().mean()), g.apply(lambda v: abs(np.sign(v).sum()) / len(v))
+    rank = pd.DataFrame({'consistency': agree * strength, 'divergence': (1 - agree) * strength})
+    keep = []
+    per_side = [(N_TOTAL + 1) // 2, N_TOTAL // 2]
+    for n_keep, c in zip(per_side, rank.columns):
+        # a required TF is pinned to whichever block it actually scores on
+        pin = [t for t in REQUIRED if t in rank.index and rank.loc[t].idxmax() == c]
+        rest = [t for t in rank[c].sort_values(ascending=False).index if t not in pin]
+        keep.append(pin + rest[:n_keep - len(pin)])
+    return keep
+
+
+def resort(df, features):
+    df = df[df['gene'].isin(features)].copy()
+    df['gene'] = pd.Categorical(df['gene'], categories=features, ordered=True)
+    return df.sort_values('gene')
+
+
 def main():
     feature_type = get_config_fa(ANALYSIS_NAME)['feature_type']
 
@@ -62,7 +86,10 @@ def main():
     print(f"{len(features)} shared features: {features}")
 
     data = {ct: panel_data(ct, features, feature_type) for ct in CELL_TYPES}
-    order = list(data[CELL_TYPES[0]]['gene'].cat.categories)
+    consistent, divergent = select(pd.concat(data.values()))
+    order = consistent + divergent
+    print(f"consistent: {consistent}\ndivergent:  {divergent}")
+    data = {ct: resort(df, order) for ct, df in data.items()}
 
     # shared scales
     all_stats = pd.concat(data.values())
@@ -74,7 +101,7 @@ def main():
 
     n_ct = len(CELL_TYPES)
     fig = plt.figure(figsize=(FIG_WIDTH, FIG_HEIGHT))
-    gs = gridspec.GridSpec(1, 2 * n_ct + 1, width_ratios=[1, 0.4] * n_ct + [0.5], wspace=0.15)
+    gs = gridspec.GridSpec(1, 2 * n_ct + 1, width_ratios=[1, 0.6] * n_ct + [0.8], wspace=0.3)
 
     for i, ct in enumerate(CELL_TYPES):
         df = data[ct]
@@ -90,7 +117,7 @@ def main():
         ax.set_xticklabels([surrogate_names.get(d, d) for d in DISCOVERY_COHORTS], rotation=45, ha='right')
         ax.set_yticks(range(len(order)))
         ax.set_yticklabels(order[::-1] if i == 0 else [])
-        ax.set_ylabel('Genes' if i == 0 else '')
+        ax.set_ylabel('')
         ax.set_title(ct, fontsize=10, fontweight='bold', pad=8)
         ax.margins(x=X_MARGIN, y=Y_MARGIN)
         ax.spines[['top', 'right']].set_visible(False)
@@ -100,6 +127,9 @@ def main():
         ax_c.barh(range(len(order) - 1, -1, -1), deg.values, color='#56B4E9', alpha=0.7, height=0.7)
         ax_c.set_ylim(ax.get_ylim())
         ax_c.set_yticks([])
+        # ponytail: 2 ticks + rotation, the panel is too narrow for auto-placed decimals
+        ax_c.set_xticks([0, deg.max()])
+        ax_c.set_xticklabels(['0', f'{deg.max():.2f}'], rotation=45, ha='right')
         if i == n_ct - 1:  # ponytail: label the shared quantity once, on the last panel
             ax_c.set_xlabel('Centrality\n(out-degree)' if feature_type != 'gene_expression' else 'Centrality\n(in-degree)')
         ax_c.spines[['top', 'right', 'left']].set_visible(False)
@@ -107,7 +137,7 @@ def main():
     # shared colorbar
     ax_legend = fig.add_subplot(gs[-1])
     ax_legend.set_axis_off()
-    cax = inset_axes(ax_legend, width="90%", height="5%", loc='center left', bbox_to_anchor=(0.1, 0, 1, 1),
+    cax = inset_axes(ax_legend, width="130%", height="6%", loc='center left', bbox_to_anchor=(0.1, 0, 1, 1),
                      bbox_transform=ax_legend.transAxes)
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])

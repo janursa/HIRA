@@ -305,29 +305,16 @@ def analyze_disease(obs, dataset, output_dir, cell_types, config=None):
     )
     plt.title('')
     output_path = os.path.join(output_dir, f'clock_{dataset}.png')
-    plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+    plt.savefig(output_path, bbox_inches='tight', dpi=300)
     plt.close()
     print(f"  Saved: {output_path}")
-    
-    # Age-stratified analysis - per cell type
-    for cell_type in cell_types:
-        obs_ct = obs[obs['cell_type'] == cell_type]
-        if len(obs_ct) == 0:
-            continue
-            
-        print(f"Generating age-stratified plot for {cell_type}...")
-        wrapper_plot_age_acceleration_disease_bins(obs_ct, disease_dataset=dataset, ctr=ctr, cond=cond)
-        output_path = os.path.join(output_dir, f'clock_{dataset}_bins_{cell_type}.png')
-        plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
-        plt.close()
-        print(f"  Saved: {output_path}")
     
     # Age-stratified analysis - all cell types
     print("Generating combined age-stratified plot...")
     bin_stats = wrapper_plot_age_acceleration_disease_bins(obs_filtered, disease_dataset=dataset, ctr=ctr, cond=cond)
     save_clock_stats(bin_stats, f'disease_bins_{dataset}')
     output_path = os.path.join(output_dir, f'clock_{dataset}_bins.png')
-    plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+    plt.savefig(output_path, bbox_inches='tight', dpi=300)
     plt.close()
     print(f"  Saved: {output_path}")
 
@@ -485,7 +472,7 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
         
         # Save plot
         output_path = os.path.join(output_dir, f'clock_{dataset}_aging_{cell_type}.png')
-        plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
         plt.close()
         print(f"  Saved: {output_path}")
     
@@ -579,7 +566,7 @@ def analyze_aging(obs, dataset, output_dir, cell_types, config):
         save_clock_stats(pd.DataFrame(stats_rows), f'aging_{dataset}')
         output_path = os.path.join(output_dir, f'clock_{dataset}_aging_combined.png')
         plt.tight_layout()
-        plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
         plt.close()
         print(f"  Saved: {output_path}")
 
@@ -644,7 +631,7 @@ def analyze_perturbation(obs_pert, dataset, output_dir, experiments, pval_map,
                 output_dir, 
                 f'clock_{dataset}_{cell_type}_rejuvenating{suffix}.png'
             )
-            plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+            plt.savefig(output_path, bbox_inches='tight', dpi=300)
             plt.close()
             print(f"  Saved rejuvenating plot: {output_path}")
         
@@ -662,7 +649,7 @@ def analyze_perturbation(obs_pert, dataset, output_dir, experiments, pval_map,
                 f'clock_{dataset}_{cell_type}_acceleration.png'
             )
             plt.title('')
-            plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+            plt.savefig(output_path, bbox_inches='tight', dpi=300)
             plt.close()
             print(f"  Saved acceleration plot: {output_path}")
 
@@ -690,7 +677,7 @@ def plot_specific_perturbations(obs_pert, dataset, cell_types, pval_map,
                 output_dir, 
                 f'clock_{dataset}_{cell_type}_rejuv.png'
             )
-            plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+            plt.savefig(output_path, bbox_inches='tight', dpi=300)
             plt.close()
             print(f"  Saved: {output_path}")
             
@@ -705,7 +692,7 @@ def plot_specific_perturbations(obs_pert, dataset, cell_types, pval_map,
                 output_dir, 
                 f'clock_{dataset}_{cell_type}_acc.png'
             )
-            plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+            plt.savefig(output_path, bbox_inches='tight', dpi=300)
             plt.close()
             print(f"  Saved: {output_path}")
             
@@ -723,7 +710,7 @@ def plot_specific_perturbations(obs_pert, dataset, cell_types, pval_map,
                 output_dir, 
                 f'clock_{dataset}_{cell_type}_rejuv.png'
             )
-            plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+            plt.savefig(output_path, bbox_inches='tight', dpi=300)
             plt.close()
             print(f"  Saved: {output_path}")
             
@@ -743,7 +730,7 @@ def plot_specific_perturbations(obs_pert, dataset, cell_types, pval_map,
                 output_dir, 
                 f'clock_{dataset}_{cell_type}_IL10.png'
             )
-            plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+            plt.savefig(output_path, bbox_inches='tight', dpi=300)
             plt.close()
             print(f"  Saved: {output_path}")
 

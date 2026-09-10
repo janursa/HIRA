@@ -219,12 +219,21 @@ def write_feature_data(adata, dataset, cell_type, analysis_name, suffix=''):
     os.makedirs(output_dir, exist_ok=True)
     adata.write_h5ad(f'{output_dir}/{dataset}_{cell_type}{suffix}.h5ad')
 
-def bin_feature_values(adata):
+def bin_feature_values(adata, bin_size=5, min_bin_n=None):
+    """Per-feature min-max normalized mean across age bins.
+
+    min_bin_n drops bins with fewer donors than that. Cohorts thin out at the old end, and
+    min-max normalisation hands whichever bin happens to sit highest/lowest an endpoint of
+    the colour scale -- so a 3-donor bin of pure noise otherwise defines the whole row.
+    """
     # - bin 
     expr = adata.to_df()
     expr = expr.merge(adata.obs[['age']], left_index=True, right_index=True, how='left').set_index('age')
     expr.sort_index(inplace=True)
-    expr['age_bin'] = (expr.index.astype(int) // 5) * 5
+    expr['age_bin'] = (expr.index.astype(int) // bin_size) * bin_size
+    if min_bin_n is not None:
+        counts = expr['age_bin'].value_counts()
+        expr = expr[expr['age_bin'].isin(counts[counts >= min_bin_n].index)]
     expr_mean = expr.groupby('age_bin').mean().T
     # Normalize expression
     min_vals = expr_mean.min(axis=1)
@@ -371,7 +380,9 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
         age_masks = {
             'Both age groups': adata.obs.index.notnull(),  # All samples
             'Younger than 50': adata.obs['age'] < 50,
-            'Older than 50': adata.obs['age'] >= 50
+            'Older than 50': adata.obs['age'] >= 50,
+            'Younger than 40': adata.obs['age'] < 40,
+            'Older than 40': adata.obs['age'] >= 40
         }
     else:
         # Default: no age stratification
@@ -420,16 +431,21 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
 
     return stats_df
 
+SLOPE_NOISE = 0.05  # |slope| below this is noise: sign ignored in the consistency check
+
+
 def _fisher_meta(p_values, slopes):
     """Fisher's method on per-cohort p-values, plus mean rho and sign agreement.
 
-    Returns (meta p, mean rho, all cohorts same sign). Fisher saturates at these cohort
-    sizes on its own, so selection relies on the sign-agreement and |rho| > CORR_THRESHOLD
-    filters applied downstream in retrieve_stats.
+    Returns (meta p, mean rho, non-noise cohorts same sign). Cohorts with |slope| <=
+    SLOPE_NOISE are treated as sign-less so a near-zero slope does not veto agreement.
+    Fisher saturates at these cohort sizes on its own, so selection relies on the
+    sign-agreement and |rho| > CORR_THRESHOLD filters applied downstream in retrieve_stats.
     """
     meta_p = combine_pvalues(np.clip(p_values, 1e-20, None), method='fisher')[1]
-    sign = np.sign(slopes)
-    return meta_p, float(np.mean(slopes)), bool((sign > 0).all() or (sign < 0).all())
+    sign = np.where(np.abs(slopes) <= SLOPE_NOISE, 0, np.sign(slopes))
+    consistent = bool(np.any(sign != 0) and ((sign >= 0).all() or (sign <= 0).all()))
+    return meta_p, float(np.mean(slopes)), consistent
 
 
 def run_meta_analysis(stats_all, min_degree=2):

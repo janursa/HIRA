@@ -183,6 +183,7 @@ def aggregate():
     print(f'\nsummary: {os.path.abspath(out)}')
 
     plot(df)
+    figure(df)
 
 
 def plot(df):
@@ -196,7 +197,7 @@ def plot(df):
 
     def save(fig, name):
         path = f'{STRESS_DIR}/stress_{name}.png'
-        fig.savefig(path, bbox_inches='tight', dpi=300, transparent=True)
+        fig.savefig(path, bbox_inches='tight', dpi=300)
         plt.close(fig)
         figs.append(os.path.abspath(path))
 
@@ -299,6 +300,81 @@ def plot(df):
     save(fig, 'delta_heatmap')
 
     print('figures:\n  ' + '\n  '.join(figs))
+
+
+# ponytail: panels a-c of the supplementary figure; the seven diagnostic PNGs above stay
+# for inspection, this is the one meant to go in the paper.
+FIG_LABEL = {'baseline': 'Baseline', 'lasso': 'Lasso', 'elasticnet': 'ElasticNet',
+             'wholegenome': 'Whole genome', 'metacell': 'Metacell',
+             'gradientboosting': 'Gradient boosting', 'nn': 'Neural net'}
+FIG_CONTRAST = {'op:Ruxolitinib_vs_DMSO': 'Ruxolitinib (OPSCA)',
+                'parsebioscience:IL-10_vs_PBS': 'IL-10 (Parse)',
+                'CXCL9:LPS + ruxolitinib_vs_LPS': 'Ruxolitinib (ctr: LPS)',
+                'CXCL9:RPMI + ruxolitinib_vs_RPMI': 'Ruxolitinib (ctr: RPMI)'}
+FIG_CT = 'CD4T'
+
+
+def figure(df):
+    """a: held-out accuracy per variant. b: does the CD4T rejuvenation call survive.
+    c: fraction of the non-cv readouts whose sign matches baseline."""
+    order = [v for v in VARIANTS if v in set(df.variant)]
+    stressed = [v for v in order if v != 'baseline']
+    colors = dict(zip(stressed, sns.color_palette('colorblind', len(stressed))))
+    plt.rcParams.update({'font.family': 'Arial', 'font.size': 9})
+
+    fig, axes = plt.subplots(1, 3, figsize=(11, 3.1), gridspec_kw={'width_ratios': [1.3, 1.2, .8]})
+
+    ax = axes[0]
+    cv = (df[df.readout == 'cv'].pivot_table(index='cell_type', columns='variant', values='value')
+          .reindex(columns=order))
+    sns.heatmap(cv, cmap='Blues', vmin=0, vmax=.85, annot=True, fmt='.2f', annot_kws={'fontsize': 7},
+                cbar_kws={'label': 'Spearman (held-out)', 'pad': .02}, ax=ax, linewidths=.5)
+    ax.set(xlabel='', ylabel='')
+    ax.set_xticklabels([FIG_LABEL.get(v, v) for v in order], rotation=45, ha='right')
+    ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
+
+    ax = axes[1]
+    rj = df[(df.readout == 'rejuv') & (df.cell_type == FIG_CT)]
+    rows = [c for c in FIG_CONTRAST if c in set(rj.contrast)]
+    for y, c in enumerate(rows):
+        sub = rj[rj.contrast == c]
+        if y % 2 == 0:
+            ax.axhspan(y - .5, y + .5, color='#f2f2f2', zorder=0)
+        for v in stressed:
+            val = sub.loc[sub.variant == v, 'value']
+            if len(val):
+                ax.scatter(val.iloc[0], y, color=colors[v], s=32, zorder=3,
+                           label=FIG_LABEL.get(v, v) if y == 0 else None)
+        base = sub.loc[sub.variant == 'baseline', 'value']
+        if len(base):
+            ax.scatter(base.iloc[0], y, marker='D', color='black', s=42, zorder=4,
+                       label='Baseline' if y == 0 else None)
+    ax.axvline(0, color='black', lw=.8)
+    ax.set_yticks(range(len(rows)))
+    ax.set_yticklabels([FIG_CONTRAST[c] for c in rows])
+    ax.set_ylim(len(rows) - .5, -.5)
+    ax.set_xlabel(f'$\\Delta$ predicted age (yrs), {FIG_CT}')
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.legend(loc='upper left', bbox_to_anchor=(0, -.35), ncol=2, frameon=False, fontsize=7.5)
+
+    ax = axes[2]
+    agr = (df[(df.variant != 'baseline') & (df.readout != 'cv')]
+           .groupby('variant')['same_sign'].mean().reindex(stressed))
+    ax.barh(range(len(agr)), agr.values, color=[colors[v] for v in agr.index])
+    ax.set_yticks(range(len(agr)))
+    ax.set_yticklabels([FIG_LABEL.get(v, v) for v in agr.index])
+    ax.set_ylim(len(agr) - .5, -.5)
+    ax.set_xlim(0, 1)
+    ax.set_xlabel('Fraction of SLE + rejuvenation readouts\nwith the same sign as baseline')
+    ax.spines[['top', 'right']].set_visible(False)
+
+    for ax, letter in zip(axes, 'abc'):
+        ax.set_title(letter, loc='left', weight='bold', fontsize=11, pad=6)
+    fig.tight_layout()
+    path = f'{STRESS_DIR}/stress_figure.png'
+    fig.savefig(path, bbox_inches='tight', dpi=300)
+    plt.close(fig)
+    print(f'figure: {os.path.abspath(path)}')
 
 
 if __name__ == '__main__':

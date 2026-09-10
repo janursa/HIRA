@@ -68,7 +68,7 @@ def plot_consensus_overlap(level='edge', cell_types=MAJOR_CTS):
 def _save(name):
     file_name = os.path.join(GRN_OVERLAP_DIR, name)
     print(f'Saving to {file_name}')
-    plt.savefig(file_name, dpi=300, bbox_inches='tight', transparent=True)
+    plt.savefig(file_name, dpi=300, bbox_inches='tight')
     plt.close()
     return file_name
 

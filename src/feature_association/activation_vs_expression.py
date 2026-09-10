@@ -14,10 +14,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from hira.src.config import ACTIVATION_VS_EXPRESSION_DIR, REF_GE_ANALYSIS
-from hira.src.feature_association.helper import retrieve_sig_stats
+from hira.src.feature_association.helper import retrieve_stats
 from hira.src.feature_association.plots import plot_activation_vs_expression
 
-COLS = ['cell_type', 'gene', 'slope', 'p_value_adj', 'dataset']
+COLS = ['cell_type', 'gene', 'slope', 'p_value_adj', 'dataset', 'is_significant']
 
 
 def signed_significance(stats):
@@ -26,8 +26,10 @@ def signed_significance(stats):
 
 
 def build_frame(tfa_analysis, ge_analysis, dataset):
-    tfs = retrieve_sig_stats(analysis_name=tfa_analysis)[COLS]
-    genes = retrieve_sig_stats(analysis_name=ge_analysis)[COLS]
+    # both sides unfiltered: filtering each to its own significant set before the merge
+    # kept only TFs significant in BOTH, which made every point look concordant
+    tfs = retrieve_stats(analysis_name=tfa_analysis)[COLS]
+    genes = retrieve_stats(analysis_name=ge_analysis)[COLS]
     df = tfs.merge(genes, on=['cell_type', 'gene', 'dataset'], suffixes=('_source', '_target'))
     df = df[df['dataset'] == dataset].copy()
     assert len(df), f'No TFs shared between {tfa_analysis} and {ge_analysis} for {dataset}'
@@ -54,7 +56,7 @@ if __name__ == '__main__':
                                   col_y='Activation significance',
                                   y_label='Activation significance \n (-log10padj)',
                                   x_label='Expression significance \n (-log10padj)',
-                                  figsize=(3, 2.7))
+                                  figsize=(3.6, 3.4))
     plt.legend([], [], frameon=False)
     plt.suptitle(f'TF activation vs expression ({args.cell_type})', y=.95, fontsize=12, weight='bold')
     plt.tight_layout()

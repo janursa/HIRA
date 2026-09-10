@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-"""Merge the CXCL9 donor-level panels for one TF into a single figure.
+"""Merge the donor-level panels for one TF into a single figure.
 
-Left: RPMI -> LPS -> LPS + ruxolitinib. Right: RPMI -> RPMI + ruxolitinib.
+Left: CXCL9 RPMI -> LPS -> LPS + ruxolitinib. Right: OP DMSO -> Ruxolitinib.
 Output: PLOTS_DIR/assembled/case_donors_merged_<tf>_<cell_type>.png
 """
 import os
@@ -20,18 +20,19 @@ from hira import retrieve_stats, retrieve_feature_data
 plt.rcParams["font.family"] = "Arial"
 plt.rcParams["font.size"] = 9
 
-DATASET = 'CXCL9'
 ANALYSIS_NAME = 'tfa_major_b'
 CELL_TYPE = 'CD4T'
-CASE_TF = 'STAT1'
-# (conditions on the x axis, x labels, brackets as (i, j, comparison))
+CASE_TF = sys.argv[1] if len(sys.argv) > 1 else 'IRF1'
+# (dataset, conditions on the x axis, x labels, brackets as (i, j, comparison))
 PANELS = [
-    (['RPMI', 'LPS', 'LPS + ruxolitinib'],
+    ('CXCL9',
+     ['RPMI', 'LPS', 'LPS + ruxolitinib'],
      ['RPMI', 'LPS', 'Ruxolitinib\n(ctr: LPS)'],
      [(0, 1, 'LPS (ctr: RPMI)'), (1, 2, 'Ruxolitinib (ctr: LPS)')]),
-    (['RPMI', 'RPMI + ruxolitinib'],
-     ['RPMI', 'Ruxolitinib\n(ctr: RPMI)'],
-     [(0, 1, 'Ruxolitinib (ctr: RPMI)')]),
+    ('op',
+     ['DMSO', 'Ruxolitinib'],
+     ['DMSO', 'Ruxolitinib\n(ctr: DMSO)'],
+     [(0, 1, 'Ruxolitinib')]),
 ]
 FIGSIZE = (3, 1.8)
 
@@ -41,23 +42,28 @@ def bracket(ax, i, j, pval, y, h):
     ax.text((i + j) / 2, y, f'p={pval:.3f}', ha='center', va='bottom', fontsize=7)
 
 
-def main():
-    stats = retrieve_stats(dataset=DATASET, analysis_name=ANALYSIS_NAME)
+def load(dataset):
+    stats = retrieve_stats(dataset=dataset, analysis_name=ANALYSIS_NAME)
     stats = stats[(stats['gene'] == CASE_TF) & (stats['cell_type'] == CELL_TYPE)]
     pvals = stats.set_index('comparison')['p_value_adj'].to_dict()
 
-    adata = retrieve_feature_data(dataset=DATASET, analysis_name=ANALYSIS_NAME, cell_type=CELL_TYPE)
+    adata = retrieve_feature_data(dataset=dataset, analysis_name=ANALYSIS_NAME, cell_type=CELL_TYPE)
     df = adata.obs[['donor_id', 'condition']].copy()
     df[CASE_TF] = np.asarray(adata[:, CASE_TF].X).flatten()
     df = df.groupby(['donor_id', 'condition'], observed=True)[CASE_TF].mean().reset_index()
-    donors = sorted(df['donor_id'].unique())
-    colors = dict(zip(donors, sns.color_palette('tab10', len(donors))))
+    return df, pvals
 
+
+def main():
     fig, axes = plt.subplots(1, len(PANELS), figsize=FIGSIZE,
-                             gridspec_kw={'width_ratios': [len(p[0]) for p in PANELS]})
-    y_min, y_max = df[CASE_TF].min(), df[CASE_TF].max()
-    y_range = y_max - y_min
-    for ax, (conditions, labels, brackets) in zip(axes, PANELS):
+                             gridspec_kw={'width_ratios': [len(p[1]) for p in PANELS]})
+    for ax, (dataset, conditions, labels, brackets) in zip(axes, PANELS):
+        df, pvals = load(dataset)
+        donors = sorted(df['donor_id'].unique())
+        colors = dict(zip(donors, sns.color_palette('tab10', len(donors))))
+        y_min, y_max = df[CASE_TF].min(), df[CASE_TF].max()
+        y_range = y_max - y_min
+
         sub = df[df['condition'].isin(conditions)]
         # ponytail: fixed offsets per donor instead of random jitter, so the panels stay comparable
         jitter = np.linspace(-.12, .12, len(donors))

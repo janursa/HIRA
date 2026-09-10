@@ -120,7 +120,7 @@ def assemble():
     plt.tight_layout()
 
     output_path = os.path.join(ASSEMBLED_DIR, "overview_sig_tfs.png")
-    fig.savefig(output_path, bbox_inches="tight", dpi=300, transparent=False)
+    fig.savefig(output_path, bbox_inches="tight", dpi=300, transparent=True)
     plt.close(fig)
     print(f"\nSaved assembled figure: {output_path}")
 

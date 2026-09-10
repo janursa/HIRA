@@ -21,3 +21,5 @@ see README.md
 
 
 To retrieve sig features associated with aging/condition, use `retrieve_sig_stats`
+
+Plot clusters (groups of individual plots that belong together): `scripts/merge/clusters.yaml`. When asked to show one of these groups, read this file and send every listed plot together.

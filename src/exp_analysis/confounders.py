@@ -27,14 +27,17 @@ from hira.src.utils.util import retrieve_adata, coarsen
 
 EXCLUDE = {'age', 'age_group', 'donor_age', 'cell_count', MAJOR_CT_LABEL, 'dataset',
            'donor_id', 'donor_id_old', 'orig.ident', 'sum_by', 'bulk_group',
-           'race'}
+           'race',
+           # soundlife-only metadata: age synonyms, duplicates of sex/visit/race, and
+           # study-design fields with no counterpart in the other cohorts
+           'pool_id', 'visitName', 'vaccinated', 'vaccine_year', 'year', 'day'}
 R2_FLAG = 0.05
 P_FLAG = 0.05
 
 
 def candidate_covariates(donors):
     return [c for c in donors.columns
-            if c not in EXCLUDE and not c.endswith('_count')
+            if c not in EXCLUDE and not c.endswith('_count') and '.' not in c
             and 2 <= donors[c].nunique(dropna=True) < len(donors)]
 
 

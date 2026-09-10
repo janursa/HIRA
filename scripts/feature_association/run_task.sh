@@ -37,12 +37,12 @@ case "$task" in
     python src/feature_association/post_condition_analysis.py --dataset perez_sle --analysis-type disease --analysis-name $analysis_name
     ;;
   parsebioscience)
-    python src/feature_association/run_analysis.py --dataset parsebioscience --cell-types CD4T CD8T --analysis-name $analysis_name --association-type grouped
-    python src/feature_association/post_condition_analysis.py --dataset parsebioscience --analysis-type perturbation --analysis-name $analysis_name --agreement opposite
+    python src/feature_association/run_analysis.py --dataset parsebioscience --cell-types CD4T CD8T NK B MONO --analysis-name $analysis_name --association-type grouped
+    python src/feature_association/post_condition_analysis.py --dataset parsebioscience --analysis-type perturbation --analysis-name $analysis_name --cell-types CD4T CD8T NK B MONO --agreement opposite
     ;;
   op)
-    python src/feature_association/run_analysis.py --dataset op --cell-types CD4T --analysis-name $analysis_name --association-type grouped
-    python src/feature_association/post_condition_analysis.py --dataset op --analysis-type perturbation --analysis-name $analysis_name --agreement opposite
+    python src/feature_association/run_analysis.py --dataset op --cell-types CD4T CD8T NK B --analysis-name $analysis_name --association-type grouped
+    python src/feature_association/post_condition_analysis.py --dataset op --analysis-type perturbation --analysis-name $analysis_name --cell-types CD4T CD8T NK B --agreement opposite
     ;;
   CXCL9)
     python src/feature_association/run_analysis.py --dataset CXCL9 --cell-types CD4T CD8T --analysis-name $analysis_name --association-type grouped

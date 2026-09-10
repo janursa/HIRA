@@ -231,13 +231,12 @@ def retrieve_net(dataset, cell_type, skeleton=NET_SKELETON, data_type='sc', grns
     net = pd.read_csv(f"{folder}/net_{cell_type_major}.csv")
     gene_names = np.loadtxt(f'{prior_dir}/gene_names.txt', dtype=str)
     net = net[net['target'].isin(gene_names)]
-    if skeleton is not None:
-        net = net[net[f'{skeleton}_based']]
-    
     if NET_WEIGHT_THRESHOLD is not None:
         net = net[net['weight'] > NET_WEIGHT_THRESHOLD]
     if NET_MAX_SIZE is not None:
         net = net.sort_values(by='weight', ascending=False, key=abs).head(NET_MAX_SIZE)
+    if skeleton is not None:
+        net = net[net[f'{skeleton}_based']]
     return net[['source', 'target', 'weight', 'cell_type']]
 
 # def retrieve_nets(datasets, cell_type, promotor_only=False):

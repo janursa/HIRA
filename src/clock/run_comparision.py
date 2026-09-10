@@ -11,6 +11,7 @@ import seaborn as sns
 from hira import CLOCKS_DIR, OUTPUT_DIR, CLOCK_PLOTS_DIR as PLOTS_DIR, surrogate_names, colors_blind, get_clock_cell_types
 from hira import wrapper_clock_predictions
 from hira.src.clock.plots import plot_scatter_age_vs_predictedAge
+from hira.src.clock.helper import save_clock_stats
 from hira.src.utils.util import retrieve_adata
 from grnimmuneclock import evaluate_groupwise_median, train_aging_clock
 import anndata as ad
@@ -110,6 +111,7 @@ if __name__ == "__main__":
     # Convert to DataFrame
     score_df = pd.DataFrame(all_scores)
     assert score_df.shape[0] > 0, "Some issues here."
+    save_clock_stats(score_df, 'comparison_scores')
     palette_models = {
         'Wenchao': colors_blind[1], 
         'GRNdrived': colors_blind[0]
@@ -154,7 +156,7 @@ if __name__ == "__main__":
         # fig.tight_layout()
         file_name = f'{PLOTS_DIR}/clock_comparison_{metric}.png'
         print(f"Saving figure to {file_name}")
-        plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(file_name, bbox_inches='tight', dpi=300)
 
     W_median_prediction['model'] = 'Wenchao'
     test_predictions['model'] = 'GRNdrived'
@@ -175,7 +177,7 @@ if __name__ == "__main__":
         ax.legend(loc=(1.1, .5), frameon=False, title='Model')
         file_name = f'{PLOTS_DIR}/clock_comparison_{cell_type}.png'
         print(f"Saving figure to {file_name}")
-        plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(file_name, bbox_inches='tight', dpi=300)
         
         # plt.suptitle(cell_type, fontsize=12, weight='bold')
         # plt.tight_layout()

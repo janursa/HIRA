@@ -50,7 +50,7 @@ def wrapper_sig_features_counts(args):
     plt.ylabel('Significant TFs' if feature_type == 'tf_activity' else 'Significant features')
     file_name = f"{AGING_PLOTS_DIR}/aging_features_count_{args.analysis_name}.png"
     print(f"Saving figure to {file_name}")
-    plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+    plt.savefig(file_name, bbox_inches='tight', dpi=300)
 
 
 def plot_aging_overlap(analysis_name, stats_sig, cell_types, args):
@@ -132,18 +132,19 @@ def plot_aging_overlap(analysis_name, stats_sig, cell_types, args):
         plt.tight_layout()
         output_path = os.path.join(output_dir, f'ref_overlap_{name_suffix}_{args.feature_type}_{analysis_name}.png')
         output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
-        plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
         plt.close()
         print(f"    Saved: {output_path}")
 
-def _annotate_extreme_tfs(ax, cell_data, association_col, n=5):
-    """Circle the n most extreme TFs at each x-end and print their names."""
+def _annotate_extreme_tfs(ax, cell_data, association_col, n=5, rank_on='x'):
+    """Circle the n most extreme TFs at each end of the `rank_on` axis and print their names."""
     from matplotlib.patches import Ellipse
     xs, ys = f'{association_col}_sl', f'{association_col}_ref'
+    rank = xs if rank_on == 'x' else ys
     x_range = np.diff(ax.get_xlim())[0]
     y_range = np.diff(ax.get_ylim())[0]
     for side in (1, -1):
-        sub = cell_data.nlargest(n, xs) if side > 0 else cell_data.nsmallest(n, xs)
+        sub = cell_data.nlargest(n, rank) if side > 0 else cell_data.nsmallest(n, rank)
         if len(sub) == 0:
             continue
         cx, cy = sub[xs].mean(), sub[ys].mean()
@@ -509,7 +510,7 @@ def plot_scatter_feature_vs_age(
         tag = 'custom' if features is not None else ('top_central' if feature_selection_mode == 'top_central' else 'top_sig') 
         file_name = f"{AGING_PLOTS_DIR}/scatter_feature_vs_age_{analysis_name}_{cell_type}_{tag}.png"
         print(f"Saving figure to {file_name}")
-        plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(file_name, bbox_inches='tight', dpi=300)
         plt.close()
 def plot_young_vs_aging(analysis_name, cell_type, 
                         young_age_threshold=30, annotate_top_n=10, plots_dir=AGING_PLOTS_DIR):
@@ -621,7 +622,7 @@ def plot_young_vs_aging(analysis_name, cell_type,
     # Save plot
     file_name = f"{plots_dir}/young_vs_aging_{analysis_name}_{cell_type}.png"
     print(f"Saving figure to {file_name}")
-    plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+    plt.savefig(file_name, bbox_inches='tight', dpi=300)
     plt.close()
 
 def gsea_analysis(stats_sig):
@@ -653,11 +654,11 @@ def plot_heatmap_overal(stats_aging, analysis_name):
                         map_names={**{'cell_type':'Cell type', 'dataset': 'Dataset'}, **surrogate_names})
     file_name = f"{AGING_PLOTS_DIR}/overall_heatmap_{analysis_name}.png"
     print(f"Saving figure to {file_name}")
-    plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
-def plot_central_features(stats_aging, cell_types, analysis_name):
+    plt.savefig(file_name, bbox_inches='tight', dpi=300)
+def plot_central_features(stats_aging, cell_types, analysis_name, n_top=15, plots_dir=None):
     if True:
         # Parameters
-        n_top = 10
+        plots_dir = plots_dir or AGING_PLOTS_DIR
         focus = 'source'  # can be 'source' or 'target'
         palette = palette_trend_2  # assume this dict is defined
 
@@ -681,7 +682,7 @@ def plot_central_features(stats_aging, cell_types, analysis_name):
         plot_df[focus] = plot_df[focus].astype(str)
         plot_df = plot_df.sort_values(by=['cell_type', col_c], ascending=[True, False])
         n_cols = len(cell_types)
-        fig, axes = plt.subplots(1, n_cols, figsize=(1.5*n_cols, 2.1 ), sharex=False)
+        fig, axes = plt.subplots(1, n_cols, figsize=(1.5*n_cols, 0.14*n_top + 0.7), sharex=False)
 
         if n_cols == 1:
             axes = [axes]
@@ -701,9 +702,9 @@ def plot_central_features(stats_aging, cell_types, analysis_name):
             ax.spines[['top', 'right']].set_visible(False)
             i+=1
         fig.tight_layout()
-        file_name = os.path.join(AGING_PLOTS_DIR, f'central_aging_{focus}_{analysis_name}.png')
+        file_name = os.path.join(plots_dir, f'central_aging_{focus}_{analysis_name}.png')
         print(f"Saving figure to {file_name}")
-        plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(file_name, bbox_inches='tight', dpi=300)
 def plot_interaction_of_features_between_cell_types(args):
     from hira.src.utils.plots import plot_interactions, create_interaction_df
 
@@ -716,7 +717,7 @@ def plot_interaction_of_features_between_cell_types(args):
     aa = plot_interactions(interaction_main_df, min_subset_size=5, min_degree=1, color_map=palette_major_cts)
     file_name = f"{AGING_PLOTS_DIR}/interactions_{args.analysis_name}.png"
     print(f"Saving figure to {file_name}")
-    plt.savefig(file_name, dpi=300, transparent=True, bbox_inches='tight')
+    plt.savefig(file_name, dpi=300, bbox_inches='tight')
     # plt.title(surrogate_names[race], pad=40, fontsize=10, fontweight='bold')
 
     ttypes = ['CD8T', 'CD4T', 'NK']
@@ -950,12 +951,14 @@ def plot_trend_sle_case(adata, tf='LEF1', cell_type='CD8T'):
 
 def plot_tf_act_central_tfs(df, all_groups, palette_all, feature_col='gene', figsize=(3.5, 5), plot_centrality=True,
                                 ax2_margins={'y': 0.1, 'x': 0.1}, hide_ylabels=False, show_legend=True,
-                                width_ratios=(1.2, .8)):
+                                width_ratios=(1.2, .8), axes=None):
     
     # stats_d_sig = stats_d[stats_d['p_value_adj'] < 0.05]
     # --- Plot ---
     tfs = df[feature_col].unique()
-    if plot_centrality:
+    if axes is not None:  # draw into caller-provided axes (assembled figures)
+        pass
+    elif plot_centrality:
         fig, axes = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': list(width_ratios)})
     else:
         fig, axes = plt.subplots(1, 1, figsize=figsize)
@@ -1740,6 +1743,8 @@ def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", 
                  ax=ax)
     ax.set_yticks(np.arange(mean_expr.shape[0]) + 0.5)
     ax.set_yticklabels(mean_expr.index, rotation=0)
+    ax.set_xticks(np.arange(mean_expr.shape[1]) + 0.5)
+    ax.set_xticklabels(mean_expr.columns, rotation=90)
 
     # Modify the colorbar
     if show_cbar:
@@ -1753,7 +1758,6 @@ def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", 
 
     # Labels and formatting
     ax.set_xlabel("Age")
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
 
 def heamap_overview_cell_types(stats_all, 
                                palette, 
@@ -1964,7 +1968,9 @@ def plot_activation_vs_expression(df_combined,
                                   col_y = 'signed_-log10_pval', 
                                   y_label = "Activation\nsigned -log10(p adj)",
                                   x_label = "Expression\nsigned -log10(p adj)",
-                                  figsize=(4, 2.7)):
+                                  figsize=(4, 2.7),
+                                  n_label=5,
+                                  sig_threshold=1.4):
     import matplotlib.patches as mpatches
     cell_types_local = df_combined["cell_type"].unique()
     n_cell_types = len(cell_types_local)
@@ -1987,22 +1993,29 @@ def plot_activation_vs_expression(df_combined,
             alpha=0.7,
             ax=ax,
         )
-        top_tfs = df_dataset.sort_values(by='p_value_adj_target', ascending=False).head(2)
-        # compute small offsets relative to axis ranges
-        x_range = df_dataset[col_x].max() - df_dataset[col_x].min()
-        y_range = df_dataset[col_y].max() - df_dataset[col_y].min()
-        x_offset = 0.2 * x_range
-
-        for _, row in top_tfs.iterrows():
-            ax.text(
-                row[col_x] + x_offset,
-                row[col_y] + np.random.rand() * .1 *  y_range,
-                row['gene'],  # assumes TF names are in column 'gene'
-                fontsize=7,
-                ha='left',    # anchor text to the left since we shift right
-                va='bottom',  # anchor text above since we shift up
-                color='black'
-            )
+        # discordant TFs: significant in activity, not in expression -- circled at both ends,
+        # top n_label per end labelled by |activity significance|
+        disc = df_dataset[(df_dataset[col_y].abs() > sig_threshold)
+                          & (df_dataset[col_x].abs() < sig_threshold)]
+        ax.scatter(disc[col_x], disc[col_y], s=45, facecolors='none',
+                   edgecolors='black', linewidths=.6, zorder=3)
+        # the discordant points pile up at x~0, so labels go in the empty opposite quadrant
+        # (top-left for the up end, bottom-right for the down end) with leader lines
+        x_lo, x_hi = df_dataset[col_x].min(), df_dataset[col_x].max()
+        y_lo, y_hi = df_dataset[col_y].min(), df_dataset[col_y].max()
+        for end in (1, -1):
+            tail = disc[np.sign(disc[col_y]) == end]
+            tail = tail.loc[tail[col_y].abs().sort_values(ascending=False).index].head(n_label)
+            if not len(tail):
+                continue
+            x_lab = x_lo if end > 0 else 0.35 * x_hi
+            y_start, y_step = (y_hi, -0.07 * (y_hi - y_lo)) if end > 0 else (y_lo, 0.07 * (y_hi - y_lo))
+            for k, (_, row) in enumerate(tail.iterrows()):
+                y_lab = y_start + k * y_step
+                ax.plot([row[col_x], x_lab], [row[col_y], y_lab], lw=.3, color='grey',
+                        alpha=.7, zorder=2)
+                ax.text(x_lab, y_lab, row['gene'], fontsize=6, ha='left', va='center',
+                        color='black', zorder=4)
         # Annotate top genes with the highest activation significance
         xmin, xmax = df_dataset[col_x].min(), df_dataset[col_x].max()
         ymin, ymax = df_dataset[col_y].min(), df_dataset[col_y].max()
@@ -2015,7 +2028,6 @@ def plot_activation_vs_expression(df_combined,
         ax.spines['top'].set_visible(False)
         ax.set_aspect("equal", adjustable="datalim")
         padding = 0.15 * (global_max - global_min)
-        sig_threshold = 1.4
         ax.margins(x=0.01, y=0.05)
         linewidth = .5
         alpha = .4
