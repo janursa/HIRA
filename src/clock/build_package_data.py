@@ -2,9 +2,10 @@
 Regenerate the data files shipped inside the GRNimmuneClock package:
   - grnimmuneclock/data/consensus_grn_{CD4T,CD8T}.csv : consensus GRNs over DISCOVERY_COHORTS
   - grnimmuneclock/data/example_data.h5ad             : one pseudobulk sample from one bulk cohort
-  - grnimmuneclock/data/heldout_{CD4T,CD8T}.h5ad      : the held-out donors the interpretation runs on
   - grnimmuneclock/data/aging_stats_{CD4T,CD8T}.csv   : per-gene empirical aging direction (pooled_rho)
   - grnimmuneclock/models/{CD4T,CD8T}/                : the published clock models
+
+Anything else already in those directories is deleted (prune_stale).
 
 Usage:
     python src/clock/build_package_data.py [--dataset aida] [--cell-type CD4T]
@@ -15,7 +16,6 @@ import shutil
 from datetime import date
 from pathlib import Path
 
-import anndata as ad
 import numpy as np
 import pandas as pd
 from scipy.sparse import issparse
@@ -53,32 +53,9 @@ def build_example(dataset='aida', cell_type='CD4T'):
     print(f'{out}: {adata.shape[0]} sample x {adata.shape[1]} genes from {dataset}/{cell_type}')
 
 
-def build_heldout(cell_types=('CD4T', 'CD8T')):
-    """The exact held-out matrix run_exp_analysis.py computes permutation importance on,
-    restricted to each clock's feature space so the tutorial reproduces its t statistics.
-    Stored unrounded: permutation importance is a ratio over repeats, so even 3-decimal
-    rounding of the inputs moves individual t statistics by tens of units."""
-    from grnimmuneclock import retrieve_function
-
-    for cell_type in cell_types:
-        _, gene_names = retrieve_function(cell_type=cell_type, model_dir=CLOCKS_DIR, version=CLOCK_V)
-        X_parts, obs_parts = [], []
-        for d in CLOCK_TEST_COHORTS:
-            a = retrieve_adata(dataset=d, data_type='bulk', cell_type=cell_type, condition='healthy')
-            X = a.X.toarray() if issparse(a.X) else np.asarray(a.X)
-            idx = [f'{d}_{i}' for i in range(a.n_obs)]
-            X_parts.append(pd.DataFrame(X, columns=a.var_names, index=idx).reindex(columns=gene_names, fill_value=0))
-            obs_parts.append(pd.DataFrame({'age': a.obs['age'].astype(float).values, 'dataset': d}, index=idx))
-        out = ad.AnnData(pd.concat(X_parts).values.astype('float32'),
-                         obs=pd.concat(obs_parts), var=pd.DataFrame(index=list(gene_names)))
-        path = PKG_DATA_DIR / f'heldout_{cell_type}.h5ad'
-        out.write_h5ad(path, compression='gzip', compression_opts=9)
-        print(f'{path}: {out.shape[0]} donors x {out.shape[1]} genes from {", ".join(CLOCK_TEST_COHORTS)}')
-
-
 def build_aging_stats(cell_types=('CD4T', 'CD8T')):
-    """pooled_rho per clock gene -- the empirical aging direction used to sign permutation
-    importance before ULM."""
+    """pooled_rho per clock gene -- the empirical aging direction used to sign the clock
+    coefficients before ULM."""
     from grnimmuneclock import retrieve_function
     from hira.src.feature_association.helper import retrieve_stats
     from hira.src.config import REF_GE_ANALYSIS
@@ -134,6 +111,26 @@ def build_models(cell_types=('CD4T', 'CD8T')):
         print(f'{meta_path}: {metadata}')
 
 
+def prune_stale(cell_types=('CD4T', 'CD8T')):
+    """Delete anything the builders above didn't just write -- a file the package no longer
+    needs (a dropped cell type, a retired analysis input) otherwise keeps shipping forever."""
+    keep = {PKG_DATA_DIR / 'example_data.h5ad'}
+    for cell_type in cell_types:
+        keep |= {PKG_DATA_DIR / f'consensus_grn_{cell_type}.csv',
+                 PKG_DATA_DIR / f'aging_stats_{cell_type}.csv'}
+        keep |= {PKG_MODELS_DIR / cell_type / n for n in
+                 (f'model_{CLOCK_V}.pkl', f'feature_names_{CLOCK_V}.txt', 'metadata.json')}
+
+    for path in sorted(list(PKG_DATA_DIR.rglob('*')) + list(PKG_MODELS_DIR.rglob('*'))):
+        if path.is_file() and path not in keep:
+            path.unlink()
+            print(f'pruned {path}')
+    for d in sorted(PKG_MODELS_DIR.iterdir(), reverse=True):
+        if d.is_dir() and not any(d.iterdir()):
+            d.rmdir()
+            print(f'pruned {d}/')
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='aida', help='bulk cohort for example_data.h5ad')
@@ -144,5 +141,5 @@ if __name__ == '__main__':
     build_grns()
     build_example(args.dataset, args.cell_type)
     build_models()
-    build_heldout()
     build_aging_stats()
+    prune_stale()

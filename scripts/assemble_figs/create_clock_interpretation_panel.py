@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-"""Clock interpretation panels: clock-derived vs empirical TF activity, the clock's most
-important genes (importance vs aging direction), and the age trends of its top TFs.
+"""Clock interpretation panels: clock-derived vs empirical TF activity, the age trends of
+the clock's top-weighted genes, and the age trends of its top TFs.
 
 Reads persisted stats (tf_regulation_concordance.csv, clock_gene_importance.csv,
 clock_tf_activity.csv) plus the binned feature data.
@@ -29,8 +29,6 @@ CELL_TYPES = ['CD4T', 'CD8T']
 N_TOP_COEF = 15
 BIN_SIZE = 10
 COHORT = 'aida'
-# aging direction (bars) and clock TF-activity sign (strip), kept in separate hue families
-AGING_COLORS = {-1: '#E52B50', 1: '#B0BF1A'}
 TFA_COLORS = ('#5E2B97', '#2A9D8F')  # (negative, positive) regulatory influence
 COEF_COLORS = ('#4062BB', '#F4A259')  # (negative, positive) clock weight
 STYLE = [('consistent', 'darkseagreen', 'darkgreen'), ('opposing', 'indianred', 'darkred')]
@@ -96,20 +94,6 @@ def scatter_panel(ax, sub, xlabel, ylabel, title, labels, rank_on):
     _annotate_extreme_tfs(ax, sub, '-log10_p_adj', rank_on=rank_on)
 
 
-def gene_panel(ax, sub):
-    """Top clock genes: bar length = out-of-sample importance, colour = aging correlation."""
-    sub = sub.iloc[::-1]
-    y = np.arange(len(sub))
-    ax.barh(y, sub['importance_t'], height=.7, linewidth=0,
-            color=[AGING_COLORS[d] for d in np.sign(sub['pooled_rho'])])
-    ax.set_yticks(y)
-    ax.set_yticklabels(sub['gene'])
-    ax.tick_params(axis='y', length=0, pad=1)
-    ax.set(xlabel='Importance to aging clock', ylabel='Gene', ylim=(-.7, len(sub) - .3))
-    ax.spines[['top', 'right', 'left']].set_visible(False)
-    ax.grid(False)
-
-
 def draw_gene_trends(fig, gs, col0=0):
     """a) age trends of the clock's top-weighted genes (sign strip = ridge coefficient)."""
     gene_stats = pd.read_csv(f'{CLOCK_STATS_DIR}/clock_gene_importance.csv')
@@ -147,25 +131,8 @@ def draw_concordance(fig, gs, col0=0):
     return axes
 
 
-def draw_gene_importance(fig, gs, col0=0):
-    """c) the genes the clock leans on: importance, coloured by aging direction."""
-    gene_stats = pd.read_csv(f'{CLOCK_STATS_DIR}/clock_gene_importance.csv')
-    axes = []
-    for c, cell_type in enumerate(CELL_TYPES):
-        ax = fig.add_subplot(gs[0, col0 + c])
-        axes.append(ax)
-        genes, _ = top_clock_features(gene_stats, None, cell_type, 'gene_expression')
-        gene_panel(ax, gene_stats.query('cell_type == @cell_type').set_index('gene')
-                   .loc[genes].reset_index())
-        ax.set_title(surrogate_names.get(cell_type, cell_type), pad=8)
-        ax.tick_params(axis='y', labelsize=6)
-    legend_below(fig, [Line2D([0], [0], color=AGING_COLORS[d], lw=5, label=l)
-                             for d, l in [(1, 'Increases with age'), (-1, 'Decreases with age')]])
-    return axes
-
-
 def draw_tf_trends(fig, gs, col0=0):
-    """d) age trends of the clock's top TFs."""
+    """c) age trends of the clock's top TFs."""
     tf_stats = pd.read_csv(f'{CLOCK_STATS_DIR}/clock_tf_activity.csv')
     sign_axes, heat_axes = [], []
     for c, cell_type in enumerate(CELL_TYPES):

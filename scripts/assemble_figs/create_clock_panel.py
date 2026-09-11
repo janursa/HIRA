@@ -20,7 +20,6 @@ import create_clock_interpretation_panel as interp
 FIGSIZE = (13, 5)
 BANNER_DY = .34  # ponytail: same offset in every top group -> banners line up
 BOTTOM = [(interp.draw_gene_trends, 'Clock genes with age'),
-          (interp.draw_gene_importance, 'Clock gene importance'),
           (interp.draw_tf_trends, 'Clock TFs with age')]
 
 

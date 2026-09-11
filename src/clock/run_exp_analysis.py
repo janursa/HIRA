@@ -141,12 +141,13 @@ from matplotlib.colors import ListedColormap
 def top_clock_features(gene_stats, tf_stats, cell_type, feature_type, n=15, sig_threshold=0.05):
     """Top-n features the clock leans on, ranked from the persisted stats.
 
-    Genes rank on out-of-sample permutation importance (t) and are signed by their empirical
-    aging direction; TFs rank on |ULM activity| among the ULM-significant ones.
+    Genes rank on |ridge coefficient| and are signed by their empirical aging direction;
+    TFs rank on |ULM activity| among the ULM-significant ones.
     Returns (features, weights) with the weight giving the sign shown in the strip.
     """
     if feature_type == 'gene_expression':
-        top = gene_stats[gene_stats['cell_type'] == cell_type].nlargest(n, 'importance_t')
+        sub = gene_stats[gene_stats['cell_type'] == cell_type]
+        top = sub.reindex(sub['clock_coef'].abs().sort_values(ascending=False).index).head(n)
         return top['gene'].tolist(), top['pooled_rho'].values
     df = tf_stats[tf_stats['cell_type'] == cell_type].set_index('tf')
     sig = df[df['padj'] < sig_threshold]
@@ -209,42 +210,26 @@ def plot_coeff():
         plt.savefig(file_name, dpi=300, bbox_inches='tight')
         plt.close()
 
-def clock_gene_stats(cell_type, n_repeats=50):
-    """One row per clock feature: its ridge coefficient, its out-of-sample permutation
-    importance, and the empirical aging stats for the same gene.
+def clock_gene_stats(cell_type):
+    """One row per clock feature: its ridge coefficient and the empirical aging stats for
+    the same gene.
 
-    Importance is held out on CLOCK_TEST_COHORTS (the cohorts run_cv.py validates on) and
-    scored by Spearman rho. The clock's gene set is already restricted to age-significant
-    genes at training time (retrieve_adata(only_sig_genes=True)), so significance isn't
-    re-filtered here -- the caller just cross-checks that the two sets still agree.
+    The clock's gene set is already restricted to age-significant genes at training time
+    (retrieve_adata(only_sig_genes=True)), so significance isn't re-filtered here -- the
+    caller just cross-checks that the two sets still agree.
     """
-    from grnimmuneclock import retrieve_function, permutation_gene_importance
-    from hira import retrieve_stats, retrieve_adata, CLOCK_TEST_COHORTS
-    from scipy import sparse
+    from grnimmuneclock import retrieve_function
+    from hira import retrieve_stats
 
     model, gene_names = retrieve_function(cell_type=cell_type, model_dir=CLOCKS_DIR if USE_LOCAL_CLOCK else None, version=CLOCK_V)
 
-    X_parts, y_parts = [], []
-    for ds in CLOCK_TEST_COHORTS:
-        adata_ds = retrieve_adata(dataset=ds, data_type='bulk', cell_type=cell_type, condition='healthy')
-        Xd = pd.DataFrame(adata_ds.X.toarray() if sparse.issparse(adata_ds.X) else np.asarray(adata_ds.X),
-                           columns=adata_ds.var_names, index=adata_ds.obs_names).reindex(columns=gene_names, fill_value=0)
-        X_parts.append(Xd.values)
-        y_parts.append(adata_ds.obs['age'].astype(float).values)
-    y = np.concatenate(y_parts)
-
-    padj, tstat, spearman_full = permutation_gene_importance(model, np.vstack(X_parts), y, n_repeats=n_repeats)
-    print(f"[{cell_type}] held-out Spearman rho={spearman_full:.3f} (n={len(y)})")
-
     emp_ge = retrieve_stats(analysis_name=REF_GE_ANALYSIS, cell_type=cell_type, multi_cohort=True).drop_duplicates(subset='gene').set_index('gene')
     gdf = pd.DataFrame({'gene': gene_names,
-                        'clock_coef': model.named_steps['ridge'].coef_,
-                        'importance_t': tstat,
-                        'importance_padj': padj}).join(emp_ge, on='gene', how='inner')
-    # t<0 means permuting the gene *helped* -> no importance, not negative importance. Clip
-    # first, then take the direction from the empirical age trend; signing the raw t instead
-    # flips the majority of the profile (most genes are unimportant) and inverts every TF.
-    gdf['signed_t'] = np.clip(gdf['importance_t'], 0, None) * np.sign(gdf['pooled_rho'])
+                        'clock_coef': model.named_steps['ridge'].coef_}).join(emp_ge, on='gene', how='inner')
+    # magnitude from the ridge weight, direction from the empirical age trend: under
+    # collinearity ridge hands correlated partners suppressor weights whose sign opposes
+    # their own age trend, which would invert the inferred TF direction.
+    gdf['signed_coef'] = gdf['clock_coef'].abs() * np.sign(gdf['pooled_rho'])
     return gene_names, gdf
 
 
@@ -267,15 +252,14 @@ def plot_clock_vs_empirical_consistency(concordance_df, save_suffix='clock_vs_em
     )
 
 
-def tf_act_analysis(sig_threshold=0.05, n_repeats=100, min_targets=10, n_display=15, n_genes=15):
-    """Clock -> TF activity by ULM on the signed permutation-importance profile.
+def tf_act_analysis(sig_threshold=0.05, min_targets=10, n_display=15, n_genes=15):
+    """Clock -> TF activity by ULM on the signed ridge-coefficient profile.
 
-    The profile is each clock gene's permutation-importance t (clipped at 0) signed by its
-    empirical aging direction, so a TF scores positive when the genes it regulates both
-    drive the clock and rise with age. Running ULM on the ridge coefficients instead is
-    unreliable: under collinearity ridge gives correlated partners suppressor weights whose
-    sign opposes their own age trend. decoupler prunes zero-valued genes before `tmin`, so
-    the clipping also restricts every regulon to genes with real out-of-sample attribution.
+    The profile is each clock gene's |ridge coefficient| signed by its empirical aging
+    direction, so a TF scores positive when the genes it regulates both weigh on the clock
+    and rise with age. The sign has to come from the empirical trend rather than from the
+    coefficient: under collinearity ridge gives correlated partners suppressor weights whose
+    sign opposes their own age trend, which inverts the inferred TF direction.
     """
     from grnimmuneclock import tf_activity_from_coefs
     from hira import retrieve_stats, retrieve_sig_stats
@@ -289,7 +273,7 @@ def tf_act_analysis(sig_threshold=0.05, n_repeats=100, min_targets=10, n_display
     concordance_dfs = []
     gene_stats, tf_stats = [], []
     for cell_type in ['CD8T', 'CD4T']:
-        gene_names, gdf = clock_gene_stats(cell_type, n_repeats=n_repeats)
+        gene_names, gdf = clock_gene_stats(cell_type)
 
         # cross-check: every clock feature should be a sig gene from training (a few sig
         # genes can be missing from the clock -- e.g. dropped by the inner-join across
@@ -303,12 +287,9 @@ def tf_act_analysis(sig_threshold=0.05, n_repeats=100, min_targets=10, n_display
         if sig_genes is not None and cell_type != 'B':
             assert set(gene_names) <= sig_genes, f"{cell_type}: clock has features that aren't significant genes"
 
-        print(f"[{cell_type}] {(gdf['importance_padj'] < sig_threshold).sum()}/{len(gdf)} genes have significant "
-              f"out-of-sample attribution")
-
         # trend heatmap: the genes the clock leans on hardest, coloured by their age direction
         gene_stats.append(gdf.assign(cell_type=cell_type)[['cell_type', 'gene', 'clock_coef',
-                                                            'importance_t', 'importance_padj', 'pooled_rho']])
+                                                            'signed_coef', 'pooled_rho']])
         top_genes_dict[cell_type], top_weights_dict[cell_type] = top_clock_features(
             gene_stats[-1], None, cell_type, 'gene_expression', n=n_genes)
 
@@ -318,7 +299,7 @@ def tf_act_analysis(sig_threshold=0.05, n_repeats=100, min_targets=10, n_display
         net = retrieve_net_consensus(cell_type=cell_type, force=True)
         net = net[net['target'].isin(set(gdf['gene']))]
 
-        tf_df = tf_activity_from_coefs(gdf['gene'].values, gdf['signed_t'].values, net, min_targets=min_targets)
+        tf_df = tf_activity_from_coefs(gdf['gene'].values, gdf['signed_coef'].values, net, min_targets=min_targets)
         tf_stats.append(tf_df.assign(cell_type=cell_type)[['cell_type', 'tf', 'score', 'padj']])
         ulm_score = tf_df.set_index('tf')['score']
         ulm_padj = tf_df.set_index('tf')['padj']
@@ -382,16 +363,13 @@ def tf_act_analysis(sig_threshold=0.05, n_repeats=100, min_targets=10, n_display
     wrapper_trend(top_tfs_dict, top_acts_dict, feature_type='tf_activity', dataset=dataset)
     return concordance_df
 
-def tf_ora_analysis(sig_threshold=0.05, n_repeats=50, min_targets=5, cell_types=('CD8T', 'CD4T')):
-    """Coefficient-free clock -> TF inference, and its agreement with the empirical
-    TF-activity analysis.
+def tf_ora_analysis(sig_threshold=0.05, min_targets=5, cell_types=('CD8T', 'CD4T')):
+    """Weight-free clock -> TF inference, and its agreement with the empirical TF-activity
+    analysis.
 
-    Takes the clock genes with significant out-of-sample permutation importance, splits them
-    by their empirical aging direction, and asks which regulons are overrepresented in each
-    half (background: all clock features). ULM on the ridge coefficients cannot do this job
-    -- under collinearity ridge assigns correlated partners suppressor weights whose sign
-    opposes their own age trend, which inverts the inferred TF direction. ORA reads only set
-    membership and takes the direction from the empirical gene stats, so that cannot happen.
+    Splits the clock's features by their empirical aging direction and asks which regulons
+    are overrepresented in each half (background: all clock features). ORA reads only set
+    membership, so it is a check on the ULM result that the ridge weights cannot bias.
 
     Writes PLOTS_DIR/tf_ora_clock_vs_empirical.csv plus a concordance and a discrepancy plot.
     """
@@ -401,9 +379,7 @@ def tf_ora_analysis(sig_threshold=0.05, n_repeats=50, min_targets=5, cell_types=
 
     hits_all = []
     for cell_type in cell_types:
-        _, gdf = clock_gene_stats(cell_type, n_repeats=n_repeats)
-        sel = gdf[gdf['importance_padj'] < sig_threshold]
-        print(f"[{cell_type}] {len(sel)}/{len(gdf)} genes have significant out-of-sample attribution")
+        _, gdf = clock_gene_stats(cell_type)
 
         net = retrieve_net_consensus(cell_type=cell_type, force=True)
         net = net[net['target'].isin(set(gdf['gene']))]
@@ -413,7 +389,7 @@ def tf_ora_analysis(sig_threshold=0.05, n_repeats=50, min_targets=5, cell_types=
         emp_sig = set(retrieve_sig_stats(analysis_name=REF_TFA_ANALYSIS, cell_type=cell_type, multi_cohort=True)['gene'].unique())
 
         for direction, sign in [('up', 1), ('down', -1)]:
-            genes = sel[np.sign(sel['pooled_rho']) == sign]['gene']
+            genes = gdf[np.sign(gdf['pooled_rho']) == sign]['gene']
             hits = regulon_ora(genes, gdf['gene'], net, min_targets=min_targets)
             hits = hits.rename(columns={'pval': 'ora_pval', 'padj': 'ora_padj'}).join(emp, on='tf')
             hits.insert(0, 'cell_type', cell_type)
