@@ -44,12 +44,14 @@ GRN_OVERLAP_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}grn_overlap/"
 ACTIVATION_VS_EXPRESSION_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}activation_vs_expression/"
 CONFOUNDERS_PLOTS_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}confounders/"
 NAIVE_EFFECTOR_PLOTS_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}naive_effector/"
+SKELETON_EFFECT_PLOTS_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}skeleton_effect/"
 EXP_ANALYSIS_DIR = f"{OUTPUT_DIR}/exp_analysis/"  # non-plot outputs (tables) per task
 CONFOUNDERS_DIR = f"{EXP_ANALYSIS_DIR}confounders/"
 NAIVE_EFFECTOR_DIR = f"{EXP_ANALYSIS_DIR}naive_effector/"
+SKELETON_EFFECT_DIR = f"{EXP_ANALYSIS_DIR}skeleton_effect/"
 for _d in (CLOCK_PLOTS_DIR, AGING_PLOTS_DIR, CONDITION_PLOTS_DIR, COMPARISON_PLOTS_DIR, CLOCK_STATS_DIR,
            COHORT_STATS_DIR, GRN_OVERLAP_DIR, ACTIVATION_VS_EXPRESSION_DIR, CONFOUNDERS_PLOTS_DIR, CONFOUNDERS_DIR,
-           NAIVE_EFFECTOR_PLOTS_DIR, NAIVE_EFFECTOR_DIR):
+           NAIVE_EFFECTOR_PLOTS_DIR, NAIVE_EFFECTOR_DIR, SKELETON_EFFECT_PLOTS_DIR, SKELETON_EFFECT_DIR):
     os.makedirs(_d, exist_ok=True)
 
 CLOCK_V = 'V1'
@@ -149,8 +151,8 @@ def get_available_fa_analyses():
 
 DISCOVERY_COHORTS = ['aida', 'perez_sle', 'onek1k', 'abf300'] #
 # DISCOVERY_COHORTS = ['perez_sle', 'aida']
-AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife', 'zhang']
-ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife', 'zhang']
+AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife', 'wang']
+ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife', 'wang']
 CLOCK_TRAINING_COHORTS = [
                 'onek1k',
                 'abf300',
@@ -158,7 +160,7 @@ CLOCK_TRAINING_COHORTS = [
 CLOCK_TEST_COHORTS = [
                 'aida',
                 'perez_sle',
-                'zhang'
+                'wang'
                 ]
 NET_WEIGHT_THRESHOLD = None  # 0.05 # Minimum absolute weight for edges in GRN 
 # Motif-support pruning at load time. Applied after NET_MAX_SIZE: the top-NET_MAX_SIZE
@@ -188,17 +190,17 @@ COARSENED_COVARIATES = {'site': 'batch_info'}
 DATASET_NAME_MAPPING = {
     "data1": "onek1k",
     "data7_allTPs_jalil": "abf300",
-    "data12": "zhang",
+    "data12": "wang",
     "data13": "aida",
     "SLE": "perez_sle"
 }
 
-TASK_GRN_BENCHMARK_DIR = os.environ.get('TASK_GRN_BENCHMARK_DIR', '/home/jnourisa/projs/ongoing/task_grn_inference/')
+TASK_GRN_BENCHMARK_DIR = os.environ.get('TASK_GRN_BENCHMARK_DIR')
 
 surrogate_names = {
                     'onek1k':'OneK1K',
                     'abf300': 'ABF300',
-                    'zhang': 'Zhang',
+                    'wang': 'Wang',
                     'aida': 'AIDA',
                     'perez_sle': 'Perez',
                     'op': 'OPSCA',
@@ -353,8 +355,8 @@ DATASET_CONFIGS = {
         name="aida",
         bulk_group=['donor_id', 'age']
     ), 
-    'zhang': ConditionConfig(
-        name="zhang",
+    'wang': ConditionConfig(
+        name="wang",
         bulk_group=['donor_id', 'age']
     ),
     'onek1k': ConditionConfig(

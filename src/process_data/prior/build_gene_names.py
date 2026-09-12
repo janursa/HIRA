@@ -7,6 +7,7 @@ Usage:
     python src/process_data/prior/build_gene_names.py
 """
 import argparse
+import os
 import re
 import sys
 
@@ -16,7 +17,7 @@ import pandas as pd
 sys.path.insert(0, 'src')
 from config import PRIOR_DIR
 
-TASK_GRN_REPO = '/home/jnourisa/projs/ongoing/task_grn_inference'
+TASK_GRN_REPO = os.environ['TASK_GRN_BENCHMARK_DIR']
 GTF_PATH = f'{TASK_GRN_REPO}/resources/supp_data/gencode.v47.annotation.gtf.gz'
 
 parser = argparse.ArgumentParser()

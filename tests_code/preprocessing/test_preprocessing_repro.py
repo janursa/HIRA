@@ -28,7 +28,7 @@ from hira.src.config import get_config, MAJOR_CT_LABEL  # noqa: E402
 from hira.src.process_data.bulkify.script import normalize, qc_bulk  # noqa: E402
 
 FIXTURE_DIR = os.path.join(DATA_DIR, 'preprocessing')
-DATASET = 'zhang'
+DATASET = 'wang'
 DETERMINISTIC_OBS_COLS = ['donor_id', 'age', 'bulk_group']
 CELLTYPE_OBS_COLS = ['Major_CT', 'Sub_CT']
 

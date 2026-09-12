@@ -1,6 +1,6 @@
 """Run once by hand to (re)generate data/preprocessing/{input,baseline_sc,baseline_bulk}.h5ad.
 
-Uses the real pipeline functions (script.py's --run-test code path) on the zhang raw file
+Uses the real pipeline functions (script.py's --run-test code path) on the wang raw file
 (smallest raw dataset, still opened backed so this doesn't require loading 3.5G into memory)
 so the fixture is a faithful (if tiny) slice of the real preprocessing pipeline.
 """
@@ -22,9 +22,9 @@ from hira.src.utils.util import bulkify_func, filter_rb_mt_genes  # noqa: E402
 from hira.src.config import get_config, MAJOR_CT_LABEL, PRIOR_DIR  # noqa: E402
 from hira.src.process_data.bulkify.script import normalize, qc_bulk  # noqa: E402
 
-RAW_DATA_DIR = os.environ.get('HIRA_RAW_DIR', '/vol/projects/CIIM')
+RAW_DATA_DIR = os.environ['HIRA_RAW_DIR']
 RAW_FILE = f'{RAW_DATA_DIR}/Healthy_Single_Cell_Data/count_matrix/data12_CMtx.h5ad'
-DATASET = 'zhang'
+DATASET = 'wang'
 OUT_DIR = os.path.join(REPRO_DIR, 'data', 'preprocessing')
 N_DONORS = 4  # smallest-count donors -> real (not degenerate) but still tiny fixture
 

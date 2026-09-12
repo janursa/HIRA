@@ -10,7 +10,7 @@ For every flagged covariate this script also recomputes R^2 within each Major_CT
 donor subset (by_celltype table), to check whether cell-type-driven donor dropout
 shifts the confound.
 
-Usage: python src/exp_analysis/confounders.py [--cohorts aida perez_sle onek1k abf300]
+Usage: python src/exp_analysis/confounders.py [--cohorts ...]  (default: AGING_COHORTS)
 Writes: OUTPUT_DIR/exp_analysis/confounders/confounders_overall.csv, confounders_by_celltype.csv
         PLOTS_DIR/exp_analysis/confounders/confounders.png
 """
@@ -21,7 +21,7 @@ import pandas as pd
 from scipy import stats
 import matplotlib.pyplot as plt
 
-from hira.src.config import (DISCOVERY_COHORTS, CONFOUNDERS_DIR, CONFOUNDERS_PLOTS_DIR, MAJOR_CT_LABEL,
+from hira.src.config import (AGING_COHORTS, CONFOUNDERS_DIR, CONFOUNDERS_PLOTS_DIR, MAJOR_CT_LABEL,
                             CONFOUND_COVARIATES, surrogate_names)
 from hira.src.utils.util import retrieve_adata, coarsen
 
@@ -30,15 +30,29 @@ EXCLUDE = {'age', 'age_group', 'donor_age', 'cell_count', MAJOR_CT_LABEL, 'datas
            'race',
            # soundlife-only metadata: age synonyms, duplicates of sex/visit/race, and
            # study-design fields with no counterpart in the other cohorts
-           'pool_id', 'visitName', 'vaccinated', 'vaccine_year', 'year', 'day'}
+           'pool_id', 'visitName', 'vaccinated', 'vaccine_year', 'year', 'day',
+           'sample.subjectAgeAtDraw', 'subject.ageAtFirstDraw', 'subject.ageGroup',
+           'subject.birthYear', 'subject.biologicalSex', 'sample.visitName',
+           'subject.race', 'subject.ethnicity', 'sample.drawYear', 'Major_CT_original',
+           # BR1/BR2 are soundlife's young and older recruitment arms (R^2=0.96 with age):
+           # an age relabelling, not a confounder
+           'cohort.cohortGuid'}
 R2_FLAG = 0.05
 P_FLAG = 0.05
 
 
 def candidate_covariates(donors):
     return [c for c in donors.columns
-            if c not in EXCLUDE and not c.endswith('_count') and '.' not in c
+            if c not in EXCLUDE and not c.endswith('_count')
             and 2 <= donors[c].nunique(dropna=True) < len(donors)]
+
+
+def as_numeric(values):
+    """Numbers stored as strings/categories (e.g. soundlife subject.bmi, whose missing
+    values are the literal string 'nan') test as continuous."""
+    num = pd.to_numeric(values, errors='coerce')
+    present = ~values.isna() & ~values.astype(str).str.lower().isin(['nan', 'na', 'none', ''])
+    return num if num.notna().sum() == present.sum() else values
 
 
 def test_covariate(age, values):
@@ -65,8 +79,9 @@ def analyze_cohort(dataset):
     age = donors['age'].astype(float)
     rows = []
     for col in candidate_covariates(donors):
-        variants = [(col, donors[col])]
-        is_stringlike = donors[col].dtype == object or isinstance(donors[col].dtype, pd.CategoricalDtype)
+        values = as_numeric(donors[col])
+        variants = [(col, values)]
+        is_stringlike = values.dtype == object or isinstance(values.dtype, pd.CategoricalDtype)
         if is_stringlike and donors[col].nunique() > 15:
             coarse = coarsen(donors[col])
             if coarse.nunique() < donors[col].nunique():
@@ -94,7 +109,7 @@ def by_celltype_check(dataset, obs, flagged_covariates):
             base_col = cov.replace('__site', '')
             if base_col not in donors.columns:
                 continue
-            values = coarsen(donors[base_col]) if cov.endswith('__site') else donors[base_col]
+            values = coarsen(donors[base_col]) if cov.endswith('__site') else as_numeric(donors[base_col])
             r2, p, _, _ = test_covariate(age, values)
             rows.append({'cohort': dataset, 'cell_type': cell_type, 'covariate': cov,
                          'n_donors': len(donors), 'R2': r2, 'p_value': p})
@@ -141,7 +156,7 @@ def plot_covariates(overall, out_path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cohorts', nargs='+', default=DISCOVERY_COHORTS)
+    parser.add_argument('--cohorts', nargs='+', default=AGING_COHORTS)
     args = parser.parse_args()
 
     overall_parts, by_ct_parts = [], []

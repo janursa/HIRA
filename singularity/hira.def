@@ -1,0 +1,25 @@
+Bootstrap: docker
+From: python:3.10-slim
+
+%files
+    requirements.txt /opt/requirements.txt
+
+%post
+    set -e
+    apt-get update
+    apt-get install -y --no-install-recommends build-essential zlib1g-dev bedtools wget ca-certificates
+    rm -rf /var/lib/apt/lists/*
+    # GRNimmuneClock is not installed here -- the repo copy is put on PYTHONPATH by
+    # scripts/_env.sh, so the image never carries a stale version of it.
+    grep -v 'GRNimmuneClock' /opt/requirements.txt > /opt/req.txt
+    pip install --no-cache-dir -r /opt/req.txt
+    # scglue (src/process_data/prior/build_skeleton_atac.py) needs a GPU image and is
+    # deliberately left out -- see scripts/prior/acquire.sh.
+
+%environment
+    export MPLBACKEND=Agg
+    export PYTHONNOUSERSITE=1
+    export NUMBA_CACHE_DIR=/tmp
+
+%runscript
+    exec python "$@"

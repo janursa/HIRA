@@ -8,10 +8,10 @@ checks against a git-lfs fixture:
 
 | Folder | Stage under test | Fixture |
 |---|---|---|
-| `preprocessing/` | QC, cell type annotation, bulkify — plus a freshness check that the raw input files and priors haven't drifted | zhang raw data subset to 4 donors |
+| `preprocessing/` | QC, cell type annotation, bulkify — plus a freshness check that the raw input files and priors haven't drifted | wang raw data subset to 4 donors |
 | `grn_inference/` | GRN inference, parametrized over the 6 cell types with a non-empty fixture network | top-300 genes of `baseline_sc.h5ad` |
 | `feature_analysis/` | feature association, parametrized over 6 cohorts (aging + 5 condition) | downsampled precomputed TF activity per cohort |
-| `clocks/` | clock training, parametrized over CD4T and CD8T | bulkified zhang, donors split into a synthetic 2-group `dataset` label so leave-one-cohort-out CV has folds |
+| `clocks/` | clock training, parametrized over CD4T and CD8T | bulkified wang, donors split into a synthetic 2-group `dataset` label so leave-one-cohort-out CV has folds |
 
 Each folder holds `fixtures/make_*.py` (regenerates the fixture), the `test_*.py`, and a `data/`
 symlink into `tests_data/` (git-lfs) where the heavy files actually live.

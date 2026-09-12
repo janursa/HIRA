@@ -47,7 +47,7 @@ def retrieve_adata(dataset,
     
     assert data_type in DATA_TYPES, f'Unknown type {data_type}'
     if test_mode:
-        adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/zhang.h5ad", backed='r')
+        adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/wang.h5ad", backed='r')
         adata.obs['dataset'] = dataset
     else:
         adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/{dataset}.h5ad", backed='r')
@@ -248,14 +248,15 @@ def retrieve_net(dataset, cell_type, skeleton=NET_SKELETON, data_type='sc', grns
 #     nets = pd.concat(net_store, ignore_index=True)
 #     return nets
 
-def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CONSENSUS_MIN_DEGREE, skeleton=NET_SKELETON, force=False, grns_dir=None):
+def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CONSENSUS_MIN_DEGREE, skeleton=NET_SKELETON, force=False, grns_dir=None, cache=True):
     # One cache file per cell type. Its contents follow the config (NET_SKELETON,
     # NET_MAX_SIZE, ...) in force at build time -- rerun consensus_nets.py after
     # changing any of them.
     if grns_dir is None:
         grns_dir = GRNS_DIR
+    # The cache filename doesn't encode skeleton/min_degree -- pass cache=False when varying them.
     save_name = f"{grns_dir}/consensus_net_{cell_type}.csv"
-    if Path(save_name).exists() and not force:
+    if cache and Path(save_name).exists() and not force:
         # print('Loading existing consensus GRN for', cell_type, 'with min degree', min_degree)
         net_mean = pd.read_csv(save_name)
         return net_mean
@@ -296,8 +297,9 @@ def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CON
             .mean()
             .reset_index()
         )
-    net_mean.to_csv(save_name, index=False)
-    
+    if cache:
+        net_mean.to_csv(save_name, index=False)
+
     return net_mean
 
 

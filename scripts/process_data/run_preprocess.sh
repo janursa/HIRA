@@ -7,8 +7,6 @@
 #SBATCH --time=40:00:00
 #SBATCH --mem=500GB
 #SBATCH --partition=cpu
-#SBATCH --mail-type=END,FAIL      
-#SBATCH --mail-user=jalil.nourisa@gmail.com   
 
 # Usage: sbatch run_preprocess.sh <dataset>
 # e.g.:  sbatch run_preprocess.sh data1
@@ -18,8 +16,7 @@ if [ -z "$dataset" ]; then
     exit 1
 fi
 
-# Load repo-level config (HIRA_RAW_DIR, HIRA_BASE_DIR, ...) if present
-[ -f .env ] && set -a && source .env && set +a
+source scripts/_env.sh
 
 declare -A dependencies
 
@@ -54,7 +51,7 @@ MAIN_DIR=$(python -c "import sys; sys.path.insert(0, 'src'); from config import 
 
 # Root of the raw data lake (see README > Data Acquisition). Override with HIRA_RAW_DIR,
 # or set INPUT_FILE_OVERRIDE to point at a single custom raw file/dir for this run.
-RAW_DATA_DIR="${HIRA_RAW_DIR:-/vol/projects/CIIM}"
+RAW_DATA_DIR="${HIRA_RAW_DIR:?set HIRA_RAW_DIR in .env}"
 
 if [ -n "$INPUT_FILE_OVERRIDE" ]; then
         input_file="$INPUT_FILE_OVERRIDE"
@@ -63,7 +60,7 @@ elif [ "$dataset" = "soundlife" ]; then
 elif [ "$dataset" = "parsebioscience" ]; then
         input_file="${RAW_DATA_DIR}/perturbation_data/Parse_10M_PBMC_cytokines.h5ad"
 elif [ "$dataset" = "op" ]; then
-        input_file="${HIRA_OP_RAW_FILE:-/vol/projects/jnourisa/genernbi/resources/datasets_raw/op_perturbation_sc_counts.h5ad}"
+        input_file="${HIRA_OP_RAW_FILE:?set HIRA_OP_RAW_FILE in .env}"
 elif [ "$dataset" = "CXCL9" ]; then
         input_file="${RAW_DATA_DIR}/Healthy_Single_Cell_Data/count_matrix/CXCL9_TI.h5ad"
 else

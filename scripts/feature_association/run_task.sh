@@ -7,14 +7,12 @@
 #SBATCH --time=20:00:00
 #SBATCH --mem=500GB
 #SBATCH --partition=cpu
-#SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=jalil.nourisa@gmail.com
 
 # One feature-association task. Submitted per task by wrapper_feature_analysis.sh.
 # Usage: sbatch scripts/feature_association/run_task.sh <analysis_name> <task>
 set -e
 
-[ -f .env ] && set -a && source .env && set +a
+source scripts/_env.sh
 
 analysis_name=$1
 task=$2

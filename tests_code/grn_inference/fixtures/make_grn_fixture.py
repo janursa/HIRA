@@ -20,7 +20,7 @@ from hira.src.config import get_config, MAJOR_CT_LABEL  # noqa: E402
 
 INPUT_PATH = os.path.join(os.path.dirname(REPRO_DIR), 'preprocessing', 'data', 'preprocessing', 'baseline_sc.h5ad')
 OUT_DIR = os.path.join(REPRO_DIR, 'data', 'grn')
-DATASET = 'zhang'
+DATASET = 'wang'
 TOP_N_EDGES = 100_000
 MIN_GENES_PER_CELL = 10
 MAX_GENES_PER_CELL = 5000

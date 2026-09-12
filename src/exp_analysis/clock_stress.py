@@ -2,11 +2,11 @@
 recompute a fixed readout vector. The `baseline` variant IS the ground truth -- it is the
 current pipeline config (CLOCK_TRAINING_COHORTS, bulk, GRN target genes, tuned ridge).
 
-Readouts (per cell type):
-  cv     -- spearman/r2 on the held-out CLOCK_TEST_COHORTS
-  sle    -- perez_sle age acceleration, SLE vs healthy, overall + Young/Old bins
+Readouts:
+  cv     -- spearman/r2 on the held-out CLOCK_TEST_COHORTS, every major cell type
+  sle    -- perez_sle age acceleration, SLE vs healthy, overall + Young/Old bins (T cells)
   rejuv  -- signed effect on predicted age for IL-10 (parsebioscience), Ruxolitinib (op),
-            and Ruxolitinib in CXCL9 against both the RPMI and the LPS baseline
+            and Ruxolitinib in CXCL9 against both the RPMI and the LPS baseline (T cells)
 
 Usage:
   python src/exp_analysis/clock_stress.py --variant baseline      # one variant, one sbatch job
@@ -52,7 +52,8 @@ REJUV_CONTRASTS = [
     ('CXCL9', 'RPMI', 'RPMI + ruxolitinib'),
     ('CXCL9', 'LPS', 'LPS + ruxolitinib'),
 ]
-REJUV_CTS = ['CD4T', 'CD8T']
+CTS = MAJOR_CTS         # clocks are trained and cross-validated on every major cell type
+T_CTS = ['CD4T', 'CD8T']  # the SLE and rejuvenation claims are T cells only
 # ponytail: the parsebioscience metacell file is 47GB; the IL-10 contrast is dropped from
 # the metacell variant rather than sized around. Re-add if the other axes leave it open.
 SKIP_CONTRASTS = {('metacell', 'parsebioscience')}
@@ -92,7 +93,7 @@ def predict(variant, datasets, cell_types, condition=None):
 def train(variant):
     cfg = {**BASELINE, **VARIANTS[variant]}
     out_dir = f'{STRESS_DIR}/{variant}/models'
-    for cell_type in MAJOR_CTS:
+    for cell_type in CTS:
         print(f"\n{'='*60}\n[{variant}] training {cell_type}\n{'='*60}", flush=True)
         adata = ad.concat([
             retrieve_adata(dataset=d, data_type=cfg['data_type'], cell_type=cell_type,
@@ -109,7 +110,7 @@ def train(variant):
 # ---------------------------------------------------------------- readouts
 
 def readout_cv(variant):
-    obs = predict(variant, CLOCK_TEST_COHORTS, MAJOR_CTS, condition='healthy')
+    obs = predict(variant, CLOCK_TEST_COHORTS, CTS, condition='healthy')
     rows = []
     for (ct, ds), df in obs.groupby(['cell_type', 'dataset'], observed=True):
         rows.append(dict(readout='cv', cell_type=ct, contrast=ds, n=len(df),
@@ -119,7 +120,7 @@ def readout_cv(variant):
 
 
 def readout_sle(variant):
-    obs = predict(variant, ['perez_sle'], MAJOR_CTS)
+    obs = predict(variant, ['perez_sle'], T_CTS)
     rows = []
     for ct, df in obs.groupby('cell_type', observed=True):
         for bin_name, sub in [('all', df), ('Young', df[df.age_group == 'Young']),
@@ -141,7 +142,7 @@ def readout_rejuv(variant):
             print(f'[{variant}] skipping {dataset}: {treat} vs {ctr}')
             continue
         conf = get_config(dataset)
-        obs = predict(variant, [dataset], REJUV_CTS, condition=[ctr, treat])
+        obs = predict(variant, [dataset], T_CTS, condition=[ctr, treat])
         for ct, df in obs.groupby('cell_type', observed=True):
             pval, slope = test_mixed_effects(
                 df, ctr, treat, target_variable='predicted_age', config=conf,
@@ -167,6 +168,8 @@ def run(variant):
 def aggregate():
     paths = [f'{STRESS_DIR}/readouts_{v}.csv' for v in VARIANTS]
     df = pd.concat([pd.read_csv(p) for p in paths if os.path.exists(p)])
+    # cv is reported for every major cell type, the claims only for T cells
+    df = df[df.cell_type.isin(CTS) & ((df.readout == 'cv') | df.cell_type.isin(T_CTS))]
     base = df[df.variant == 'baseline'].set_index(['readout', 'cell_type', 'contrast'])
     key = ['readout', 'cell_type', 'contrast']
     df = df.join(base[['value', 'pvalue']].add_prefix('base_'), on=key)
@@ -311,18 +314,20 @@ FIG_CONTRAST = {'op:Ruxolitinib_vs_DMSO': 'Ruxolitinib (OPSCA)',
                 'parsebioscience:IL-10_vs_PBS': 'IL-10 (Parse)',
                 'CXCL9:LPS + ruxolitinib_vs_LPS': 'Ruxolitinib (ctr: LPS)',
                 'CXCL9:RPMI + ruxolitinib_vs_RPMI': 'Ruxolitinib (ctr: RPMI)'}
+FIG_SLE = {'SLE_vs_healthy_all': 'overall', 'SLE_vs_healthy_Young': 'young (<50y)',
+           'SLE_vs_healthy_Old': 'old ($\\geq$50y)'}
 FIG_CT = 'CD4T'
 
 
 def figure(df):
-    """a: held-out accuracy per variant. b: does the CD4T rejuvenation call survive.
-    c: fraction of the non-cv readouts whose sign matches baseline."""
+    """a: held-out accuracy per variant. b: does the SLE age acceleration survive.
+    c: does the CD4T rejuvenation call survive."""
     order = [v for v in VARIANTS if v in set(df.variant)]
     stressed = [v for v in order if v != 'baseline']
     colors = dict(zip(stressed, sns.color_palette('colorblind', len(stressed))))
     plt.rcParams.update({'font.family': 'Arial', 'font.size': 9})
 
-    fig, axes = plt.subplots(1, 3, figsize=(11, 3.1), gridspec_kw={'width_ratios': [1.3, 1.2, .8]})
+    fig, axes = plt.subplots(1, 3, figsize=(12, 3.1), gridspec_kw={'width_ratios': [1.1, 1.2, 1.2]})
 
     ax = axes[0]
     cv = (df[df.readout == 'cv'].pivot_table(index='cell_type', columns='variant', values='value')
@@ -333,40 +338,43 @@ def figure(df):
     ax.set_xticklabels([FIG_LABEL.get(v, v) for v in order], rotation=45, ha='right')
     ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
 
-    ax = axes[1]
-    rj = df[(df.readout == 'rejuv') & (df.cell_type == FIG_CT)]
-    rows = [c for c in FIG_CONTRAST if c in set(rj.contrast)]
-    for y, c in enumerate(rows):
-        sub = rj[rj.contrast == c]
-        if y % 2 == 0:
-            ax.axhspan(y - .5, y + .5, color='#f2f2f2', zorder=0)
-        for v in stressed:
-            val = sub.loc[sub.variant == v, 'value']
-            if len(val):
-                ax.scatter(val.iloc[0], y, color=colors[v], s=32, zorder=3,
-                           label=FIG_LABEL.get(v, v) if y == 0 else None)
-        base = sub.loc[sub.variant == 'baseline', 'value']
-        if len(base):
-            ax.scatter(base.iloc[0], y, marker='D', color='black', s=42, zorder=4,
-                       label='Baseline' if y == 0 else None)
-    ax.axvline(0, color='black', lw=.8)
-    ax.set_yticks(range(len(rows)))
-    ax.set_yticklabels([FIG_CONTRAST[c] for c in rows])
-    ax.set_ylim(len(rows) - .5, -.5)
-    ax.set_xlabel(f'$\\Delta$ predicted age (yrs), {FIG_CT}')
-    ax.spines[['top', 'right']].set_visible(False)
-    ax.legend(loc='upper left', bbox_to_anchor=(0, -.35), ncol=2, frameon=False, fontsize=7.5)
+    def dots(ax, sub, rows, labels, xlabel, legend=False):
+        """One row per readout: baseline diamond, one coloured dot per stressed variant."""
+        for y, r in enumerate(rows):
+            d = sub[sub.row == r]
+            if y % 2 == 0:
+                ax.axhspan(y - .5, y + .5, color='#f2f2f2', zorder=0)
+            for v in stressed:
+                val = d.loc[d.variant == v, 'value']
+                if len(val):
+                    ax.scatter(val.iloc[0], y, color=colors[v], s=32, zorder=3,
+                               label=FIG_LABEL.get(v, v) if y == 0 else None)
+            base = d.loc[d.variant == 'baseline', 'value']
+            if len(base):
+                ax.scatter(base.iloc[0], y, marker='D', color='black', s=42, zorder=4,
+                           label='Baseline' if y == 0 else None)
+        ax.axvline(0, color='black', lw=.8)
+        ax.set_yticks(range(len(rows)))
+        ax.set_yticklabels(labels)
+        ax.set_ylim(len(rows) - .5, -.5)
+        ax.set_xlabel(xlabel)
+        ax.spines[['top', 'right']].set_visible(False)
+        if legend:
+            ax.legend(loc='upper left', bbox_to_anchor=(0, -.35), ncol=3, frameon=False,
+                      fontsize=7.5)
 
-    ax = axes[2]
-    agr = (df[(df.variant != 'baseline') & (df.readout != 'cv')]
-           .groupby('variant')['same_sign'].mean().reindex(stressed))
-    ax.barh(range(len(agr)), agr.values, color=[colors[v] for v in agr.index])
-    ax.set_yticks(range(len(agr)))
-    ax.set_yticklabels([FIG_LABEL.get(v, v) for v in agr.index])
-    ax.set_ylim(len(agr) - .5, -.5)
-    ax.set_xlim(0, 1)
-    ax.set_xlabel('Fraction of SLE + rejuvenation readouts\nwith the same sign as baseline')
-    ax.spines[['top', 'right']].set_visible(False)
+    sle = df[df.readout == 'sle'].copy()
+    sle['row'] = sle.cell_type.astype(str) + '|' + sle.contrast
+    rows = [r for ct in sorted(sle.cell_type.unique()) for c in FIG_SLE
+            if (r := f'{ct}|{c}') in set(sle.row)]
+    dots(axes[1], sle, rows, [f'{r.split("|")[0]}, {FIG_SLE[r.split("|")[1]]}' for r in rows],
+         '$\\Delta$ age acceleration (yrs)\nSLE $-$ healthy', legend=True)
+
+    rj = df[(df.readout == 'rejuv') & (df.cell_type == FIG_CT)].copy()
+    rj['row'] = rj.contrast
+    rows = [c for c in FIG_CONTRAST if c in set(rj.row)]
+    dots(axes[2], rj, rows, [FIG_CONTRAST[c] for c in rows],
+         f'$\\Delta$ predicted age (yrs), {FIG_CT}')
 
     for ax, letter in zip(axes, 'abc'):
         ax.set_title(letter, loc='left', weight='bold', fontsize=11, pad=6)

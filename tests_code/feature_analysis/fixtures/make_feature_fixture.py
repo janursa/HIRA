@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(REPRO_DIR))  # tests/, to find _repro_utils.p
 from hira.src.config import MAJOR_CTS  # noqa: E402
 from _repro_utils import run_module  # noqa: E402
 
-REAL_BASE_DIR = os.environ.get('HIRA_BASE_DIR', '/vol/projects/jnourisa/hira/').rstrip('/')
+REAL_BASE_DIR = os.environ['HIRA_BASE_DIR'].rstrip('/')
 REAL_TFA_DIR = f'{REAL_BASE_DIR}/features/tfa_major_b'
 REAL_PRIOR_DIR = f'{REAL_BASE_DIR}/prior'
 DATA_DIR = os.path.join(REPRO_DIR, 'data', 'feature_association')

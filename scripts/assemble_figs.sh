@@ -3,7 +3,7 @@
 # Usage: bash scripts/assemble_figs.sh
 set -e
 
-[ -f .env ] && set -a && source .env && set +a
+source scripts/_env.sh
 
 for f in scripts/assemble_figs/*.py; do
     echo "---------------------------------------------------------- $(basename "$f") ----------------------------------------------------------"

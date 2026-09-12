@@ -8,27 +8,43 @@ feature association, pathway/motif/trajectory analysis.
 ```bash
 git clone --recurse-submodules git@github.com:janursa/ciim.git hira
 cd hira
-conda create -n hira python=3.10 -y
-conda activate hira
-pip install -r requirements.txt
-pip install -e GRNimmuneClock/
+cp .env.example .env       # then fill it in (see Configuration)
+bash singularity/build.sh  # -> singularity/hira.sif (~550 MB, ~15 min)
 ```
 
+That's it. Every script sources `scripts/_env.sh`, which loads `.env`, puts the repo and
+`GRNimmuneClock/` on `PYTHONPATH`, and runs `python` inside `singularity/hira.sif`.
+`HIRA_DIR`, `HIRA_BASE_DIR`, `HIRA_RAW_DIR` and `TASK_GRN_BENCHMARK_DIR` (TODO: this should go) are bind-mounted
+at their host paths, so nothing else needs configuring. Run all scripts from the repo root.
+
+The image bundles everything in `requirements.txt` plus `bedtools`; `GRNimmuneClock/` is
+*not* baked in — the repo copy is used via `PYTHONPATH`, so it's never stale. 
+
+**Without Singularity:** set `HIRA_SIF=` (empty) in `.env`, then
 
 ```bash
-export PYTHONPATH="$(dirname "$(pwd)"):$PYTHONPATH"
+conda create -n hira python=3.10 -y && conda activate hira
+pip install -r requirements.txt && pip install -e GRNimmuneClock/
 ```
+Currently, HIRA is directly depending on GRNimmuneClock recent updated. In the future, this should be replaced by pip installation.
 
-Verify with `python -c "import hira"`.
+Verify either way with `bash -c 'source scripts/_env.sh; python -c "import hira"'`.
 
 ## Configuration
 
-Set these in `.env`
+Copy `.env.example` to `.env` and set:
 
-- `HIRA_DIR` — abs path of the repo. Required. 
-- `HIRA_BASE_DIR` — where heavy data (datasets/priors) should be stored? Required. Lightweight results (GRNs, summary stats,
-  clock models, plots) are git-tracked and always live in `<HIRA_DIR>/results_folder`.
-- `HIRA_RAW_DIR` — the abs path of the downloaded public cohorts (see Data acquisition below). Defaults to `/vol/projects/CIIM`.
+- `HIRA_BASE_DIR` — where heavy data (datasets/priors/feature matrices) is stored. Required.
+  Lightweight results (GRNs, summary stats, clock models, plots) are git-tracked and always
+  live in `<repo>/results_folder`.
+- `HIRA_RAW_DIR` — downloaded public cohorts (see Data acquisition below). Required for preprocessing.
+- `HIRA_SIF` — path to the Singularity image. Defaults to `singularity/hira.sif`; set it
+  empty to use the host/conda interpreter instead. The `.sif` is not in git — build it locally.
+- `HIRA_OP_RAW_FILE` — raw `op` cohort h5ad; only needed for that cohort.
+- `TASK_GRN_BENCHMARK_DIR` — sibling `task_grn_inference` checkout; only needed by `scripts/prior/acquire.sh`.
+- `HIRA_SBATCH_MAIL` — optional; set it to get `--mail-type=END,FAIL` on submitted SLURM jobs.
+
+`HIRA_DIR` is derived from the repo location — don't set it.
 
 Everything else — cell types, cohort lists, feature definitions, clock settings — is in `src/config.py`.
 
@@ -64,13 +80,6 @@ tables (confounders) go under `results_folder/exp_analysis/`.
   `plots/exp_analysis/confounders/confounders.png`.
   See `report/confounder_analysis.md`. Pass extra args after `analysis_name`, e.g.
   `bash scripts/exp_analysis.sh tfa_major_b --cohorts ...`.
-- **Naive/effector ratio vs aging TFs** (sbatch-submitted) — reruns the age-association step on
-  the cached `tfa_major_b` TF-activity features with a per-donor `naive_ratio` covariate
-  (naive/(naive+effector) cell counts, CD4T/CD8T/MONO), then checks how many of `tfa_major_b`'s
-  significant TFs survive the correction. Analysis config: `tfa_major_b_ctNaiveToEffector` in
-  `src/config.py`; only ever run from here, not from the main feature-association stage →
-  `exp_analysis/naive_effector/survival.csv`, `plots/exp_analysis/naive_effector/survival.png`
-  (per-cell-type survived vs. lost counts).
 - **Clock stress test** (bottom of the script, sbatch-submitted) — retrains the clock under
   one perturbed setting at a time (model family, metacell instead of pseudobulk, whole genome
   instead of GRN targets) and checks whether the baseline's CV, SLE and rejuvenation readouts
@@ -95,7 +104,7 @@ bash scripts/process_data/acquire/download_data.sh <cohort>
 | AIDA (`aida`) | direct download | [CELLxGENE collection](https://cellxgene.cziscience.com/collections/ced320a1-29f3-47c1-a735-513c7084d508) (Freeze v1) |
 | ParseBioscience (`parsebioscience`) | direct download | Parse Biosciences S3 bucket |
 | ABF300 (`abf300`) | manual, gated | Synapse `syn49637038` (account + data use agreement required) |
-| Zhang (`zhang`) | manual, gated | Synapse `syn61609846` (account + data use agreement required) |
+| Wang (`wang`) | manual, gated | Synapse `syn61609846` (account + data use agreement required) |
 | OPSCA (`op`) | manual, gated | Kaggle competition `open-problems-single-cell-perturbations` (account + API token required) |
 | SoundLife (`soundlife`) | manual, private | not publicly hosted — obtained via direct data transfer from study authors |
 | CXCL9 (`CXCL9`) | internal | CIIM-only, no public source |

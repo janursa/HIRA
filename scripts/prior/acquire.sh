@@ -9,10 +9,9 @@
 
 set -e
 
-# Load repo-level config (HIRA_DIR, HIRA_BASE_DIR, ...) if present
-[ -f .env ] && set -a && source .env && set +a
+source scripts/_env.sh
 
-TASK_GRN_REPO="/home/jnourisa/projs/ongoing/task_grn_inference"
+TASK_GRN_REPO="${TASK_GRN_BENCHMARK_DIR:?set TASK_GRN_BENCHMARK_DIR in .env}"
 PRIOR_DIR=$(python3 -c "import sys; sys.path.insert(0, 'src'); from config import PRIOR_DIR; print(PRIOR_DIR)")
 
 file="$1"
@@ -32,7 +31,7 @@ case "$file" in
     ;;
   skeleton_atac)
     # ATAC+motif skeleton (OP PBMC multiome). Rebuilding needs scglue + a GPU node:
-    #   singularity exec --nv /home/jnourisa/projs/images/scglue \
+    #   singularity exec --nv <scglue image> \
     #     python3 src/process_data/prior/build_skeleton_atac.py --dataset op
     # The built file already exists upstream, so copy it and add the `edge` column.
     python3 -c "

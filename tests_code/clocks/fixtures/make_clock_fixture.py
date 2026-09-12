@@ -1,6 +1,6 @@
 """Run once by hand to (re)generate data/clocks/{input_<CT>.h5ad, baseline_predictions_<CT>.csv}.
 
-Reuses ../../preprocessing/data/preprocessing/baseline_bulk.h5ad (real bulkified zhang fixture,
+Reuses ../../preprocessing/data/preprocessing/baseline_bulk.h5ad (real bulkified wang fixture,
 already committed for the preprocessing stage) instead of pulling from the live production
 HIRA_BASE_DIR bulk datasets (mid-reorganization at the time this was written, not at their
 configured paths). Real expression + age values; the donors are split into a synthetic 'dataset'

@@ -3,6 +3,6 @@
 # stats) from the current results_folder. Run after src/clock/run_train.py retrains.
 set -e
 
-[ -f .env ] && set -a && source .env && set +a
+source scripts/_env.sh
 
 python src/clock/build_package_data.py "$@"

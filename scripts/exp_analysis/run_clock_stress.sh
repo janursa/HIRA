@@ -7,11 +7,9 @@
 #SBATCH --time=20:00:00
 #SBATCH --mem=300GB
 #SBATCH --partition=cpu
-#SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=jalil.nourisa@gmail.com
 
 # Usage: sbatch scripts/exp_analysis/run_clock_stress.sh <variant>
 #        python src/exp_analysis/clock_stress.py --aggregate   (after all variants finish)
 set -e
-[ -f .env ] && set -a && source .env && set +a
+source scripts/_env.sh
 python src/exp_analysis/clock_stress.py --variant "$1"

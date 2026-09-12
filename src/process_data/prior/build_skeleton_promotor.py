@@ -10,6 +10,7 @@ Usage:
 """
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import pandas as pd
@@ -17,14 +18,14 @@ import pandas as pd
 sys.path.insert(0, 'src')
 from config import PRIOR_DIR
 
-TASK_GRN_REPO = '/home/jnourisa/projs/ongoing/task_grn_inference'
+TASK_GRN_REPO = os.environ['TASK_GRN_BENCHMARK_DIR']
 TSS_BED = f'{TASK_GRN_REPO}/resources/supp_data/tss_h38.bed'
 MOTIF_FILES = {
     'encode': f'{TASK_GRN_REPO}/resources/supp_data/databases/scglue/ENCODE-TF-ChIP-hg38.bed.gz',
     'jaspar': f'{TASK_GRN_REPO}/resources/supp_data/databases/scglue/JASPAR2022-hg38.bed.gz',
 }
 TF_ALL = f'{PRIOR_DIR}/tf_all.csv'
-BEDTOOLS = '/vol/biotools/bin/bedtools'
+BEDTOOLS = shutil.which('bedtools') or 'bedtools'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--flank_length', type=int, default=1000)

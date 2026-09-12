@@ -44,6 +44,9 @@ work
 notebooks/experimental/
 results_folder_*/
 
+.env
+singularity/*.sif
+
 # scratch
 temp/
 $LOG

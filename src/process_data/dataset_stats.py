@@ -51,7 +51,7 @@ def collect_donors(cohorts):
     return pd.concat(store)
 
 
-def plot_summary_table(df, drop=('Zhang',)):
+def plot_summary_table(df, drop=('Wang',)):
     df = df[~df['Cohort'].isin(drop)]
     fig, ax = plt.subplots(figsize=(3.5, .5))
     ax.axis('off')
@@ -156,7 +156,7 @@ def plot_ethnicity(cohorts=AGING_COHORTS, min_pct=2.0):
                startangle=90, counterclock=False,
                wedgeprops=dict(width=ring_width, edgecolor='white', linewidth=1))
         ax.text(-1, radius - ring_width / 2 - 0.05, surrogate_names[dataset],
-                ha='right', va='center', fontsize=9, weight='bold')
+                ha='right', va='center', fontsize=9)
     ax.set(aspect='equal')
     handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=race_colors[r], markersize=10)
                for r in all_races]
@@ -191,11 +191,11 @@ if __name__ == '__main__':
     plot_summary_table(stats)
     plot_counts(stats)
 
-    # AGING_COHORTS already includes zhang; the notebook appended it a second time.
-    cohorts = AGING_COHORTS
-    donors = collect_donors(cohorts)
+    # wang is excluded from the ethnicity rings, as in plot_summary_table.
+    cohorts = [c for c in AGING_COHORTS if c != 'wang']
+    donors = collect_donors(AGING_COHORTS)
     plot_age_distribution(donors)
-    plot_sex_distribution(donors, cohorts)
+    plot_sex_distribution(donors, AGING_COHORTS)
 
-    plot_ethnicity()
+    plot_ethnicity(cohorts)
     plot_disease()

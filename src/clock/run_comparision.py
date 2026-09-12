@@ -18,7 +18,7 @@ import anndata as ad
 
 
 W_train_datasets = ['abf300', 'onek1k'] # we only use these datasets for training for a fair comparision
-test_datasets = ['perez_sle', 'hida', 'zhang']
+test_datasets = ['perez_sle', 'hida', 'wang']
 version = 'comparitive'
 
 def train_clocks():

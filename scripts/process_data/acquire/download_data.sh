@@ -3,14 +3,16 @@
 # the file; for gated/private cohorts it prints the manual access steps.
 #
 # Usage: bash scripts/process_data/acquire/download_data.sh <cohort>
-# Cohorts: onek1k perez_sle aida parsebioscience abf300 zhang soundlife op CXCL9
+# Cohorts: onek1k perez_sle aida parsebioscience abf300 wang soundlife op CXCL9
 #
-# Downloads land under $HIRA_RAW_DIR (default /vol/projects/CIIM), the same root
+# Downloads land under $HIRA_RAW_DIR, the same root
 # scripts/process_data/run_preprocess.sh reads raw input from. See README > Data Acquisition.
 
 set -e
 
-RAW_DIR="${HIRA_RAW_DIR:-/vol/projects/CIIM}"
+source scripts/_env.sh
+
+RAW_DIR="${HIRA_RAW_DIR:?set HIRA_RAW_DIR in .env}"
 cohort="$1"
 
 download_cellxgene() {
@@ -55,12 +57,12 @@ ABF300 requires an approved Synapse account (accession syn49637038):
   3. synapse get syn49637038 --downloadLocation "${RAW_DIR}/abf300/"
 EOF
     ;;
-  zhang)
+  wang)
     cat <<EOF
-Zhang cohort requires an approved Synapse account (accession syn61609846):
+Wang cohort requires an approved Synapse account (accession syn61609846):
   1. Request access: https://www.synapse.org/Synapse:syn61609846
   2. pip install synapseclient && synapse login
-  3. synapse get syn61609846 --downloadLocation "${RAW_DIR}/zhang/"
+  3. synapse get syn61609846 --downloadLocation "${RAW_DIR}/wang/"
 EOF
     ;;
   soundlife)
@@ -86,14 +88,14 @@ EOF
     ;;
   *)
     echo "Usage: bash scripts/process_data/acquire/download_data.sh <cohort>"
-    echo "Cohorts: onek1k perez_sle aida parsebioscience abf300 zhang soundlife op CXCL9"
+    echo "Cohorts: onek1k perez_sle aida parsebioscience abf300 wang soundlife op CXCL9"
     exit 1
     ;;
 esac
 
 
 # ParseBioscience cohort raw counts (publicly hosted, direct download).
-RAW_DATA_DIR="${HIRA_RAW_DIR:-/vol/projects/CIIM}"
+RAW_DATA_DIR="${HIRA_RAW_DIR:?set HIRA_RAW_DIR in .env}"
 OUT="${RAW_DATA_DIR}/perturbation_data/Parse_10M_PBMC_cytokines.h5ad"
 mkdir -p "$(dirname "$OUT")"
 wget -O "$OUT" https://parse-wget.s3.us-west-2.amazonaws.com/10m/Parse_10M_PBMC_cytokines.h5ad

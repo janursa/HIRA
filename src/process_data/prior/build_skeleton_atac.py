@@ -29,7 +29,7 @@ import scglue
 sys.path.insert(0, 'src')
 from config import PRIOR_DIR
 
-REPO = '/home/jnourisa/projs/ongoing/task_grn_inference'
+REPO = os.environ['TASK_GRN_BENCHMARK_DIR']
 INFERENCE_DIR = f'{REPO}/resources/grn_benchmark/inference_data'
 SUPP_DIR      = f'{REPO}/resources/supp_data'
 

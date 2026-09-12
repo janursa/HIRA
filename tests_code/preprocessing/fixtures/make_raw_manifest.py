@@ -19,12 +19,12 @@ from hira.src.config import PRIOR_DIR  # noqa: E402
 
 MANIFEST_PATH = os.path.join(REPRO_DIR, 'data', 'raw_manifest.json')
 
-RAW_DATA_DIR = os.environ.get('HIRA_RAW_DIR', '/vol/projects/CIIM')
-OP_RAW_FILE = os.environ.get('HIRA_OP_RAW_FILE', '/vol/projects/jnourisa/genernbi/resources/datasets_raw/op_perturbation_sc_counts.h5ad')
+RAW_DATA_DIR = os.environ['HIRA_RAW_DIR']
+OP_RAW_FILE = os.environ['HIRA_OP_RAW_FILE']
 
 # Mirrors scripts/process_data/run_preprocess.sh's input_file resolution per dataset.
 RAW_FILES = {
-    'zhang': f'{RAW_DATA_DIR}/Healthy_Single_Cell_Data/count_matrix/data12_CMtx.h5ad',
+    'wang': f'{RAW_DATA_DIR}/Healthy_Single_Cell_Data/count_matrix/data12_CMtx.h5ad',
     'onek1k': f'{RAW_DATA_DIR}/Healthy_Single_Cell_Data/count_matrix/data1_CMtx.h5ad',
     'aida': f'{RAW_DATA_DIR}/Healthy_Single_Cell_Data/count_matrix/data13_CMtx.h5ad',
     'abf300': f'{RAW_DATA_DIR}/Healthy_Single_Cell_Data/count_matrix/data7_allTPs_jalil_CMtx.h5ad',
