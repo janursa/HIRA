@@ -45,6 +45,7 @@ notebooks/experimental/
 results_folder_*/
 
 .env
+CLAUDE.md
 singularity/*.sif
 
 # scratch

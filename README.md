@@ -14,7 +14,7 @@ bash singularity/build.sh  # -> singularity/hira.sif (~550 MB, ~15 min)
 
 That's it. Every script sources `scripts/_env.sh`, which loads `.env`, puts the repo and
 `GRNimmuneClock/` on `PYTHONPATH`, and runs `python` inside `singularity/hira.sif`.
-`HIRA_DIR`, `HIRA_BASE_DIR`, `HIRA_RAW_DIR` and `TASK_GRN_BENCHMARK_DIR` (TODO: this should go) are bind-mounted
+`HIRA_DIR`, `HIRA_BASE_DIR` and `HIRA_RAW_DIR` are bind-mounted
 at their host paths, so nothing else needs configuring. Run all scripts from the repo root.
 
 The image bundles everything in `requirements.txt` plus `bedtools`; `GRNimmuneClock/` is
@@ -41,7 +41,6 @@ Copy `.env.example` to `.env` and set:
 - `HIRA_SIF` — path to the Singularity image. Defaults to `singularity/hira.sif`; set it
   empty to use the host/conda interpreter instead. The `.sif` is not in git — build it locally.
 - `HIRA_OP_RAW_FILE` — raw `op` cohort h5ad; only needed for that cohort.
-- `TASK_GRN_BENCHMARK_DIR` — sibling `task_grn_inference` checkout; only needed by `scripts/prior/acquire.sh`.
 - `HIRA_SBATCH_MAIL` — optional; set it to get `--mail-type=END,FAIL` on submitted SLURM jobs.
 
 `HIRA_DIR` is derived from the repo location — don't set it.
