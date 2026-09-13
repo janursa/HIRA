@@ -77,7 +77,7 @@ tables (confounders) go under `results_folder/exp_analysis/`.
   `src/config.py` →
   `exp_analysis/confounders/confounders_{overall,by_celltype}.csv` and
   `plots/exp_analysis/confounders/confounders.png`.
-  See `report/confounder_analysis.md`. Pass extra args after `analysis_name`, e.g.
+  Pass extra args after `analysis_name`, e.g.
   `bash scripts/exp_analysis.sh tfa_major_b --cohorts ...`.
 - **Clock stress test** (bottom of the script, sbatch-submitted) — retrains the clock under
   one perturbed setting at a time (model family, metacell instead of pseudobulk, whole genome
