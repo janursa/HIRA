@@ -1,12 +1,16 @@
 set -e
 
-# Load repo-level config (HIRA_DIR, HIRA_BASE_DIR, ...) if present
-[ -f .env ] && set -a && source .env && set +a
+source scripts/_env.sh
 
-# python src/feature_association/consensus_nets.py
+mkdir -p $(python -c "import sys; sys.path.insert(0, 'src'); from config import PLOTS_DIR, CLOCKS_DIR; print(PLOTS_DIR, CLOCKS_DIR)")
+
+python src/feature_association/consensus_nets.py
 
 echo "--------------------------------------------------------------train clocks--------------------------------------------------------------"
 python src/clock/run_train.py
+
+echo "--------------------------------------------------------------bundle package data--------------------------------------------------------------"
+bash scripts/build_package_data.sh
 
 echo "--------------------------------------------------------------clocks: exp analysis--------------------------------------------------------------"
 python src/clock/run_exp_analysis.py
@@ -30,8 +34,4 @@ echo "--------------------------------------------------------------comparision:
 python src/clock/clock_analysis.py --dataset op --analysis-type perturbation --cell-types CD4T CD8T 
 
 echo "--------------------------------------------------------------comparision: CLCX9 --------------------------------------------------------------"
-python src/clock/clock_analysis.py --dataset CXCL9 --analysis-type perturbation --cell-types CD4T CD8T
-
-
-echo "--------------------------------------------------------------comparision: soundlife --------------------------------------------------------------"
-python src/clock/clock_analysis.py --dataset soundlife --config-label aging_cmv_neg --analysis-type aging --cell-types CD4T CD8T 
+python src/clock/clock_analysis.py --dataset CXCL9 --analysis-type perturbation --cell-types CD4T CD8T 

@@ -1,21 +1,29 @@
+"""Benchmark the GRN-based clock against published expression clocks.
+
+Retrains on abf300 + onek1k only, so both models see the same training data.
+
+Usage: python src/clock/run_comparision.py
+Writes: PLOTS_DIR/ comparison scatter + metrics
+"""
 import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sns
-from hira import MAJOR_CTS, CLOCKS_DIR, OUTPUT_DIR, PLOTS_DIR, surrogate_names, colors_blind
+from hira import CLOCKS_DIR, OUTPUT_DIR, CLOCK_PLOTS_DIR as PLOTS_DIR, surrogate_names, colors_blind, get_clock_cell_types
 from hira import wrapper_clock_predictions
 from hira.src.clock.plots import plot_scatter_age_vs_predictedAge
+from hira.src.clock.helper import save_clock_stats
 from hira.src.utils.util import retrieve_adata
 from grnimmuneclock import evaluate_groupwise_median, train_aging_clock
 import anndata as ad
 
 
 W_train_datasets = ['abf300', 'onek1k'] # we only use these datasets for training for a fair comparision
-test_datasets = ['perez_sle', 'hida', 'zhang']
+test_datasets = ['perez_sle', 'hida', 'wang']
 version = 'comparitive'
 
 def train_clocks():
     
-    cell_types = MAJOR_CTS
+    cell_types = get_clock_cell_types()
     data_type = 'bulk'
     reg_type = 'ridge'
     tune_model = True
@@ -26,7 +34,7 @@ def train_clocks():
         print(f"{'='*60}")
         
         adata_train = ad.concat([
-            retrieve_adata(dataset=dataset, data_type=data_type, cell_type=cell_type, only_net_genes=True)
+            retrieve_adata(dataset=dataset, data_type=data_type, cell_type=cell_type, only_sig_genes=True)
             for dataset in W_train_datasets
         ])
 
@@ -57,9 +65,9 @@ def extract_w_results():
     return median_prediction
 if __name__ == "__main__":
     test_datasets = ['perez_sle', 'aida']
-    # train_clocks()
+    train_clocks()
     W_median_prediction = extract_w_results()
-    predictions_all = wrapper_clock_predictions(MAJOR_CTS, evaluate_datasets=test_datasets, version=version)
+    predictions_all = wrapper_clock_predictions(get_clock_cell_types(), evaluate_datasets=test_datasets, version=version, only_sig_genes=True)
     test_predictions = predictions_all[predictions_all['condition']=='healthy'] # only healthy samples?
 
     print(f"Test predictions shape: {test_predictions.shape}")
@@ -103,6 +111,7 @@ if __name__ == "__main__":
     # Convert to DataFrame
     score_df = pd.DataFrame(all_scores)
     assert score_df.shape[0] > 0, "Some issues here."
+    save_clock_stats(score_df, 'comparison_scores')
     palette_models = {
         'Wenchao': colors_blind[1], 
         'GRNdrived': colors_blind[0]
@@ -115,7 +124,7 @@ if __name__ == "__main__":
 
     # Plot each metric in a separate figure
     
-    for metric in ['R2', 'Spearman']:
+    for metric in ['Spearman']:
         fig, axes = plt.subplots(1, n_datasets, figsize=(2.5 * n_datasets, 1.7), sharey=True)
 
         if n_datasets == 1:
@@ -147,7 +156,7 @@ if __name__ == "__main__":
         # fig.tight_layout()
         file_name = f'{PLOTS_DIR}/clock_comparison_{metric}.png'
         print(f"Saving figure to {file_name}")
-        plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(file_name, bbox_inches='tight', dpi=300)
 
     W_median_prediction['model'] = 'Wenchao'
     test_predictions['model'] = 'GRNdrived'
@@ -168,7 +177,7 @@ if __name__ == "__main__":
         ax.legend(loc=(1.1, .5), frameon=False, title='Model')
         file_name = f'{PLOTS_DIR}/clock_comparison_{cell_type}.png'
         print(f"Saving figure to {file_name}")
-        plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(file_name, bbox_inches='tight', dpi=300)
         
         # plt.suptitle(cell_type, fontsize=12, weight='bold')
         # plt.tight_layout()

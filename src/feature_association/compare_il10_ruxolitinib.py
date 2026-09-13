@@ -16,7 +16,7 @@ from matplotlib.lines import Line2D
 
 from hira import retrieve_stats
 from hira.src.config import (
-    PLOTS_DIR, 
+    COMPARISON_PLOTS_DIR as PLOTS_DIR,
     OUTPUT_DIR,
     MAJOR_CTS,
     surrogate_names,
@@ -395,7 +395,7 @@ def plot_directional_comparison(stats_il10, stats_ruxo, cell_types, args):
     
     plt.tight_layout()
     output_path = os.path.join(output_dir, f'comparison_il10_ruxolitinib_{args.analysis_name}.png')
-    plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+    plt.savefig(output_path, bbox_inches='tight', dpi=300)
     plt.close()
     print(f"\n✓ Saved comparison plot: {output_path}")
 

@@ -1,8 +1,8 @@
 
 """
-Configuration for condition-based analyses (disease and perturbation).
-This module centralizes all dataset-specific configurations to eliminate
-code duplication between disease and perturbation analyses.
+Central configuration for the whole pipeline: directory layout (from the HIRA_DIR /
+HIRA_BASE_DIR / HIRA_RAW_DIR env vars), cohort lists, cell-type maps, per-analysis
+settings (CONFIG_FA, get_config), clock settings, and plotting palettes.
 """
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Literal
@@ -32,7 +32,27 @@ OUTPUT_DIR = os.path.join(HIRA_DIR, 'results_folder')
 GRNS_DIR = f'{OUTPUT_DIR}/grns'
 FEATURES_DIR = f'{OUTPUT_DIR}/features/'
 CLOCKS_DIR = f"{OUTPUT_DIR}/clock/"
+CLOCK_STATS_DIR = f"{OUTPUT_DIR}/clock/stats/"  # summary numbers behind the clock figures
 PLOTS_DIR = f"{OUTPUT_DIR}/plots/"
+CLOCK_PLOTS_DIR = f"{PLOTS_DIR}clock/"
+AGING_PLOTS_DIR = f"{PLOTS_DIR}aging/"
+CONDITION_PLOTS_DIR = f"{PLOTS_DIR}condition/"
+COMPARISON_PLOTS_DIR = f"{PLOTS_DIR}comparisons/"
+EXP_ANALYSIS_PLOTS_DIR = f"{PLOTS_DIR}exp_analysis/"  # one subfolder per scripts/exp_analysis.sh task
+COHORT_STATS_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}cohort_stats/"
+GRN_OVERLAP_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}grn_overlap/"
+ACTIVATION_VS_EXPRESSION_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}activation_vs_expression/"
+CONFOUNDERS_PLOTS_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}confounders/"
+NAIVE_EFFECTOR_PLOTS_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}naive_effector/"
+SKELETON_EFFECT_PLOTS_DIR = f"{EXP_ANALYSIS_PLOTS_DIR}skeleton_effect/"
+EXP_ANALYSIS_DIR = f"{OUTPUT_DIR}/exp_analysis/"  # non-plot outputs (tables) per task
+CONFOUNDERS_DIR = f"{EXP_ANALYSIS_DIR}confounders/"
+NAIVE_EFFECTOR_DIR = f"{EXP_ANALYSIS_DIR}naive_effector/"
+SKELETON_EFFECT_DIR = f"{EXP_ANALYSIS_DIR}skeleton_effect/"
+for _d in (CLOCK_PLOTS_DIR, AGING_PLOTS_DIR, CONDITION_PLOTS_DIR, COMPARISON_PLOTS_DIR, CLOCK_STATS_DIR,
+           COHORT_STATS_DIR, GRN_OVERLAP_DIR, ACTIVATION_VS_EXPRESSION_DIR, CONFOUNDERS_PLOTS_DIR, CONFOUNDERS_DIR,
+           NAIVE_EFFECTOR_PLOTS_DIR, NAIVE_EFFECTOR_DIR, SKELETON_EFFECT_PLOTS_DIR, SKELETON_EFFECT_DIR):
+    os.makedirs(_d, exist_ok=True)
 
 CLOCK_V = 'V1'
 USE_LOCAL_CLOCK = True  # If True, use clocks saved in CLOCKS_DIR;
@@ -81,13 +101,18 @@ mapping_minor_2_major = {
 }
 SUB_CTS = list(mapping_minor_2_major.keys())
 MAJOR_CTS = ['CD4T', 'CD8T', 'NK', 'B', 'MONO']
+CLOCK_MIN_SIG_GENES = 50  # cell types with fewer age-significant genes are excluded from clock training
 CONFIG_FA = {
-    'tfa_major_b': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL}, 
+    'tfa_major_b': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL},
+    'tfa_major_b_ctNaiveToEffector': {'data_type': 'bulk', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL, 'cell_types': ['CD8T', 'CD4T', 'MONO']},
+    'tfa_major_sc': {'data_type': 'sc', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL},
+    'tfa_major_mc': {'data_type': 'metacell', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL},
     'tfa_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'tf_activity', 'granularity': SUB_CT_LABEL},
     'ct_tf_markers': {'data_type': 'sc', 'feature_type': 'tf_activity', 'granularity': MAJOR_CT_LABEL, 
                         'trend_labels': ['Higher in this group', 'Lower in this group'],
                         'cell_types': ['CD4T', 'CD8T', 'B', 'MONO']},
     'ge_major_b': {'data_type': 'bulk', 'feature_type': 'gene_expression', 'granularity': MAJOR_CT_LABEL},
+    'ge_major_mc': {'data_type': 'metacell', 'feature_type': 'gene_expression', 'granularity': MAJOR_CT_LABEL},
     'ge_sub_b': {'data_type': 'bulk_minor', 'feature_type': 'gene_expression', 'granularity': SUB_CT_LABEL},
     'tfa_peg': {'data_type': 'sc', 'feature_type': 'tfa_peg', 'granularity': MAJOR_CT_LABEL, 'cell_types': ['CD8T']},
     'ct_freq': {'data_type': 'sc', 'feature_type': 'ct_freq', 'granularity': SUB_CT_LABEL, 'cell_types': ['CD8T', 'CD4T']},
@@ -95,11 +120,19 @@ CONFIG_FA = {
     'ccc_sub_b': {'data_type': 'sc', 'feature_type': 'cc_interaction', 'granularity': SUB_CT_LABEL, 'cell_types': ['all']},
     'ccc_major_b': {'data_type': 'sc', 'feature_type': 'cc_interaction', 'granularity': MAJOR_CT_LABEL, 'cell_types': ['all']},
 }
+# Reference analyses that cross-analysis plots compare against (sub-cell-type vs major,
+# TF activity vs gene expression). Named here so no plot hardcodes an analysis name.
+REF_TFA_ANALYSIS = 'tfa_major_b'
+REF_GE_ANALYSIS = 'ge_major_b'
+
 ANALYSIS_DEF = {
-    'tfa_major_b': 'TF activity features from major cell type analysis',
+    'tfa_major_b': 'TF activity features from major cell type analysis (sc data, per-donor median aggregation)',
+    'tfa_major_sc': 'TF activity features from major cell type analysis (sc data, per-donor median aggregation) - alias of tfa_major_b under a consistent name',
+    'tfa_major_mc': 'TF activity features from major cell type analysis (metacell pseudobulk, no per-donor median)',
     'tfa_sub_b': 'TF activity features from sub cell type analysis',
     'ct_tf_markers': 'TF markers for each sub cell types',
     'ge_major_b': 'Gene expression features from major cell type analysis',
+    'ge_major_mc': 'Gene expression features from major cell type analysis (metacell pseudobulk, no per-donor median)',
     'ge_sub_b': 'Gene expression features from sub cell type analysis',
     'tfa_peg': 'TF activity association with progenitor-effector gradient',
     'ct_freq': 'Cell type composition (frequency)',
@@ -118,8 +151,8 @@ def get_available_fa_analyses():
 
 DISCOVERY_COHORTS = ['aida', 'perez_sle', 'onek1k', 'abf300'] #
 # DISCOVERY_COHORTS = ['perez_sle', 'aida']
-AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife', 'zhang']
-ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife', 'zhang']
+AGING_COHORTS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'soundlife', 'wang']
+ALL_DATASETS = ['onek1k', 'abf300', 'aida', 'perez_sle', 'CXCL9', 'op', 'parsebioscience', 'soundlife', 'wang']
 CLOCK_TRAINING_COHORTS = [
                 'onek1k',
                 'abf300',
@@ -127,33 +160,47 @@ CLOCK_TRAINING_COHORTS = [
 CLOCK_TEST_COHORTS = [
                 'aida',
                 'perez_sle',
-                'zhang'
-                # 'onek1k',
-                # 'abf300'
+                'wang'
                 ]
 NET_WEIGHT_THRESHOLD = None  # 0.05 # Minimum absolute weight for edges in GRN 
+# Motif-support pruning at load time. Applied after NET_MAX_SIZE: the top-NET_MAX_SIZE
+# edges by weight are taken first, then kept only if supported. 'skeleton' = ATAC+motif (skeleton_atac.csv),
+# 'promotor' = promoter motifs only, None = no pruning.
+NET_SKELETON = 'skeleton'  # 'skeleton' | 'promotor' | None
 NET_MAX_SIZE = 100_000
+EXCLUDE_RB_MT_GENES = False  # drop MT-*/ribosomal-protein genes before pseudobulking + GRN inference
 CLOCK_CV_SCORING = 'spearman'  # 'r2' or 'spearman'
 TUNE_CLOCK = True
 META_MIN_COHORT = 2
 CONSENSUS_MIN_DEGREE = 2 
 CORR_THRESHOLD = 0.1 # minimum absolute correlation for feature association with age
-TF_MIN_TARGET = 5
+TF_MIN_TARGET = 10
+# Per-dataset categorical confounders (donor metadata correlated with age, found via
+# src/exp_analysis/confounders.py) to control for in association_with_age(), in addition
+# to cell_count. 'site' isn't a raw obs column for aida -- see COARSENED_COVARIATES.
+CONFOUND_COVARIATES = {
+    'aida': ['site'],
+    'onek1k': ['batch_info'],
+    'soundlife': ['batch_id'],
+}
+# covariate name -> raw obs column it's derived from by stripping a trailing batch index
+# (coarsen() in src/utils/util.py), for covariates not present in obs as-is.
+COARSENED_COVARIATES = {'site': 'batch_info'} 
 
 DATASET_NAME_MAPPING = {
     "data1": "onek1k",
     "data7_allTPs_jalil": "abf300",
-    "data12": "zhang",
+    "data12": "wang",
     "data13": "aida",
     "SLE": "perez_sle"
 }
 
-TASK_GRN_BENCHMARK_DIR = os.environ.get('TASK_GRN_BENCHMARK_DIR', '/home/jnourisa/projs/ongoing/task_grn_inference/')
+TASK_GRN_BENCHMARK_DIR = os.environ.get('TASK_GRN_BENCHMARK_DIR')
 
 surrogate_names = {
                     'onek1k':'OneK1K',
                     'abf300': 'ABF300',
-                    'zhang': 'Zhang',
+                    'wang': 'Wang',
                     'aida': 'AIDA',
                     'perez_sle': 'Perez',
                     'op': 'OPSCA',
@@ -308,8 +355,8 @@ DATASET_CONFIGS = {
         name="aida",
         bulk_group=['donor_id', 'age']
     ), 
-    'zhang': ConditionConfig(
-        name="zhang",
+    'wang': ConditionConfig(
+        name="wang",
         bulk_group=['donor_id', 'age']
     ),
     'onek1k': ConditionConfig(

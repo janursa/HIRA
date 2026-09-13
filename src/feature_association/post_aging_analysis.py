@@ -18,20 +18,22 @@ pd.set_option("display.max_columns", None)
 
 # Import common utilities and configuration
 from hira.src.config import (
-    PLOTS_DIR, 
-    MAJOR_CTS, 
+    PLOTS_DIR,
+    MAJOR_CTS,
     DISCOVERY_COHORTS,
     palette_trend,
     surrogate_names,
     get_config_fa,
-    get_available_fa_analyses
+    get_available_fa_analyses,
+    MAJOR_CT_LABEL,
+    SUB_CT_LABEL
 )
 from hira import retrieve_net_consensus
 
 from hira import retrieve_sig_stats, retrieve_stats, mapping_minor_2_major
 from hira.src.feature_association.plots_groups import (
-    wrapper_plots_tfa_major_b_aging,
-    wrapper_plots_tfa_sub_b_aging,
+    wrapper_plots_tfa_major_aging,
+    wrapper_plots_tfa_sub_aging,
     wrapper_plots_gene_expression_aging,
     wrapper_plots_ct_tf_markers_aging,
     wrapper_plots_tfa_peg_aging,
@@ -66,21 +68,25 @@ if __name__ == "__main__":
     stats_features = retrieve_stats(analysis_name=args.analysis_name)
     stats_features_sig = retrieve_sig_stats(analysis_name=args.analysis_name)
 
-    if analysis_name in ['tfa_major_b']:
-        wrapper_plots_tfa_major_b_aging(args, stats_features, stats_features_sig, skip_pathway)
-    elif analysis_name in ['tfa_sub_b']:
-        wrapper_plots_tfa_sub_b_aging(args, stats_features, stats_features_sig, skip_pathway)
-    elif analysis_name in ['ge_major_b']:
-        wrapper_plots_gene_expression_aging(args, stats_features, stats_features_sig, skip_pathway)
-    elif analysis_name in ['ct_tf_markers']:
+    analysis_config = get_config_fa(analysis_name)
+    feature_type = analysis_config['feature_type']
+    granularity = analysis_config['granularity']
+
+    if analysis_name == 'ct_tf_markers':
         wrapper_plots_ct_tf_markers_aging(args, stats_features, stats_features_sig, skip_pathway)
-    elif analysis_name in ['tfa_peg']:
+    elif feature_type == 'tf_activity' and granularity == MAJOR_CT_LABEL:
+        wrapper_plots_tfa_major_aging(args, stats_features, stats_features_sig, skip_pathway)
+    elif feature_type == 'tf_activity' and granularity == SUB_CT_LABEL:
+        wrapper_plots_tfa_sub_aging(args, stats_features, stats_features_sig, skip_pathway)
+    elif feature_type == 'gene_expression':
+        wrapper_plots_gene_expression_aging(args, stats_features, stats_features_sig, skip_pathway)
+    elif feature_type == 'tfa_peg':
         wrapper_plots_tfa_peg_aging(args, stats_features, stats_features_sig, skip_pathway)
-    elif analysis_name in ['ct_freq']:
+    elif feature_type == 'ct_freq':
         wrapper_plots_ct_freq_aging(args, stats_features, stats_features_sig, skip_pathway)
-    elif analysis_name == 'ct_pol_dist':
+    elif feature_type == 'ct_pol_dist':
         wrapper_plots_ct_pol_dist_aging(args, stats_features, stats_features_sig, skip_pathway)
-    elif analysis_name in ['ccc_major_b', 'ccc_sub_b']:
+    elif feature_type == 'cc_interaction':
         wrapper_plots_ccc_aging(args, stats_features, stats_features_sig, skip_pathway)
     else:
-        raise ValueError('Unknown feature type')
+        raise ValueError(f"Unknown feature type '{feature_type}' for analysis '{analysis_name}'")

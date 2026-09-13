@@ -1,20 +1,21 @@
-import subprocess
 import numpy as np
-from scipy.stats import linregress, spearmanr
+from scipy.stats import linregress, spearmanr, norm, rankdata, pearsonr, combine_pvalues
 import pandas as pd
 import os
 import scipy
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import gc
 
 import scanpy as sc
 import anndata as ad
 from statsmodels.stats.multitest import multipletests
-from hira.src.config import GRNS_DIR, get_config_fa, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, HIRA_DIR
+import statsmodels.api as sm
+from hira.src.config import GRNS_DIR, get_config_fa, FEATURES_DIR, MAJOR_CTS, get_config, surrogate_names, DISCOVERY_COHORTS, NET_SKELETON
 from tqdm import tqdm
 from hira.src.config import OUTPUT_DIR, FEATURES_DIR, FEATURE_DATA_DIR, CORR_THRESHOLD, TF_MIN_TARGET, FEATURE_TYPES, SUB_CT_LABEL, MAJOR_CT_LABEL
+from hira.src.config import CONFOUND_COVARIATES, COARSENED_COVARIATES
 from scipy.sparse import issparse
-from hira.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net
+from hira.src.utils.util import retrieve_adata, retrieve_net_consensus, retrieve_net, coarsen
 import warnings
 from scipy.sparse import issparse
 from scipy.stats import mannwhitneyu
@@ -66,17 +67,8 @@ def retrieve_stats(analysis_name, cell_type=None, dataset=None, multi_cohort=Non
         stats["comparison"] = 'aging'
         p_val_col = "meta_p_adj"
 
-        mask_trend = stats["trend"] != "Inconsistent"
-
-        # genes where all datasets have |slope| > threshold
-        def has_consistent_slope(group):
-            return (group["slope"].abs() > CORR_THRESHOLD).all()
-
-        valid_groups = (
-            stats.groupby(["gene", "cell_type"])
-            .filter(has_consistent_slope)
-        )
-        mask_slope = stats.index.isin(valid_groups.index)
+        mask_slope = stats["pooled_rho"].abs() > CORR_THRESHOLD
+        mask_trend = stats["sign_consistent"].astype(bool)
 
     else:
         config = get_config(dataset)
@@ -149,11 +141,32 @@ def retrieve_sig_stats(**kwargs):
     stats_sig = stats[stats['is_significant']]
     return stats_sig
 
+# analysis_name -> cached tf_activity feature dir to read from, when it differs from
+# analysis_name itself (i.e. the analysis only changes the association step, not the features)
+FA_ANALYSIS_FEATURE_SOURCE = {'tfa_major_b_ctNaiveToEffector': 'tfa_major_b'}
+NAIVE_EFFECTOR_COLS = {
+    'CD8T': ('Tcm_Naive_CD8_count', ['Tem_Trm_CD8_count', 'Tem_Temra_CD8_count']),  # MAIT excluded
+    'CD4T': ('Tcm_Naive_CD4_count', ['Tem_Effector_CD4_count']),
+    'MONO': ('Classic_MONO_count', ['NonClassic_MONO_count']),
+}
+
+
+def add_naive_ratio(adata, cell_type):
+    """naive_ratio = naive / (naive + effector) cells per donor, from the
+    {minor_ct}_count columns baked into the bulk pseudobulk (see bulkify/script.py)."""
+    naive_col, effector_cols = NAIVE_EFFECTOR_COLS[cell_type]
+    naive = adata.obs[naive_col].astype(float)
+    effector = adata.obs[effector_cols].astype(float).sum(axis=1)
+    total = naive + effector
+    adata.obs['naive_ratio'] = np.where(total > 0, naive / total, np.nan)
+    return adata
+
+
 def retrieve_feature_data(
-                          dataset, 
-                          cell_type, 
-                          analysis_name, 
-                          condition=None, 
+                          dataset,
+                          cell_type,
+                          analysis_name,
+                          condition=None,
                           suffix=''
                           ):
     # Validate analysis_name exists
@@ -162,7 +175,7 @@ def retrieve_feature_data(
     except ValueError as e:
         raise ValueError(f'Analysis name {analysis_name} not found in CONFIG_FA') from e
 
-    if analysis_name in ['ge_major_b', 'ge_sub_b']:
+    if get_config_fa(analysis_name)['feature_type'] == 'gene_expression':
         granularity = get_config_fa(analysis_name)['granularity']
         data_type = get_config_fa(analysis_name)['data_type']
         adata = retrieve_adata(dataset=dataset, 
@@ -173,10 +186,15 @@ def retrieve_feature_data(
                                granularity=granularity)
         
     else:
-        file_path = f'{FEATURE_DATA_DIR}/{analysis_name}/{dataset}_{cell_type}{suffix}.h5ad'
+        # tfa_major_b_ctNaiveToEffector reuses tfa_major_b's cached TF-activity features
+        # (no recompute), it only adds a naive_ratio covariate for the association step.
+        source_analysis = FA_ANALYSIS_FEATURE_SOURCE.get(analysis_name, analysis_name)
+        file_path = f'{FEATURE_DATA_DIR}/{source_analysis}/{dataset}_{cell_type}{suffix}.h5ad'
         if os.path.exists(file_path) == False:
             raise ValueError(f'File {file_path} does not exist')
         adata = ad.read_h5ad(file_path)
+        if analysis_name == 'tfa_major_b_ctNaiveToEffector':
+            adata = add_naive_ratio(adata, cell_type)
     # Filter by condition
     if condition is not None and 'condition' in adata.obs.columns:
         if condition not in adata.obs['condition'].unique():
@@ -201,12 +219,21 @@ def write_feature_data(adata, dataset, cell_type, analysis_name, suffix=''):
     os.makedirs(output_dir, exist_ok=True)
     adata.write_h5ad(f'{output_dir}/{dataset}_{cell_type}{suffix}.h5ad')
 
-def bin_feature_values(adata):
+def bin_feature_values(adata, bin_size=5, min_bin_n=None):
+    """Per-feature min-max normalized mean across age bins.
+
+    min_bin_n drops bins with fewer donors than that. Cohorts thin out at the old end, and
+    min-max normalisation hands whichever bin happens to sit highest/lowest an endpoint of
+    the colour scale -- so a 3-donor bin of pure noise otherwise defines the whole row.
+    """
     # - bin 
     expr = adata.to_df()
     expr = expr.merge(adata.obs[['age']], left_index=True, right_index=True, how='left').set_index('age')
     expr.sort_index(inplace=True)
-    expr['age_bin'] = (expr.index.astype(int) // 5) * 5
+    expr['age_bin'] = (expr.index.astype(int) // bin_size) * bin_size
+    if min_bin_n is not None:
+        counts = expr['age_bin'].value_counts()
+        expr = expr[expr['age_bin'].isin(counts[counts >= min_bin_n].index)]
     expr_mean = expr.groupby('age_bin').mean().T
     # Normalize expression
     min_vals = expr_mean.min(axis=1)
@@ -353,7 +380,9 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
         age_masks = {
             'Both age groups': adata.obs.index.notnull(),  # All samples
             'Younger than 50': adata.obs['age'] < 50,
-            'Older than 50': adata.obs['age'] >= 50
+            'Older than 50': adata.obs['age'] >= 50,
+            'Younger than 40': adata.obs['age'] < 40,
+            'Older than 40': adata.obs['age'] >= 40
         }
     else:
         # Default: no age stratification
@@ -402,63 +431,58 @@ def determine_stats_condition(adata, ctr_group='normal', condition_col='conditio
 
     return stats_df
 
-def run_meta_analysis(stats_all, meta_association_type='max', min_degree=2, temp_dir='../results_folder/tf_activity/'):
-    os.makedirs(temp_dir, exist_ok=True)
-    # ---------- prepare
-    assert stats_all.shape[0]> 0, 'No stats for meta analysis'
-    print('Meta analysis...')
-    stats_all_c = stats_all.copy()
-    stats_all_c.rename(columns={'p_value': 'pvalue'}, inplace=True)
-    
-    # -------- actual run
+SLOPE_NOISE = 0.05  # |slope| below this is noise: sign ignored in the consistency check
+
+
+def _fisher_meta(p_values, slopes):
+    """Fisher's method on per-cohort p-values, plus mean rho and sign agreement.
+
+    Returns (meta p, mean rho, non-noise cohorts same sign). Cohorts with |slope| <=
+    SLOPE_NOISE are treated as sign-less so a near-zero slope does not veto agreement.
+    Fisher saturates at these cohort sizes on its own, so selection relies on the
+    sign-agreement and |rho| > CORR_THRESHOLD filters applied downstream in retrieve_stats.
+    """
+    meta_p = combine_pvalues(np.clip(p_values, 1e-20, None), method='fisher')[1]
+    sign = np.where(np.abs(slopes) <= SLOPE_NOISE, 0, np.sign(slopes))
+    consistent = bool(np.any(sign != 0) and ((sign >= 0).all() or (sign <= 0).all()))
+    return meta_p, float(np.mean(slopes)), consistent
+
+
+def run_meta_analysis(stats_all, min_degree=2):
+    """Meta-analysis across cohorts, per gene x cell type.
+
+    Merges meta_p, meta_p_adj (BH within cell type), pooled_rho and sign_consistent
+    into stats_all. Fisher alone calls ~all TFs significant at these cohort sizes; a
+    feature counts as significant only once retrieve_stats also requires sign agreement
+    across cohorts and |pooled_rho| > CORR_THRESHOLD.
+    """
+    assert stats_all.shape[0] > 0, 'No stats for meta analysis'
+    print('Meta analysis (Fisher + sign agreement + |rho| threshold)...')
+    df = stats_all
     if min_degree is not None:
-        stats_all_c = stats_all_c.groupby(['gene', 'cell_type']).filter(lambda group: group['dataset'].nunique() >= min_degree)
-    
-    cell_types = stats_all_c['cell_type'].unique()
-    df_meta_store = []
-    for cell_type in cell_types:
-        df = stats_all_c[stats_all_c['cell_type'] == cell_type]
-        df['pvalue'] = df['pvalue'] + 1E-20 # to avoid 0 p value
-        
-        file_path = f'{temp_dir}/stats_{cell_type}.csv'
-        df.to_csv(file_path, index=False)
-        out_path = f'{temp_dir}/stats_{cell_type}_meta.csv'
-
-        Rscript_file = f'{HIRA_DIR}/src/feature_association//meta_analysis/script.R'
-        # Run the R script with the provided file paths
-        try:
-            subprocess.run(
-                ["Rscript", Rscript_file, file_path, out_path, meta_association_type],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"Error while running R script: {Rscript_file}")
-            print("STDOUT:", e.stdout.decode())  # Standard Output
-            print("STDERR:", e.stderr.decode())  # Error Output from R
-            raise
-        df_meta = pd.read_csv(out_path)
-
-        assert df_meta.isna().sum().sum() == 0, f'NaN values found in meta analysis results for {cell_type}'
-        df_meta['cell_type'] = cell_type
-        print(cell_type, df_meta.shape)
-        df_meta_store.append(df_meta)
-    if df_meta_store:
-        df_meta_all = pd.concat(df_meta_store)
-    else:
-        df_meta_all = pd.DataFrame() 
-    
-    if df_meta_all.shape[0]==0:
+        df = df.groupby(['gene', 'cell_type']).filter(lambda g: g['dataset'].nunique() >= min_degree)
+    if df.empty:
         print(f"No meta analysis results for {stats_all['cell_type'].unique()}")
         return None
-    stats_all = stats_all.merge(df_meta_all, on=['gene', 'cell_type'], how='left')
-    return stats_all
+
+    meta = pd.DataFrame(
+        [(gene, cell_type, *_fisher_meta(g['p_value'].values, g['slope'].values))
+         for (gene, cell_type), g in df.groupby(['gene', 'cell_type'], sort=False)],
+        columns=['gene', 'cell_type', 'meta_p', 'pooled_rho', 'sign_consistent'],
+    )
+    meta['meta_p_adj'] = meta.groupby('cell_type')['meta_p'].transform(
+        lambda p: multipletests(p.values, method='fdr_bh')[1])
+    assert meta.isna().sum().sum() == 0, 'NaN values found in meta analysis results'
+    for cell_type, n in meta.groupby('cell_type').size().items():
+        print(cell_type, n)
+
+    return stats_all.merge(meta, on=['gene', 'cell_type'], how='left')
+
 
 def wrapper_meta_analysis(analysis_name, stats_features, par):
     feature_col = 'gene'
     min_degree = par['META_MIN_COHORT']
-    def run_func(min_degree, meta_association_type):
+    def run_func(min_degree):
         stats_store = []
         for cell_type in stats_features['cell_type'].unique():
             stats = stats_features[(stats_features['cell_type'] == cell_type) & (stats_features['condition']=='healthy')]
@@ -473,9 +497,8 @@ def wrapper_meta_analysis(analysis_name, stats_features, par):
             nan_sim = stats['p_value'].isna().sum()
             if nan_sim>0:
                 raise ValueError(f'NaN p-values found in stats in {cell_type}: {nan_sim} NaNs')
-            meta_stats = run_meta_analysis(stats, temp_dir=par['temp_dir'], meta_association_type=meta_association_type, min_degree=min_degree)
-            pval_col = 'meta_p_adj'
-            meta_stats = compute_trend(analysis_name, meta_stats, pval_col=pval_col, slope_col='slope', col=feature_col)
+            meta_stats = run_meta_analysis(stats, min_degree=min_degree)
+            meta_stats = compute_trend(analysis_name, meta_stats, col=feature_col)
             stats_store.append(meta_stats)
         if len(stats_store) > 0:
             stats_discovery = pd.concat(stats_store)
@@ -484,18 +507,73 @@ def wrapper_meta_analysis(analysis_name, stats_features, par):
         else:
             return pd.DataFrame()
     
-    meta_association_type='fisher'
-    print(f'Running meta analysis for all datasets, min degree  {min_degree}, meta_association_type {meta_association_type}')
-    stats = run_func(min_degree, meta_association_type)
+    print(f'Running meta analysis for all datasets, min degree {min_degree}')
+    stats = run_func(min_degree)
 
     #- save
     return stats
 
-def wrapper_association_with_age_condition(analysis_name, 
-                                par, 
-                                association_type, 
-                                test_type=None, 
-                                condition='healthy', 
+def _association_for_cell_type(task):
+    """Per-cell-type worker for wrapper_association_with_age_condition, run in a
+    separate process (see ProcessPoolExecutor there) since each cell type's
+    per-gene association test is independent and CPU-bound."""
+    (cell_type, datasets, analysis_name, condition, suffix, features,
+     granularity, association_type, config, test_type) = task
+
+    stats_store = []
+    for dataset in datasets:
+        adata = retrieve_feature_data(
+            dataset=dataset,
+            cell_type=cell_type,
+            analysis_name=analysis_name,
+            condition=condition,
+            suffix=suffix,
+        )
+        # - sanity check
+        cell_types_in_data = adata.obs[granularity].unique()
+        assert len(cell_types_in_data) == 1 and cell_types_in_data[0] == cell_type, f'Cell type mismatch in {dataset}, {cell_type}'
+        adata = adata[:, adata.var_names.isin(features)] if features is not None else adata
+
+        if adata.shape[0] < 3:
+            raise ValueError(f'Not enough samples for {cell_type} in {dataset}, only {adata.shape[0]} samples')
+
+        if issparse(adata.X):
+            adata.X = adata.X.toarray()
+
+        if association_type == 'continous':
+            print('Aging analysis for', cell_type, 'in', dataset)
+            extra_covariates = ['naive_ratio'] if 'naive_ratio' in adata.obs.columns else None
+            categorical_covariates = CONFOUND_COVARIATES.get(dataset, [])
+            for c in categorical_covariates:
+                if c not in adata.obs.columns and c in COARSENED_COVARIATES:
+                    adata.obs[c] = coarsen(adata.obs[COARSENED_COVARIATES[c]])
+            stats = association_with_age(adata, association_type='partial_spearman', extra_covariates=extra_covariates,
+                                          categorical_covariates=categorical_covariates)
+            stats['condition'] = condition
+            stats['comparison'] = 'aging'
+        elif association_type == 'grouped':
+            print('Condition analysis for', cell_type, 'in', dataset)
+            stats = associate_with_condition(
+                adata,
+                config,
+                test_type=test_type
+            )
+        else:
+            raise ValueError(f'Unknown association type: {association_type}')
+        if stats is None or len(stats) == 0:
+            raise ValueError(f'No stats calculated for {cell_type} in {dataset}, something went wrong')
+
+        stats['dataset'] = dataset
+        stats['cell_type'] = cell_type
+        stats_store.append(stats)
+    return stats_store
+
+
+def wrapper_association_with_age_condition(analysis_name,
+                                par,
+                                association_type,
+                                test_type=None,
+                                condition='healthy',
                                 features=None,
                                 config=None):
     """
@@ -520,52 +598,19 @@ def wrapper_association_with_age_condition(analysis_name,
 
     analys_cfg = get_config_fa(analysis_name)
     granularity = analys_cfg['granularity']
+    tasks = [
+        (cell_type, datasets, analysis_name, condition, suffix, features,
+         granularity, association_type, config, test_type)
+        for cell_type in cell_types
+    ]
     stats_store = []
-    for cell_type in tqdm(cell_types, desc='cell types'):
-        for dataset in datasets:      
-            adata = retrieve_feature_data(
-                dataset=dataset, 
-                cell_type=cell_type, 
-                analysis_name=analysis_name, 
-                condition=condition,
-                suffix=suffix,
-            )
-            # - sanity check
-            cell_types_in_data = adata.obs[granularity].unique()
-            assert len(cell_types_in_data) == 1 and cell_types_in_data[0] == cell_type, f'Cell type mismatch in {dataset}, {cell_type}'
-            adata = adata[:, adata.var_names.isin(features)] if features is not None else adata
+    if len(tasks) == 1:
+        stats_store.extend(_association_for_cell_type(tasks[0]))
+    else:
+        with ProcessPoolExecutor(max_workers=min(len(tasks), 5)) as executor:
+            for result in tqdm(executor.map(_association_for_cell_type, tasks), total=len(tasks), desc='cell types'):
+                stats_store.extend(result)
 
-            # Filter by cell type
-            if adata.shape[0] < 3:
-                raise ValueError(f'Not enough samples for {cell_type} in {dataset}, only {adata.shape[0]} samples')
-            
-            if issparse(adata.X):
-                adata.X = adata.X.toarray()
-            
-            # Determine statistics based on configuration
-            if association_type == 'continous':
-                print('Aging analysis for', cell_type, 'in', dataset)
-                stats = association_with_age(adata, association_type='spearman')
-                stats['condition'] = condition
-                stats['comparison'] = 'aging'
-            elif association_type == 'grouped':
-                # Condition analysis using config
-                print('Condition analysis for', cell_type, 'in', dataset)
-                stats = associate_with_condition(
-                    adata, 
-                    config, 
-                    test_type=test_type
-                )
-                
-            else:
-                raise ValueError(f'Unknown analysis type: {association_type}')
-            if stats is None or len(stats) == 0:
-                raise ValueError(f'No stats calculated for {cell_type} in {dataset}, something went wrong')
-
-            stats['dataset'] = dataset
-            stats['cell_type'] = cell_type
-            stats_store.append(stats)
-    
     assert len(stats_store) > 0, 'No stats calculated, something went wrong'
     
     if len(stats_store) == 1:
@@ -633,35 +678,83 @@ def associate_with_condition(adata, config, test_type=None):
     return stats
 
 
+def subsample_cells_per_group(adata, bulk_group, max_cells, seed=0):
+    # ponytail: bounds memory/runtime for per-cell ULM; a median over max_cells is already stable, full completeness isn't needed
+    group_cols = [c for c in bulk_group if c != 'cell_type']
+    group_key = adata.obs[group_cols].astype(str).agg('_'.join, axis=1)
+    pos = pd.Series(np.arange(adata.n_obs))
+    keep = pos.groupby(group_key.values, group_keys=False).apply(
+        lambda s: s.sample(n=min(len(s), max_cells), random_state=seed)
+    )
+    return adata[keep.values].copy()
+
+def aggregate_tf_activity_per_donor(tf_acts_cell, bulk_group):
+    # per-cell/per-metacell ULM scores -> per-donor mean. Each unit is depth-normalised
+    # independently, so this avoids the pseudobulk cell_count/dropout confound while still
+    # tracking subpopulation composition; the median discards it (e.g. GATA3 in CD8T).
+    group_cols = [c for c in bulk_group if c != 'cell_type']
+    obs = tf_acts_cell.obs
+    group_key = obs[group_cols].astype(str).agg('_'.join, axis=1)
+
+    df = tf_acts_cell.to_df()
+    donor_agg = df.groupby(group_key.values).mean()
+
+    cell_count = group_key.value_counts().rename('cell_count')
+    keep_obs_cols = list(dict.fromkeys(group_cols + ['age', 'condition', 'dataset']))
+    donor_obs = obs[keep_obs_cols].copy()
+    donor_obs['group'] = group_key.values
+    donor_obs = donor_obs.drop_duplicates('group').set_index('group').join(cell_count)
+    donor_obs = donor_obs.loc[donor_agg.index]
+
+    var = pd.DataFrame({'source': donor_agg.columns}, index=donor_agg.columns)
+    return ad.AnnData(X=donor_agg.values, obs=donor_obs, var=var)
+
 def wrapper_tf_activity(analysis_name, par):
     print('Loading data...')
     cell_types = par['cell_types']
     datasets = par['datasets']
     condition = par.get('condition', None)
     promotor_only = par['promotor_only']
-    
+
     print('Calculating TF activity...')
     print(f'  - Promotor-based only: {promotor_only}')
 
     config = get_config_fa(analysis_name)
     data_type = config['data_type']
     granularity = config['granularity']
+    per_donor_agg = analysis_name in ['tfa_major_sc']
+    # mc has multiple metacells per donor; must still collapse to one sample/donor to avoid pseudoreplication
+    aggregate_per_donor = per_donor_agg or analysis_name == 'tfa_major_mc'
+    load_data_type = 'sc' if per_donor_agg else data_type
+    max_cells_per_group = 300
     for dataset in datasets:
-        adata = retrieve_adata(dataset=dataset, data_type=data_type, condition=condition)
+        bulk_group = get_config(dataset).bulk_group
+        if not per_donor_agg:
+            adata = retrieve_adata(dataset=dataset, data_type=load_data_type, condition=condition)
 
         for cell_type in tqdm(cell_types, desc='cell types'):
-            print(dataset, data_type)
-            adata_t = adata[adata.obs[granularity] == cell_type].copy()
+            print(dataset, load_data_type)
+            if per_donor_agg:
+                # load only this cell type's cells (not the whole dataset) to bound memory
+                adata_t = retrieve_adata(dataset=dataset, data_type=load_data_type, condition=condition,
+                                          cell_type=cell_type, granularity=granularity)
+                if len(adata_t) > 0:
+                    adata_t = subsample_cells_per_group(adata_t, bulk_group, max_cells_per_group)
+            else:
+                adata_t = adata[adata.obs[granularity] == cell_type].copy()
             if len(adata_t) == 0:
                 print(f'No samples for {cell_type} in {dataset}, skipping TF activity calculation')
                 continue
             if par['use_consensus_net']:
-                net = retrieve_net_consensus(cell_type=cell_type, promotor_only=promotor_only)
+                net = retrieve_net_consensus(cell_type=cell_type, skeleton='promotor' if promotor_only else NET_SKELETON)
             else:
-                net = retrieve_net(dataset=dataset, cell_type=cell_type, promotor_only=promotor_only)
+                net = retrieve_net(dataset=dataset, cell_type=cell_type, skeleton='promotor' if promotor_only else NET_SKELETON)
             if adata_t.obs['condition'].value_counts().min() < 3:
                 continue
             tf_acts = calculate_tf_activity(adata_t, net)
+            if aggregate_per_donor:
+                tf_acts = aggregate_tf_activity_per_donor(tf_acts, bulk_group)
+                tf_acts.obs[granularity] = cell_type
             tf_acts.obs['dataset'] = dataset
             tf_acts.uns['dataset'] = dataset
             tf_acts = tf_acts[tf_acts.obs['age'].isna()==False] # there is a bug in the code that causes age to be NaN
@@ -1095,9 +1188,9 @@ def wrapper_ct_tf_markers(analysis_name, par):
                 print(f'No samples for {cell_type} in {dataset}, skipping TF activity calculation')
                 continue
             if par['use_consensus_net']:
-                net = retrieve_net_consensus(cell_type=cell_type, promotor_only=promotor_only)
+                net = retrieve_net_consensus(cell_type=cell_type, skeleton='promotor' if promotor_only else NET_SKELETON)
             else:
-                net = retrieve_net(dataset=dataset, cell_type=cell_type, promotor_only=promotor_only)
+                net = retrieve_net(dataset=dataset, cell_type=cell_type, skeleton='promotor' if promotor_only else NET_SKELETON)
             if adata_t.shape[0] < 10:
                 continue
             tf_acts = calculate_tf_activity(adata_t, net)
@@ -1253,13 +1346,51 @@ def wrapper_ccc(analysis_name, par, n_jobs=1):
         print(f'  ✓ {dataset}: Combined {comm_adata_combined.shape[0]} donors × {comm_adata_combined.shape[1]} L-R pairs')
 
 
-def association_with_age(adata, association_type, gene_col='gene'):
+def shrink_residualize(y, codes, k):
+    """Empirical-Bayes partial pooling: residualize y on a categorical grouping
+    (codes: 0..k-1) by shrinking each group's mean deviation toward the grand mean
+    by its reliability var_between/(var_between + var_within/n_g). Degenerates to a
+    full fixed effect for large, even groups and to ~no adjustment for many small
+    groups, so unlike raw dummy OLS it can't overfit incidental small-group params
+    (see src/exp_analysis/confounders.py and temp/confounder_adjustment for validation)."""
+    y = np.asarray(y, dtype=float)
+    N = len(y)
+    grand_mean = y.mean()
+    sums = np.zeros(k)
+    np.add.at(sums, codes, y)
+    n_g = np.bincount(codes, minlength=k).astype(float)
+    group_mean = sums / n_g
+    ss_between = (n_g * (group_mean - grand_mean) ** 2).sum()
+    ss_total = ((y - grand_mean) ** 2).sum()
+    ss_within = max(ss_total - ss_between, 0)
+    msb = ss_between / max(k - 1, 1)
+    msw = ss_within / max(N - k, 1)
+    n0 = (N - (n_g ** 2).sum() / N) / max(k - 1, 1)
+    var_between = max((msb - msw) / n0, 0) if n0 > 0 else 0
+    shrink = var_between / (var_between + msw / n_g + 1e-300)
+    shrunk_group_mean = grand_mean + shrink * (group_mean - grand_mean)
+    return y - shrunk_group_mean[codes] + grand_mean
+
+
+def association_with_age(adata, association_type, gene_col='gene', extra_covariates=None, categorical_covariates=None):
     '''
     Calculate p-values for the linear regression or Spearman correlation
     of the top tfs across datasets with ageing, and apply FDR correction
     (Benjamini-Hochberg). Includes safeguards and prints diagnostics when
     values are invalid.
+
+    extra_covariates: optional list of adata.obs columns to additionally
+    control for in the partial_spearman residualization, alongside cell_count
+    (e.g. a cell-type ratio, to rule out a composition-shift confound).
+
+    categorical_covariates: optional list of adata.obs columns (e.g. a batch/site
+    id) to control for in the partial_spearman residualization via shrink_residualize,
+    applied after the numeric covariates. Unlike extra_covariates these are never
+    rankdata()'d -- that would silently treat category labels as ordinal.
     '''
+    covariate_cols = ['cell_count'] + list(extra_covariates or [])
+    categorical_covariates = list(categorical_covariates or [])
+
     def process_gene(gene):
         mask_gene = adata.var_names == gene
         adata_sub = adata[:, mask_gene]
@@ -1267,9 +1398,13 @@ def association_with_age(adata, association_type, gene_col='gene'):
         df = adata_sub.to_df()
         df = df.reset_index(drop=True)
         df['age'] = adata_sub.obs['age'].values
-        
-        # Remove NaN values (donors missing this feature/subtype)
-        valid_mask = ~df[gene].isna()
+        for c in covariate_cols:
+            df[c] = adata_sub.obs[c].values
+        for c in categorical_covariates:
+            df[c] = adata_sub.obs[c].values
+
+        # Remove NaN values (donors missing this feature/subtype or a covariate)
+        valid_mask = ~df[[gene] + covariate_cols + categorical_covariates].isna().any(axis=1)
         df = df[valid_mask]
         
         if len(df) < 10:
@@ -1294,12 +1429,41 @@ def association_with_age(adata, association_type, gene_col='gene'):
             print(f"[SKIP] {gene}: expression constant → assigning p=1.0, slope=0.0")
             p_value, slope = 1.0, 0.0
         else:
+            # if association_type == 'linear':
+            #     X = sm.add_constant(df['age'])
+            #     fit = sm.OLS(df[gene], X).fit()
+            #     slope, p_value = fit.params['age'], fit.pvalues['age']
+            
             if association_type == 'linear':
-                slope, intercept, r_value, p_value, _ = linregress(ages, expression)
+                X = sm.add_constant(df[['age', 'cell_count']])
+                fit = sm.OLS(df[gene], X).fit()
+                slope, p_value = fit.params['age'], fit.pvalues['age']
             elif association_type == 'spearman':
                 slope, p_value = spearmanr(ages, expression)
+            elif association_type == 'partial_spearman':
+                # Spearman of age vs feature, adjusted for pseudobulk depth (and any
+                # extra_covariates, e.g. cell-type ratio): rank-transform everything,
+                # residualize age-ranks and feature-ranks on the covariate ranks via OLS,
+                # then correlate the residuals. rho stays in [-1, 1] so the Fisher-z
+                # meta-analysis downstream stays valid (one df lost, see _random_effects).
+                ra, rx = rankdata(ages), rankdata(expression)
+                rc = np.column_stack([rankdata(df[c].values) for c in covariate_cols])
+                if not np.all(np.std(rc, axis=0) == 0):  # skip if covariates all constant
+                    X = sm.add_constant(rc)
+                    resid = lambda y: sm.OLS(y, X).fit().resid
+                    ra, rx = resid(ra), resid(rx)
+                for c in categorical_covariates:
+                    codes, uniques = pd.factorize(df[c].astype(str).values)
+                    if len(uniques) > 1:
+                        ra = shrink_residualize(ra, codes, len(uniques))
+                        rx = shrink_residualize(rx, codes, len(uniques))
+                if np.std(ra) == 0 or np.std(rx) == 0:
+                    print(f"[SKIP] {gene}: no variance left after covariate adjustment")
+                    slope, p_value = 0.0, 1.0
+                else:
+                    slope, p_value = pearsonr(ra, rx)
             else:
-                raise ValueError("association_type must be 'linear' or 'spearman'")
+                raise ValueError("association_type must be 'linear', 'spearman' or 'partial_spearman'")
 
             # Handle invalid results
             if p_value is None or np.isnan(p_value) or p_value < 0 or p_value > 1:
@@ -1337,39 +1501,16 @@ def association_with_age(adata, association_type, gene_col='gene'):
     
     return stats_df
 
-def compute_trend(analysis_name, df, pval_col='meta_p_adj', slope_col='slope', col='gene'):
-    # Compute -log10(p_value_adj) for dot size
+def compute_trend(analysis_name, df, pval_col='meta_p_adj', slope_col='pooled_rho', col='gene'):
+    """Label each gene x cell type by the direction of its pooled effect."""
     df["neg_log10_adj_pval"] = -np.log10(df[pval_col])
-    if 'trend' in df.columns:
-        df.drop('trend', inplace=True, axis=1)
-    increase_trend = get_config_fa(analysis_name)['trend_labels'][0] if 'trend_labels' in get_config_fa(analysis_name) else 'Increase in aging'
-    decrease_trend = get_config_fa(analysis_name)['trend_labels'][1] if 'trend_labels' in get_config_fa(analysis_name) else 'Decrease in aging'
-    # Function to assign trend based on slope sign and min_degree
-    def determine_trend(x):
-        pos = (x > 0).sum()
-        neg = (x < 0).sum()
-        total = len(x)
-        threshold = total
-        
-        # print(pos, neg, total, threshold)
-        if pos >= (threshold):
-            return increase_trend
-        elif neg >= (threshold):
-            return decrease_trend
-        else:
-            return 'Inconsistent'
-
-    # Apply the function group-wise
-    trend = df.groupby([col, 'cell_type'])[slope_col].apply(determine_trend).reset_index(name='trend')
-    # trend = trend.dropna()
-
-    df = df.merge(trend, on=[col, 'cell_type'], how='left')
+    labels = get_config_fa(analysis_name).get('trend_labels', ['Increase in aging', 'Decrease in aging'])
     df["trend"] = pd.Categorical(
-        df["trend"], 
-        categories=['Increase in aging', 'Decrease in aging', "Inconsistent"], 
-        ordered=True
+        np.where(df[slope_col] > 0, labels[0], labels[1]),
+        categories=labels, ordered=True
     )
     return df
+
 
 def tf_activity_local(net, adata, tf_all=None):
     net = net.pivot(index='source', columns='target', values='weight').fillna(0)

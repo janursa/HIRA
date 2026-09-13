@@ -1,13 +1,17 @@
+"""Train the per-cell-type aging clocks on CLOCK_TRAINING_COHORTS (bulk, ridge).
 
+Usage: python src/clock/run_train.py
+Writes: CLOCKS_DIR/<cell_type>/ (one model per MAJOR_CTS entry, version CLOCK_V)
+"""
 import anndata as ad
 from grnimmuneclock import train_aging_clock
-from hira import MAJOR_CTS, CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK
+from hira import CLOCK_TRAINING_COHORTS, CLOCKS_DIR, CLOCK_V, CLOCK_CV_SCORING, TUNE_CLOCK, get_clock_cell_types
 from hira.src.utils.util import retrieve_adata
 
 
 if __name__ == "__main__":
 
-    cell_types = MAJOR_CTS
+    cell_types = get_clock_cell_types()
     train_datasets = CLOCK_TRAINING_COHORTS
     data_type = 'bulk'
     reg_type = 'ridge'
@@ -20,7 +24,7 @@ if __name__ == "__main__":
         print(f"{'='*60}")
 
         adata_train = ad.concat([
-            retrieve_adata(dataset=dataset, data_type=data_type, cell_type=cell_type, only_net_genes=True)
+            retrieve_adata(dataset=dataset, data_type=data_type, cell_type=cell_type, only_sig_genes=True)
             for dataset in train_datasets
         ])
 

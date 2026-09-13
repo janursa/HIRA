@@ -9,11 +9,38 @@ from anndata import AnnData
 from hira.src.utils.util import retrieve_adata
 from hira.src.config import (
     CLOCKS_DIR,
-    USE_LOCAL_CLOCK, 
-    CLOCK_V
+    CLOCK_STATS_DIR,
+    USE_LOCAL_CLOCK,
+    CLOCK_V,
+    MAJOR_CTS,
+    REF_GE_ANALYSIS,
+    CLOCK_MIN_SIG_GENES,
 )
 
-def wrapper_predict_age(adata, cell_type, USE_LOCAL_CLOCK=USE_LOCAL_CLOCK, version=CLOCK_V):
+
+def get_clock_cell_types():
+    """MAJOR_CTS restricted to cell types with >= CLOCK_MIN_SIG_GENES age-significant genes
+    (ge_major_b) -- too few sig genes makes the clock unreliable, so we skip training it."""
+    from hira.src.feature_association.helper import retrieve_sig_stats  # local: avoids circular import
+    cell_types = []
+    for cell_type in MAJOR_CTS:
+        n_sig = retrieve_sig_stats(analysis_name=REF_GE_ANALYSIS, cell_type=cell_type)['gene'].nunique()
+        if n_sig < CLOCK_MIN_SIG_GENES:
+            print(f'Skipping {cell_type} clock: only {n_sig} sig genes (<{CLOCK_MIN_SIG_GENES})')
+        else:
+            cell_types.append(cell_type)
+    return cell_types
+
+
+def save_clock_stats(df, name):
+    """Persist a clock summary table. Figures and tests_code must read the same numbers,
+    so every statistic a clock figure annotates is written here."""
+    path = f'{CLOCK_STATS_DIR}/{name}.csv'
+    df.to_csv(path, index=False)
+    print(f'  Saved stats: {path}')
+    return path
+
+def wrapper_predict_age(adata, cell_type, USE_LOCAL_CLOCK=USE_LOCAL_CLOCK, version=CLOCK_V, model_dir=CLOCKS_DIR):
     import sys
     sys.path.insert(0, '../GRNimmuneClock')
     from grnimmuneclock import retrieve_function
@@ -22,7 +49,7 @@ def wrapper_predict_age(adata, cell_type, USE_LOCAL_CLOCK=USE_LOCAL_CLOCK, versi
     # going through AgingClock's restricted public API.
     model, gene_names = retrieve_function(
         cell_type=cell_type,
-        model_dir=CLOCKS_DIR if USE_LOCAL_CLOCK else None,
+        model_dir=model_dir if USE_LOCAL_CLOCK else None,
         version=version,
     )
     adata_aligned = ad.AnnData(
@@ -35,15 +62,17 @@ def wrapper_predict_age(adata, cell_type, USE_LOCAL_CLOCK=USE_LOCAL_CLOCK, versi
     if 'age' in adata.obs.columns:
         adata.obs['age_acceleration'] = adata.obs['predicted_age'] - adata.obs['age']
     return adata
-def wrapper_clock_predictions(cell_types, evaluate_datasets, data_type='bulk', condition=None, version=CLOCK_V):
+def wrapper_clock_predictions(cell_types, evaluate_datasets, data_type='bulk', condition=None, version=CLOCK_V,
+                              model_dir=CLOCKS_DIR, only_net_genes=False, only_sig_genes=False):
     obs_store = []
     for cell_type in cell_types:
         for dataset in evaluate_datasets:
-            adata = retrieve_adata(dataset=dataset, data_type=data_type, cell_type=cell_type, only_net_genes=True, condition=condition)
+            adata = retrieve_adata(dataset=dataset, data_type=data_type, cell_type=cell_type,
+                                    only_net_genes=only_net_genes, only_sig_genes=only_sig_genes, condition=condition)
             conds = adata.obs['condition'].unique()
             for cond in conds:
                 adata_c = adata[adata.obs['condition'] == cond]
-                wrapper_predict_age(adata=adata_c, cell_type=cell_type, version=version)
+                wrapper_predict_age(adata=adata_c, cell_type=cell_type, version=version, model_dir=model_dir)
                 obs = adata_c.obs
                 obs['dataset'] = dataset
                 obs['cell_type'] = cell_type

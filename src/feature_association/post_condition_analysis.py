@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 from hira import retrieve_stats
 from hira.src.feature_association.plots_groups import (
-    wrapper_plots_tfa_major_b_condition,
+    wrapper_plots_tfa_major_condition,
     wrapper_plots_tfa_sub_b_condition,
     wrapper_plots_gene_expression_condition,
     wrapper_plots_ct_tf_markers_condition,
@@ -29,7 +29,7 @@ from hira.src.feature_association.plots_groups import (
 from hira.src.config import (
     get_config_fa,
     get_available_fa_analyses,
-    PLOTS_DIR, 
+    CONDITION_PLOTS_DIR,
     MAJOR_CTS
 )
 from hira.src.config import get_config
@@ -66,8 +66,8 @@ def parse_args():
     parser.add_argument(
         '--output-dir',
         type=str,
-        default=PLOTS_DIR,
-        help='Output directory for plots (default: PLOTS_DIR from common.py)'
+        default=CONDITION_PLOTS_DIR,
+        help='Output directory for plots (default: CONDITION_PLOTS_DIR from config.py)'
     )
     parser.add_argument(
         '--cell-types',
@@ -141,6 +141,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    args.output_dir = os.path.join(args.output_dir, args.dataset)
     os.makedirs(args.output_dir, exist_ok=True)
     
     # Get configuration
@@ -178,11 +179,11 @@ def main():
     config = get_config(dataset=args.dataset)
 
     # Call the appropriate wrapper based on analysis_name
-    if args.analysis_name == 'tfa_major_b':
-        wrapper_plots_tfa_major_b_condition(args, stats, stats_sig)
+    if args.analysis_name in ('tfa_major_b', 'tfa_major_mc', 'tfa_major_sc'):
+        wrapper_plots_tfa_major_condition(args, stats, stats_sig)
     elif args.analysis_name == 'tfa_sub_b':
         wrapper_plots_tfa_sub_b_condition(args, stats, stats_sig)
-    elif args.analysis_name in ('ge_major_b', 'ge_sub_b'):
+    elif args.analysis_name in ('ge_major_b', 'ge_major_mc', 'ge_sub_b'):
         wrapper_plots_gene_expression_condition(args, stats, stats_sig)
     elif args.analysis_name == 'ct_tf_markers':
         wrapper_plots_ct_tf_markers_condition(args, stats, stats_sig)

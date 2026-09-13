@@ -224,31 +224,30 @@ def format_data(adata, dataset_name):
     adata = remove_attributes(adata, keep_layers=(dataset_name == 'op'))
     adata.obs[bulk_group_col] = adata.obs[bulk_group].astype(str).agg('_'.join, axis=1)
     return adata
-def basic_qc(adata, run_test, n_groups=None, max_pct_mt=20.0):
+def basic_qc(adata, run_test, max_pct_mt=20.0, doublets=False):
     print('Shape before filtering:', adata.shape, flush=True)
     adata.var["mt"] = adata.var_names.str.startswith("MT-")
     sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
-    # n_groups drives the gene min_cells threshold below; pass it in explicitly
-    # when adata is a memory-bound chunk of a larger dataset (see script.py),
-    # otherwise it's derived from adata itself (already the full dataset).
-    if n_groups is None:
-        n_groups = adata.obs['bulk_group'].nunique()
-    if run_test:
-        min_cells = 2
-        min_genes = 2
-    else:
-        min_genes = 100
-        min_cells_per_group = 10 # - consider the number of donors
-        min_cells = int(n_groups * min_cells_per_group)
-        min_cells = max(min_cells, 10)
+    min_genes = 2 if run_test else 100
 
     sc.pp.filter_cells(adata, min_genes=min_genes)
     sc.pp.filter_cells(adata, max_genes=5000)
     if not run_test:
         adata = adata[adata.obs['pct_counts_mt'] < max_pct_mt].copy()
-    # Apply filters
-    sc.pp.filter_genes(adata, min_cells=min_cells)
-    sc.pp.filter_genes(adata, min_counts=1)
+    if doublets and not run_test:
+        # ponytail: scanpy's scrublet, batched per bulk_group, no extra dependency.
+        # Per-group so doublets are simulated within a sample; cross-sample doublets
+        # can't exist. Only enabled for CXCL9 (smallest cohort, not pre-QC'd upstream);
+        # the demuxed public cohorts already had cross-donor doublets removed.
+        sc.pp.scrublet(adata, batch_key='bulk_group')
+        n_doublet = int(adata.obs['predicted_doublet'].sum())
+        print(f'Scrublet: removing {n_doublet:,} predicted doublets '
+              f'({100*n_doublet/adata.n_obs:.1f}%)', flush=True)
+        adata = adata[~adata.obs['predicted_doublet']].copy()
+    # No gene filtering here: the donor-scaled min_cells made the detection threshold
+    # depend on cohort donor count (4.8x spread). Keeping var identical across chunks
+    # also makes the ad.concat(join='inner') below exact. Genes are filtered once
+    # after concat in script.py; selection proper is left to downstream.
     print('Shape after filtering:', adata.shape, flush=True)
     assert adata.shape[0] > 0, "No cells left after QC filtering."
     return adata

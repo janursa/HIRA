@@ -7,11 +7,11 @@
 #SBATCH --time=20:00:00
 #SBATCH --mem=1000GB
 #SBATCH --partition=cpu
-#SBATCH --mail-type=END,FAIL      
-#SBATCH --mail-user=jalil.nourisa@gmail.com   
 
 
 set -e
+
+source scripts/_env.sh
 
 
 python src/process_dataset/parse_bioscience/script.py

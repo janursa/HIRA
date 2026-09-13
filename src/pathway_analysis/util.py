@@ -1,8 +1,10 @@
 
+import time
 import os
 import numpy as np
 import pandas as pd
 import json
+from scipy.stats import hypergeom, false_discovery_control
 from hira.src.config import  PRIOR_DIR
 def get_opengenes_sets():
     df = pd.read_csv(f'{PRIOR_DIR}/gene-aging-mechanisms.tsv', sep='\t')
@@ -211,20 +213,17 @@ def run_ora_local(gene_list, background_genes, gene_sets, min_size=5, max_size=5
             "Hits": k,
             "P-value": pval,
             "Gene Ratio": k / n,
-            "Genes": list(gene_list & term_genes),
+            "Genes": ';'.join(sorted(gene_list & term_genes)),  # Enrichr's format, callers split on ';'
         })
 
     # Compile and adjust p-values
     df = pd.DataFrame(results)
     if not df.empty:
-        df['FDR'] = np.minimum(1.0, df['P-value'] * len(df))  # Benjamini-Hochberg correction (simplified)
+        df['FDR'] = false_discovery_control(df['P-value'].values, method='bh')
         df = df.sort_values("P-value")
     return df
 
-def gsea_func(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hallmark_2020'], feature_col='gene'):
-    import gseapy as gp
-    # from hira.src.utils.util import get_genesets
-    from gseapy import barplot, dotplot
+def gsea_func(df, pvalue_col='meta_p_adj', gene_sets='hallmark', feature_col='gene'):
     all_genes = np.loadtxt(f'{PRIOR_DIR}/tf_all.csv', dtype=str)
     # all_genes = np.loadtxt(f'{PRIOR_DIR}/gene_names.txt', dtype=str)
     # gene_sets =  get_genesets()
@@ -241,24 +240,14 @@ def gsea_func(df, pvalue_col='meta_p_adj', gene_sets=['MSigDB_Hallmark_2020'], f
             genes = stats_df[stats_df[pvalue_col]<0.001][feature_col].unique().tolist()
             if len(genes) == 0:
                 continue
-            if True:
-                rr = gp.enrichr(gene_list=list(genes),
-                                gene_sets=gene_sets, #, 'KEGG_2021_Human'
-                                organism='human', 
-                                outdir=None, 
-                                cutoff=1,
-                                background=all_genes,
-                                )
-                res2d = rr.res2d
-                res2d.rename(columns={'Adjusted P-value': 'FDR'}, inplace=True)
-            else:
-                res2d = run_ora_local(genes, background_genes=all_genes, gene_sets=gene_sets, min_size=1, max_size=500)
-                res2d['Term'] = (
-                res2d['Term']
-                    .str.replace('HALLMARK_', '', regex=False)
-                    .str.replace('_', ' ', regex=False)
-                    # .str.title()
-                )
+            # ponytail: local hypergeometric ORA against the cached MSigDB library.
+            # Enrichr's public API returned truncated/HTML bodies under load and silently
+            # dropped whole cell_type/trend cells from the figure.
+            res2d = run_ora_local(genes, background_genes=all_genes,
+                                  gene_sets=get_genesets(pathway=gene_sets),
+                                  min_size=1, max_size=500)
+            if res2d.empty:
+                continue
 
             filter_col = 'FDR' #'FDR q-val'
             res2d = res2d[res2d[filter_col]<0.05]
@@ -298,7 +287,7 @@ def wrapper_gsea(stats, palette=None, **kwargs):
         (fig, ax) matplotlib figure and axes objects
     """
     import matplotlib.pyplot as plt
-    from hira.src.feature_association.plots import dotplot_category_color
+    from hira.src.network_analysis.plots import dotplot_category_color
     
     if palette is None:
         from hira.src.config import palette_trend_2
@@ -306,6 +295,9 @@ def wrapper_gsea(stats, palette=None, **kwargs):
     
     # Handle feature_type parameter (convert to feature_col for gsea_func)
     pathway_scores = gsea_func(stats, **kwargs)
+    if pathway_scores is None or pathway_scores.empty:
+        print('  No enriched pathways -- skipping GSEA plot', flush=True)
+        return None, None
     n_terms = pathway_scores['Term'].nunique()
     cell_types = pathway_scores['cell_type'].unique()
     fig, ax = plt.subplots(1, 1, figsize=(len(cell_types)*.12+1, 1+.15*n_terms), sharey=True, sharex=True)

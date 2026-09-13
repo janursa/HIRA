@@ -8,10 +8,14 @@ import scanpy as sc
 from pathlib import Path
 from scipy import stats
 from hira.src.config import DATA_TYPES, MAJOR_CT_LABEL, SUB_CTS, DISCOVERY_COHORTS, mapping_minor_2_major, CONSENSUS_MIN_DEGREE, \
-     SUB_CT_LABEL, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR, NET_WEIGHT_THRESHOLD, NET_MAX_SIZE
+     SUB_CT_LABEL, get_config, PRIOR_DIR, DATA_DIR, GRNS_DIR, NET_WEIGHT_THRESHOLD, NET_MAX_SIZE, NET_SKELETON
 
 # increase width of output display
 pd.set_option('display.max_columns', None)
+
+def coarsen(series):
+    """Strip a trailing batch index, e.g. 'IN_NIB_B001'->'IN_NIB', 'Data1_6'->'Data1'."""
+    return series.astype(str).str.replace(r'_[A-Za-z]*\d+$', '', regex=True)
 
 def read_gmt(file_path: str) -> dict[str, list[str]]:
     """Reas gmt file and returns a dict of gene"""
@@ -33,7 +37,8 @@ def retrieve_adata(dataset,
                    cell_type=None, 
                    age_limit=20, 
                    condition=None, 
-                   only_net_genes=False, 
+                   only_net_genes=False,
+                   only_sig_genes=False,
                    granularity=MAJOR_CT_LABEL,
                    mask_condition_col='condition', 
                    test_mode=False,
@@ -42,7 +47,7 @@ def retrieve_adata(dataset,
     
     assert data_type in DATA_TYPES, f'Unknown type {data_type}'
     if test_mode:
-        adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/zhang.h5ad", backed='r')
+        adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/wang.h5ad", backed='r')
         adata.obs['dataset'] = dataset
     else:
         adata = ad.read_h5ad(f"{DATA_DIR}/{data_type}/{dataset}.h5ad", backed='r')
@@ -76,6 +81,11 @@ def retrieve_adata(dataset,
         print('Filtering to only genes in the GRN network...')
         net = retrieve_net_consensus(cell_type=cell_type)
         mask_genes &= adata.var_names.isin(net['target'].unique())
+    if only_sig_genes:
+        from hira.src.feature_association.helper import retrieve_sig_stats  # local: avoids circular import
+        print('Filtering to only genes significantly associated with aging...')
+        sig_genes = retrieve_sig_stats(analysis_name='ge_major_b', cell_type=cell_type)['gene'].unique()
+        mask_genes &= adata.var_names.isin(sig_genes)
     # For datasets with pre-mapped labels, use them instead of CellTypist-assigned Major_CT
     # if dataset in ['soundlife', 'parsebioscience'] and 'Major_CT_original' in obs.columns:
     #     print('Remove meeee - using original major cell type labels for soundlife and parsebioscience')
@@ -212,21 +222,21 @@ def retrieve_adata(dataset,
 
     return adata
 
-def retrieve_net(dataset, cell_type, promotor_only=False, data_type='sc', grns_dir=GRNS_DIR, prior_dir=PRIOR_DIR):      
+def retrieve_net(dataset, cell_type, skeleton=NET_SKELETON, data_type='sc', grns_dir=GRNS_DIR, prior_dir=PRIOR_DIR):
     cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
     assert cell_type_major in ['CD4T', 'CD8T', 'NK', 'B', 'MONO', 'all'], f'Unknown cell type {cell_type_major}'
+    assert skeleton in ('skeleton', 'promotor', None), f'Unknown skeleton {skeleton}'
     folder = f"{grns_dir}/{dataset}/{data_type}/"
     
     net = pd.read_csv(f"{folder}/net_{cell_type_major}.csv")
     gene_names = np.loadtxt(f'{prior_dir}/gene_names.txt', dtype=str)
     net = net[net['target'].isin(gene_names)]
-    if promotor_only:
-        net = net[net['promotor_based']]
-    
     if NET_WEIGHT_THRESHOLD is not None:
         net = net[net['weight'] > NET_WEIGHT_THRESHOLD]
     if NET_MAX_SIZE is not None:
         net = net.sort_values(by='weight', ascending=False, key=abs).head(NET_MAX_SIZE)
+    if skeleton is not None:
+        net = net[net[f'{skeleton}_based']]
     return net[['source', 'target', 'weight', 'cell_type']]
 
 # def retrieve_nets(datasets, cell_type, promotor_only=False):
@@ -238,11 +248,15 @@ def retrieve_net(dataset, cell_type, promotor_only=False, data_type='sc', grns_d
 #     nets = pd.concat(net_store, ignore_index=True)
 #     return nets
 
-def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CONSENSUS_MIN_DEGREE, promotor_only=False, force=False, grns_dir=None):
+def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CONSENSUS_MIN_DEGREE, skeleton=NET_SKELETON, force=False, grns_dir=None, cache=True):
+    # One cache file per cell type. Its contents follow the config (NET_SKELETON,
+    # NET_MAX_SIZE, ...) in force at build time -- rerun consensus_nets.py after
+    # changing any of them.
     if grns_dir is None:
         grns_dir = GRNS_DIR
-    save_name = f"{grns_dir}/consensus_net_{cell_type}_minDegree{min_degree}{'_promotorOnly' if promotor_only else ''}.csv"
-    if Path(save_name).exists() and not force:
+    # The cache filename doesn't encode skeleton/min_degree -- pass cache=False when varying them.
+    save_name = f"{grns_dir}/consensus_net_{cell_type}.csv"
+    if cache and Path(save_name).exists() and not force:
         # print('Loading existing consensus GRN for', cell_type, 'with min degree', min_degree)
         net_mean = pd.read_csv(save_name)
         return net_mean
@@ -250,7 +264,7 @@ def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CON
     from scipy.stats import zscore
     net_store = []
     for dataset in datasets:
-        net = retrieve_net(dataset, cell_type, promotor_only=promotor_only, grns_dir=grns_dir)
+        net = retrieve_net(dataset, cell_type, skeleton=skeleton, grns_dir=grns_dir)
         net['dataset'] = dataset
         net_store.append(net)
     nets = pd.concat(net_store)
@@ -283,8 +297,9 @@ def retrieve_net_consensus(cell_type, datasets=DISCOVERY_COHORTS, min_degree=CON
             .mean()
             .reset_index()
         )
-    net_mean.to_csv(save_name, index=False)
-    
+    if cache:
+        net_mean.to_csv(save_name, index=False)
+
     return net_mean
 
 
@@ -683,6 +698,28 @@ def test_unpaired(df, ctr, treatment):
     return p_value, slope
 
 
+# HGNC gene groups 728 ("S ribosomal proteins") + 729 ("L ribosomal proteins"), fetched from
+# https://www.genenames.org/cgi-bin/genegroup/download?id=728&type=branch (and id=729).
+# A prefix regex like RP[SL] also catches RPS6KA1/3/4/5, RPS6KB1, RPS6KC1, RPS6KL1, RPS19BP1
+# (S6-kinase family, not ribosomal proteins) -- use the curated symbol list instead.
+RB_GENES = [
+    'FAU', 'RPL10', 'RPL10A', 'RPL10L', 'RPL11', 'RPL12', 'RPL13', 'RPL13A', 'RPL14', 'RPL15',
+    'RPL17', 'RPL18', 'RPL18A', 'RPL19', 'RPL21', 'RPL22', 'RPL22L1', 'RPL23', 'RPL23A', 'RPL24',
+    'RPL26', 'RPL26L1', 'RPL27', 'RPL27A', 'RPL28', 'RPL29', 'RPL3', 'RPL30', 'RPL31', 'RPL32',
+    'RPL34', 'RPL35', 'RPL35A', 'RPL36', 'RPL36A', 'RPL36AL', 'RPL37', 'RPL37A', 'RPL38', 'RPL39',
+    'RPL39L', 'RPL3L', 'RPL4', 'RPL41', 'RPL5', 'RPL6', 'RPL7', 'RPL7A', 'RPL7L1', 'RPL8', 'RPL9',
+    'RPLP0', 'RPLP1', 'RPLP2', 'RPS10', 'RPS11', 'RPS12', 'RPS13', 'RPS14', 'RPS15', 'RPS15A',
+    'RPS16', 'RPS17', 'RPS18', 'RPS19', 'RPS2', 'RPS20', 'RPS21', 'RPS23', 'RPS24', 'RPS25',
+    'RPS26', 'RPS27', 'RPS27A', 'RPS27L', 'RPS28', 'RPS29', 'RPS3', 'RPS3A', 'RPS4X', 'RPS4Y1',
+    'RPS4Y2', 'RPS5', 'RPS6', 'RPS7', 'RPS8', 'RPS9', 'RPSA', 'UBA52',
+]
+
+def filter_rb_mt_genes(adata):
+    """Drop mitochondrial (MT-*) and ribosomal protein (RB_GENES) genes."""
+    drop = adata.var_names.str.startswith('MT-') | adata.var_names.isin(RB_GENES)
+    print(f'Dropping {drop.sum()} RB/MT genes', flush=True)
+    return adata[:, ~drop].copy()
+
 def basic_qc(adata, min_genes_per_cell=200, max_genes_per_cell=5000, min_cells_per_gene=10):
     mt = adata.var_names.str.startswith("MT-")
     print("shape before ", adata.shape)
@@ -779,3 +816,58 @@ def bulkify_func(adata, cell_count_t=10, covariates=['cell_type', 'donor_id', 'a
     adata_bulk.obs = adata_bulk.obs.merge(cell_count_df, on='sum_by')
     adata_bulk = adata_bulk[adata_bulk.obs['cell_count'] >= cell_count_t]
     return adata_bulk
+
+
+def metacellify_func(adata, target_size=15, cell_count_t=5, n_pcs=15, random_state=0,
+                      covariates=['cell_type', 'donor_id', 'age']):
+    """Aggregate single-cell counts into metacells (~target_size cells each).
+
+    Within each covariate group (e.g. donor x cell type), cells are split into
+    sub-clusters of ~target_size cells via MiniBatchKMeans on a PCA embedding
+    of the group's normalized expression, then raw counts are summed per
+    sub-cluster. This controls metacell size directly (n_clusters = n_cells /
+    target_size) rather than via Leiden resolution, which doesn't map
+    predictably to cluster size.
+    """
+    from sklearn.cluster import MiniBatchKMeans
+    from sklearn.decomposition import PCA
+    import scipy.sparse as sp
+    import gc
+
+    adata.obs['group'] = ''
+    for covariate in covariates:
+        adata.obs['group'] += '_' + adata.obs[covariate].astype(str)
+
+    metacell_id = np.empty(adata.n_obs, dtype=object)
+    for group, idx in adata.obs.groupby('group').indices.items():
+        n_cells = len(idx)
+        n_clusters = max(1, round(n_cells / target_size))
+        if n_clusters >= n_cells:
+            # ponytail: too few cells to cluster meaningfully, one metacell per cell
+            labels = np.arange(n_cells)
+        else:
+            X = adata.X[idx]
+            if sp.issparse(X):
+                X = X.toarray()
+            # normalize_total + log1p are per-cell, so doing them on the group slice is
+            # identical to normalizing the whole matrix, without the full-size copy
+            totals = X.sum(axis=1, keepdims=True)
+            totals[totals == 0] = 1
+            X = np.log1p(X * (1e4 / totals))
+            n_comp = min(n_pcs, X.shape[0] - 1, X.shape[1])
+            if n_comp >= 2:
+                X = PCA(n_components=n_comp, random_state=random_state).fit_transform(X)
+            labels = MiniBatchKMeans(
+                n_clusters=n_clusters, random_state=random_state, n_init=3
+            ).fit_predict(X)
+        metacell_id[idx] = [f'{group}_mc{l}' for l in labels]
+    gc.collect()
+
+    adata.obs['metacell_id'] = pd.Categorical(metacell_id)
+    adata_mc = sum_by(adata, 'metacell_id', unique_mapping=True)
+    cell_count_df = adata.obs.groupby('metacell_id').size().reset_index(name='cell_count')
+    if 'cell_count' in adata_mc.obs:
+        adata_mc.obs.drop('cell_count', axis=1, inplace=True)
+    adata_mc.obs = adata_mc.obs.merge(cell_count_df, on='metacell_id')
+    adata_mc = adata_mc[adata_mc.obs['cell_count'] >= cell_count_t]
+    return adata_mc

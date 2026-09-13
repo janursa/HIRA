@@ -17,10 +17,10 @@ from scipy.cluster.hierarchy import linkage
 from matplotlib.patches import Patch
 
 
-from hira.src.config import FEATURES_DIR, MAJOR_CT_LABEL, PRIOR_DIR, MAJOR_CTS, SUB_CTS , PLOTS_DIR, colors_blind, DISCOVERY_COHORTS, \
+from hira.src.config import FEATURES_DIR, MAJOR_CT_LABEL, PRIOR_DIR, MAJOR_CTS, SUB_CTS , PLOTS_DIR, AGING_PLOTS_DIR, colors_blind, DISCOVERY_COHORTS, \
     surrogate_names, palette_datasets, palette_trend, palette_datasets_pretty, mapping_minor_2_major, \
     palette_trend_2, palette_major_cts, palette_sub_cts, palette_datasets, palette_trend_2, colors_blind, \
-        get_config_fa, cmap_trend
+        get_config_fa, cmap_trend, REF_GE_ANALYSIS
 from hira.src.feature_association.helper import bin_feature_values, retrieve_feature_data, \
                                                     retrieve_sig_stats, retrieve_stats
 from hira.src.utils.util import retrieve_net, retrieve_adata, retrieve_net_consensus
@@ -48,9 +48,9 @@ def wrapper_sig_features_counts(args):
     
     feature_type = get_config_fa(args.analysis_name)['feature_type']
     plt.ylabel('Significant TFs' if feature_type == 'tf_activity' else 'Significant features')
-    file_name = f"{PLOTS_DIR}/aging_features_count_{args.analysis_name}.png"
+    file_name = f"{AGING_PLOTS_DIR}/aging_features_count_{args.analysis_name}.png"
     print(f"Saving figure to {file_name}")
-    plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+    plt.savefig(file_name, bbox_inches='tight', dpi=300)
 
 
 def plot_aging_overlap(analysis_name, stats_sig, cell_types, args):
@@ -85,7 +85,13 @@ def plot_aging_overlap(analysis_name, stats_sig, cell_types, args):
             
             # Get aging data for this cell type (keep cell_type column for plot_overlap)
             aging_stats_sig_ct = aging_stats_sig[aging_stats_sig['cell_type'] == cell_type][['gene', 'cell_type', 'slope']].copy()
-            
+
+            if len(aging_stats_sig_ct) == 0:
+                # ponytail: no significant aging TFs for this cell type -> nothing to overlap/plot
+                print(f"    Warning: No aging reference data for {cell_type}")
+                ax.axis('off')
+                continue
+
             # Merge aging slopes with condition slopes
             merged = aging_stats_sig_ct[['gene', 'slope']].merge(
                 stats_sig_sub_renamed, 
@@ -124,11 +130,43 @@ def plot_aging_overlap(analysis_name, stats_sig, cell_types, args):
         comparison = comparison.replace('(', '_').replace(')', '_').replace(':', '_').replace(' ', '_')
         name_suffix = f'{dataset}_{comparison}'
         plt.tight_layout()
-        output_path = os.path.join(output_dir, f'ref_overlap_{name_suffix}_{args.feature_type}.png')
+        output_path = os.path.join(output_dir, f'ref_overlap_{name_suffix}_{args.feature_type}_{analysis_name}.png')
         output_path = output_path.replace(' ', '_').replace('(', '_').replace(')', '_').replace(':', '_')
-        plt.savefig(output_path, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
         plt.close()
         print(f"    Saved: {output_path}")
+
+def _annotate_extreme_tfs(ax, cell_data, association_col, n=5, rank_on='x'):
+    """Circle the n most extreme TFs at each end of the `rank_on` axis and print their names."""
+    from matplotlib.patches import Ellipse
+    xs, ys = f'{association_col}_sl', f'{association_col}_ref'
+    rank = xs if rank_on == 'x' else ys
+    x_range = np.diff(ax.get_xlim())[0]
+    y_range = np.diff(ax.get_ylim())[0]
+    for side in (1, -1):
+        sub = cell_data.nlargest(n, rank) if side > 0 else cell_data.nsmallest(n, rank)
+        if len(sub) == 0:
+            continue
+        cx, cy = sub[xs].mean(), sub[ys].mean()
+        w = (sub[xs].max() - sub[xs].min()) + 0.10 * x_range
+        h = (sub[ys].max() - sub[ys].min()) + 0.10 * y_range
+        ax.add_patch(Ellipse((cx, cy), w, h, fill=False, edgecolor='indianred', lw=0.5, linestyle='--', zorder=5))
+        # ponytail: grow the limits so the ellipse never gets clipped by the axes
+        ax.set_xlim(min(ax.get_xlim()[0], cx - w / 2 - 0.02 * x_range),
+                    max(ax.get_xlim()[1], cx + w / 2 + 0.02 * x_range))
+        ax.set_ylim(min(ax.get_ylim()[0], cy - h / 2 - 0.02 * y_range),
+                    max(ax.get_ylim()[1], cy + h / 2 + 0.02 * y_range))
+        genes = list(sub['gene'])
+        # ponytail: 3 names per line keeps the block narrower than the ellipse
+        label = '\n'.join(', '.join(genes[i:i + 3]) for i in range(0, len(genes), 3))
+        # ponytail: label always points to the plot centre, so it never runs off the top/bottom edge
+        y_mid = sum(ax.get_ylim()) / 2
+        inward_down = cy > y_mid
+        anchor, va, dy = ((cx, cy - h / 2), 'top', -3) if inward_down else ((cx, cy + h / 2), 'bottom', 3)
+        ax.annotate(label, xy=anchor, xytext=(0, dy), textcoords='offset points',
+                    ha='center', va=va, fontsize=6, color='black', clip_on=False, zorder=6)
+        print(f"    extreme TFs ({'positive' if side > 0 else 'negative'}): {', '.join(genes)}")
+
 
 def plot_directional_consistency_scatter(
                                         stats, 
@@ -139,9 +177,14 @@ def plot_directional_consistency_scatter(
                                         agreement='same',
                                         label_consistent = 'Consistent',
                                         label_opposing = 'Opposing',
-                                        output_dir = FEATURES_DIR,
+                                        output_dir = PLOTS_DIR,
                                         save_suffix = '',
-                                        pvalue_col='p_value_adj'
+                                        pvalue_col='p_value_adj',
+                                        min_tfs=5,
+                                        annotate_extreme=True,
+                                        ylabel_per_panel=True,
+                                        y_pad=1.2,
+                                        x_pad=1.05
                                         ):
     
     if len(stats) == 0:
@@ -235,9 +278,20 @@ def plot_directional_consistency_scatter(
     
     # Combine all cell types
     combined_data = pd.concat(all_cell_data, ignore_index=True)
-    
+
+    # ponytail: a panel with a handful of TFs says nothing -- drop it and shrink the figure
+    counts = combined_data['cell_type'].value_counts()
+    dropped = [ct for ct in included_cell_types if counts.get(ct, 0) < min_tfs]
+    if dropped:
+        print(f"  Dropping cell types with < {min_tfs} TFs: {dropped}")
+    included_cell_types = [ct for ct in included_cell_types if counts.get(ct, 0) >= min_tfs]
+    if not included_cell_types:
+        print(f"  Warning: no cell type has >= {min_tfs} TFs. Skipping plot.")
+        return
+    combined_data = combined_data[combined_data['cell_type'].isin(included_cell_types)]
+
     # Create grouped plot
-    fig, axes = plt.subplots(1, len(included_cell_types), figsize=(2 * len(included_cell_types) + 1, 2.7), sharey=False)
+    fig, axes = plt.subplots(1, len(included_cell_types), figsize=(2 * len(included_cell_types) + 2, 3.2), sharey=False)
     
     if len(included_cell_types) == 1:
         axes = [axes]
@@ -293,21 +347,17 @@ def plot_directional_consistency_scatter(
         y_max = max(abs(cell_data[f'{association_col}_ref'].min()), abs(cell_data[f'{association_col}_ref'].max()))
         
         # Add some padding
-        x_max *= 1.05
-        y_max *= 1.2  # Increased from 1.05 to 1.5 for more vertical space
+        x_max *= x_pad
+        y_max *= y_pad
         
         ax.set_xlim(-x_max, x_max)
         ax.set_ylim(-y_max, y_max)
         
         ax.set_xlabel(x_label, fontsize=10)
-        ax.set_ylabel(y_label, fontsize=10)
-        # if idx == 0:
-        #     ax.set_ylabel(y_label, fontsize=10)
-        # else:
-        #     ax.set_ylabel('')
+        ax.set_ylabel(y_label if (ylabel_per_panel or idx == 0) else '', fontsize=10)
         
         cell_type_display = surrogate_names.get(cell_type, cell_type)
-        ax.set_title(f'{cell_type_display}', fontsize=12, pad=30)
+        ax.set_title(f'{cell_type_display}', fontsize=12, pad=42)
         ax.grid(False)
 
         from matplotlib.lines import Line2D
@@ -327,11 +377,15 @@ def plot_directional_consistency_scatter(
                        markeredgecolor='darkgreen', markeredgewidth=0.5,
                        label=label_consistent.format(len(consistent)))
             )
-        ax.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 1.35), 
+        ax.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 1.24), 
                  frameon=False, fontsize=8, ncol=2, columnspacing=-.2)
+
+        print(f"  {cell_type}:")
+        if annotate_extreme:
+            _annotate_extreme_tfs(ax, cell_data, association_col)
     
     plt.tight_layout()
-    output_path = os.path.join(output_dir, f'consistency_scatter{save_suffix}.png')
+    output_path = os.path.join(output_dir, f'consistency_scatter_{save_suffix}.png' if save_suffix else 'consistency_scatter.png')
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"  Saved: {output_path}")
@@ -454,12 +508,12 @@ def plot_scatter_feature_vs_age(
         _plot_scatter_feature_vs_age(
             features=selected_features, analysis_name=analysis_name, cell_type=cell_type, datasets=datasets)
         tag = 'custom' if features is not None else ('top_central' if feature_selection_mode == 'top_central' else 'top_sig') 
-        file_name = f"{PLOTS_DIR}/scatter_feature_vs_age_{analysis_name}_{cell_type}_{tag}.png"
+        file_name = f"{AGING_PLOTS_DIR}/scatter_feature_vs_age_{analysis_name}_{cell_type}_{tag}.png"
         print(f"Saving figure to {file_name}")
-        plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(file_name, bbox_inches='tight', dpi=300)
         plt.close()
 def plot_young_vs_aging(analysis_name, cell_type, 
-                        young_age_threshold=30, annotate_top_n=10, plots_dir=PLOTS_DIR):
+                        young_age_threshold=30, annotate_top_n=10, plots_dir=AGING_PLOTS_DIR):
     """
     Plot mean feature values in young adults (< age threshold) vs aging slope.
 
@@ -568,14 +622,16 @@ def plot_young_vs_aging(analysis_name, cell_type,
     # Save plot
     file_name = f"{plots_dir}/young_vs_aging_{analysis_name}_{cell_type}.png"
     print(f"Saving figure to {file_name}")
-    plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+    plt.savefig(file_name, bbox_inches='tight', dpi=300)
     plt.close()
 
 def gsea_analysis(stats_sig):
     from hira.src.pathway_analysis.util import get_genesets, pathway_kde_func, get_hallmark, gsea_func, wrapper_gsea
 
-    wrapper_gsea(stats_sig)
-    file_name = f"{PLOTS_DIR}/gsea_tf_activity.png"
+    fig, _ = wrapper_gsea(stats_sig)
+    if fig is None:
+        return
+    file_name = f"{AGING_PLOTS_DIR}/gsea_tf_activity.png"
     print(f"Saving figure to {file_name}")
     plt.savefig(file_name, bbox_inches='tight', dpi=200)
 def plot_heatmap_overal(stats_aging, analysis_name):
@@ -590,19 +646,19 @@ def plot_heatmap_overal(stats_aging, analysis_name):
                         second_col='dataset', 
                         second_col_palette=palette_datasets,
                         bbox_to_anchor=(1.07, 1.07),
-                        bbox_to_anchor_col2=(1.05, .9),
-                        bbox_to_anchor_col1=(1.05, 0.61),
+                        bbox_to_anchor_col2=(1.05, .85),
+                        bbox_to_anchor_col1=(1.05, 0.52),
                         trend_colors = ['#B0BF1A', '#E52B50'],
                         trend_names = trends,
-                        figsize=(4, 7),
+                        figsize=(4, 5.5),
                         map_names={**{'cell_type':'Cell type', 'dataset': 'Dataset'}, **surrogate_names})
-    file_name = f"{PLOTS_DIR}/overall_heatmap_{analysis_name}.png"
+    file_name = f"{AGING_PLOTS_DIR}/overall_heatmap_{analysis_name}.png"
     print(f"Saving figure to {file_name}")
-    plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
-def plot_central_features(stats_aging, cell_types):
+    plt.savefig(file_name, bbox_inches='tight', dpi=300)
+def plot_central_features(stats_aging, cell_types, analysis_name, n_top=15, plots_dir=None):
     if True:
         # Parameters
-        n_top = 10
+        plots_dir = plots_dir or AGING_PLOTS_DIR
         focus = 'source'  # can be 'source' or 'target'
         palette = palette_trend_2  # assume this dict is defined
 
@@ -626,7 +682,7 @@ def plot_central_features(stats_aging, cell_types):
         plot_df[focus] = plot_df[focus].astype(str)
         plot_df = plot_df.sort_values(by=['cell_type', col_c], ascending=[True, False])
         n_cols = len(cell_types)
-        fig, axes = plt.subplots(1, n_cols, figsize=(1.5*n_cols, 2.1 ), sharex=False)
+        fig, axes = plt.subplots(1, n_cols, figsize=(1.5*n_cols, 0.14*n_top + 0.7), sharex=False)
 
         if n_cols == 1:
             axes = [axes]
@@ -646,9 +702,9 @@ def plot_central_features(stats_aging, cell_types):
             ax.spines[['top', 'right']].set_visible(False)
             i+=1
         fig.tight_layout()
-        file_name = os.path.join(PLOTS_DIR, f'central_aging_{focus}.png')
+        file_name = os.path.join(plots_dir, f'central_aging_{focus}_{analysis_name}.png')
         print(f"Saving figure to {file_name}")
-        plt.savefig(file_name, bbox_inches='tight', dpi=300, transparent=True)
+        plt.savefig(file_name, bbox_inches='tight', dpi=300)
 def plot_interaction_of_features_between_cell_types(args):
     from hira.src.utils.plots import plot_interactions, create_interaction_df
 
@@ -659,19 +715,20 @@ def plot_interaction_of_features_between_cell_types(args):
     df_dict = stats_sig.groupby(['cell_type'])['gene'].apply(list).to_dict()
     interaction_main_df = create_interaction_df(df_dict)
     aa = plot_interactions(interaction_main_df, min_subset_size=5, min_degree=1, color_map=palette_major_cts)
-    file_name = f"{PLOTS_DIR}/interactions.png"
+    file_name = f"{AGING_PLOTS_DIR}/interactions_{args.analysis_name}.png"
     print(f"Saving figure to {file_name}")
-    plt.savefig(file_name, dpi=300, transparent=True, bbox_inches='tight')
+    plt.savefig(file_name, dpi=300, bbox_inches='tight')
     # plt.title(surrogate_names[race], pad=40, fontsize=10, fontweight='bold')
 
     ttypes = ['CD8T', 'CD4T', 'NK']
-    mask = interaction_main_df[ttypes].sum(axis=1)==len(ttypes)
-    features = mask[mask].index.unique()
-    print(len(features))
-    for cell_type in ttypes:
-        plot_features_vs_datasets(cell_type=cell_type, datasets=DISCOVERY_COHORTS, features=features, 
-                                    sizes=(90, 100), analysis_name=args.analysis_name
-                                    )
+    if all(t in interaction_main_df.columns for t in ttypes):
+        mask = interaction_main_df[ttypes].sum(axis=1)==len(ttypes)
+        features = mask[mask].index.unique()
+        print(len(features))
+        for cell_type in ttypes:
+            plot_features_vs_datasets(cell_type=cell_type, datasets=DISCOVERY_COHORTS, features=features,
+                                        sizes=(90, 100), analysis_name=args.analysis_name
+                                        )
     if False: ### Shared sig TFs between CD8T and CD4T
         from hira.src.feature_association.plots import plot_joint_scatter
         ttypes = ['CD8T', 'CD4T']
@@ -687,7 +744,8 @@ def plot_interaction_of_features_between_cell_types(args):
 
 def plot_case_tf(args):
     from hira.src.feature_association.plots import plot_feature_values_all_datasets
-    selected_cell_types = ['CD8T', 'CD4T', 'NK'] # ['CD8T', 'CD4T', 'NK'] #Tcm_Naive_CD8
+    selected_cell_types = [ct for ct in ['CD8T', 'CD4T', 'NK']
+                           if ct in get_config_fa(args.analysis_name).get('cell_types', MAJOR_CTS)]
     datasets = DISCOVERY_COHORTS
     plot_genexpression = True
     show_cbar=False
@@ -709,11 +767,11 @@ def plot_case_tf(args):
             if plot_genexpression:
                 ax.set_xlabel('')
                 ax = axes[1]
-                plot_feature_values_all_datasets(cell_type, analysis_name='ge_major_b', feature=case_tf, 
+                plot_feature_values_all_datasets(cell_type, analysis_name=REF_GE_ANALYSIS, feature=case_tf, 
                                                 datasets=datasets, show_cbar=show_cbar, ax=ax, show_ylabels=show_ylabels)
             
             plt.suptitle(f'{cell_type}', y=1.05)
-            file_name = f"{PLOTS_DIR}/case_tf_{case_tf}_{cell_type}.png"
+            file_name = f"{AGING_PLOTS_DIR}/case_tf_{case_tf}_{cell_type}_{args.analysis_name}.png"
             print(f"Saving figure to {file_name}")
             plt.savefig(file_name, bbox_inches='tight', dpi=300)
 
@@ -725,7 +783,7 @@ def sig_features_counts(df, figsize=None, palette=None, ax=None):
     df_counts = df.groupby(['cell_type', 'trend']).size().reset_index(name='count')
     if ax is None:
         if figsize is None:
-            figsize = (.3*x_label_count+1, 2.5)
+            figsize = (.3*x_label_count+1, 2)
         fig, ax = plt.subplots(1, 1, figsize=figsize)
     sns.barplot(data=df_counts, x='cell_type', y='count', alpha=.8, hue='trend', palette=palette, ax=ax)
     # ax.set_ylabel('Gene count')
@@ -892,13 +950,16 @@ def plot_trend_sle_case(adata, tf='LEF1', cell_type='CD8T'):
     plt.tight_layout()
 
 def plot_tf_act_central_tfs(df, all_groups, palette_all, feature_col='gene', figsize=(3.5, 5), plot_centrality=True,
-                                ax2_margins={'y': 0.1, 'x': 0.1}, hide_ylabels=False, show_legend=True):
+                                ax2_margins={'y': 0.1, 'x': 0.1}, hide_ylabels=False, show_legend=True,
+                                width_ratios=(1.2, .8), axes=None):
     
     # stats_d_sig = stats_d[stats_d['p_value_adj'] < 0.05]
     # --- Plot ---
     tfs = df[feature_col].unique()
-    if plot_centrality:
-        fig, axes = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': [1.2, .8]})
+    if axes is not None:  # draw into caller-provided axes (assembled figures)
+        pass
+    elif plot_centrality:
+        fig, axes = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': list(width_ratios)})
     else:
         fig, axes = plt.subplots(1, 1, figsize=figsize)
 
@@ -1081,7 +1142,7 @@ def plot_features_vs_datasets(cell_type,
                               filter_significant=True, 
                               features_dir=None,
                               show_size_legend=False,
-                              plots_dir=PLOTS_DIR,
+                              plots_dir=AGING_PLOTS_DIR,
                               grns_dir=None,
                               ):
 
@@ -1136,8 +1197,9 @@ def plot_features_vs_datasets(cell_type,
     stats_t['dataset'] = stats_t['dataset'].apply(lambda name: surrogate_names.get(name, name))
 
     if stats_t.shape[0]==0:
-        raise ValueError(f'No data for {cell_type} {feature_type}')
-        
+        print(f'No data for {cell_type} {feature_type}, skipping plot_features_vs_datasets')
+        return
+
     # Calculate automated layout parameters
     n_features = len(features)
     # Use logarithmic scaling for many features - more generous spacing (looser)
@@ -1322,7 +1384,7 @@ def plot_features_vs_datasets(cell_type,
         wspace=wspace
     )
     if os.path.exists(plots_dir):
-        file_name = f'{plots_dir}/feature_vs_datasets_{cell_type}_{feature_type}.png'
+        file_name = f'{plots_dir}/feature_vs_datasets_{cell_type}_{feature_type}_{analysis_name}.png'
         plt.savefig(file_name, dpi=300, bbox_inches='tight')
         print(f'Saved figure to {file_name}')
     else:
@@ -1681,6 +1743,8 @@ def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", 
                  ax=ax)
     ax.set_yticks(np.arange(mean_expr.shape[0]) + 0.5)
     ax.set_yticklabels(mean_expr.index, rotation=0)
+    ax.set_xticks(np.arange(mean_expr.shape[1]) + 0.5)
+    ax.set_xticklabels(mean_expr.columns, rotation=90)
 
     # Modify the colorbar
     if show_cbar:
@@ -1694,7 +1758,6 @@ def heatplot_age_trend(mean_expr, cmap="viridis", cbar_title="Gene expression", 
 
     # Labels and formatting
     ax.set_xlabel("Age")
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
 
 def heamap_overview_cell_types(stats_all, 
                                palette, 
@@ -1905,7 +1968,9 @@ def plot_activation_vs_expression(df_combined,
                                   col_y = 'signed_-log10_pval', 
                                   y_label = "Activation\nsigned -log10(p adj)",
                                   x_label = "Expression\nsigned -log10(p adj)",
-                                  figsize=(4, 2.7)):
+                                  figsize=(4, 2.7),
+                                  n_label=5,
+                                  sig_threshold=1.4):
     import matplotlib.patches as mpatches
     cell_types_local = df_combined["cell_type"].unique()
     n_cell_types = len(cell_types_local)
@@ -1928,22 +1993,29 @@ def plot_activation_vs_expression(df_combined,
             alpha=0.7,
             ax=ax,
         )
-        top_tfs = df_dataset.sort_values(by='p_value_adj_target', ascending=False).head(2)
-        # compute small offsets relative to axis ranges
-        x_range = df_dataset[col_x].max() - df_dataset[col_x].min()
-        y_range = df_dataset[col_y].max() - df_dataset[col_y].min()
-        x_offset = 0.2 * x_range
-
-        for _, row in top_tfs.iterrows():
-            ax.text(
-                row[col_x] + x_offset,
-                row[col_y] + np.random.rand() * .1 *  y_range,
-                row['gene'],  # assumes TF names are in column 'gene'
-                fontsize=7,
-                ha='left',    # anchor text to the left since we shift right
-                va='bottom',  # anchor text above since we shift up
-                color='black'
-            )
+        # discordant TFs: significant in activity, not in expression -- circled at both ends,
+        # top n_label per end labelled by |activity significance|
+        disc = df_dataset[(df_dataset[col_y].abs() > sig_threshold)
+                          & (df_dataset[col_x].abs() < sig_threshold)]
+        ax.scatter(disc[col_x], disc[col_y], s=45, facecolors='none',
+                   edgecolors='black', linewidths=.6, zorder=3)
+        # the discordant points pile up at x~0, so labels go in the empty opposite quadrant
+        # (top-left for the up end, bottom-right for the down end) with leader lines
+        x_lo, x_hi = df_dataset[col_x].min(), df_dataset[col_x].max()
+        y_lo, y_hi = df_dataset[col_y].min(), df_dataset[col_y].max()
+        for end in (1, -1):
+            tail = disc[np.sign(disc[col_y]) == end]
+            tail = tail.loc[tail[col_y].abs().sort_values(ascending=False).index].head(n_label)
+            if not len(tail):
+                continue
+            x_lab = x_lo if end > 0 else 0.35 * x_hi
+            y_start, y_step = (y_hi, -0.07 * (y_hi - y_lo)) if end > 0 else (y_lo, 0.07 * (y_hi - y_lo))
+            for k, (_, row) in enumerate(tail.iterrows()):
+                y_lab = y_start + k * y_step
+                ax.plot([row[col_x], x_lab], [row[col_y], y_lab], lw=.3, color='grey',
+                        alpha=.7, zorder=2)
+                ax.text(x_lab, y_lab, row['gene'], fontsize=6, ha='left', va='center',
+                        color='black', zorder=4)
         # Annotate top genes with the highest activation significance
         xmin, xmax = df_dataset[col_x].min(), df_dataset[col_x].max()
         ymin, ymax = df_dataset[col_y].min(), df_dataset[col_y].max()
@@ -1956,7 +2028,6 @@ def plot_activation_vs_expression(df_combined,
         ax.spines['top'].set_visible(False)
         ax.set_aspect("equal", adjustable="datalim")
         padding = 0.15 * (global_max - global_min)
-        sig_threshold = 1.4
         ax.margins(x=0.01, y=0.05)
         linewidth = .5
         alpha = .4

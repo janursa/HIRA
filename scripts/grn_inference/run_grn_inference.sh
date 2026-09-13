@@ -7,8 +7,6 @@
 #SBATCH --time=16:00:00
 #SBATCH --mem=1000GB
 #SBATCH --partition=cpu
-#SBATCH --mail-type=END,FAIL      
-#SBATCH --mail-user=jalil.nourisa@gmail.com   
 
 declare -A dependencies
 
@@ -18,8 +16,7 @@ dependencies=(
 
 set -e
 
-# Load repo-level config (HIRA_DIR, HIRA_BASE_DIR, ...) if present
-[ -f .env ] && set -a && source .env && set +a
+source scripts/_env.sh
 
 # Parse command line arguments
 DATASET=$1

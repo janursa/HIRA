@@ -17,7 +17,7 @@ from scipy.cluster.hierarchy import linkage
 from matplotlib.patches import Patch
 import networkx as nx
 
-from hira.src.config import GRNS_DIR, PRIOR_DIR, MAJOR_CTS, OUTPUT_DIR, PLOTS_DIR, get_config, colors_blind, DISCOVERY_COHORTS, \
+from hira.src.config import GRNS_DIR, PRIOR_DIR, MAJOR_CTS, OUTPUT_DIR, PLOTS_DIR, get_config, colors_blind, DISCOVERY_COHORTS, NET_SKELETON, \
     surrogate_names, palette_datasets, mapping_minor_2_major, \
     palette_trend_2, palette_major_cts, palette_datasets, palette_trend_2, colors_blind, \
         get_config_fa, cmap_trend
@@ -35,7 +35,7 @@ class ModularizedNetPlot:
         sig_tfs = stats_sig_t.index.unique()
         datasets = DISCOVERY_COHORTS
         cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-        net = retrieve_nets(datasets, cell_type_major, promotor_only=True)
+        net = retrieve_nets(datasets, cell_type_major, skeleton='promotor')
 
         # - subset to only sig tfs
         net = net[(net['source'].isin(sig_tfs) & net['target'].isin(sig_tfs))]
@@ -266,7 +266,7 @@ def draw_net_datasets(cell_type, datasets, features, min_degree=3, indivitual_ne
     net_store = []
     for dataset in datasets:
         cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-        net = retrieve_net(dataset=dataset, cell_type=cell_type_major, promotor_only=promotor_only, grns_dir=grns_dir, prior_dir=prior_dir)
+        net = retrieve_net(dataset=dataset, cell_type=cell_type_major, skeleton='promotor' if promotor_only else NET_SKELETON, grns_dir=grns_dir, prior_dir=prior_dir)
         net['dataset'] = dataset
         net_store.append(net)
     net = pd.concat(net_store, ignore_index=True)
@@ -323,7 +323,7 @@ def draw_net_datasets_targets(cell_type, datasets, tfs, n_targets=10, promotor_o
     net_store = []
     for dataset in datasets:
         cell_type_major = mapping_minor_2_major.get(cell_type, cell_type)
-        net = retrieve_net(dataset=dataset, cell_type=cell_type_major, promotor_only=promotor_only, grns_dir=grns_dir, prior_dir=prior_dir)
+        net = retrieve_net(dataset=dataset, cell_type=cell_type_major, skeleton='promotor' if promotor_only else NET_SKELETON, grns_dir=grns_dir, prior_dir=prior_dir)
         # z score for weight
         net['weight'] = (net['weight'] - net['weight'].mean()) / net['weight'].std()
         net['dataset'] = dataset
