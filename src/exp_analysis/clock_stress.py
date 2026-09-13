@@ -1,12 +1,14 @@
 """Stress test for the aging clock: retrain under one perturbed setting at a time and
 recompute a fixed readout vector. The `baseline` variant IS the ground truth -- it is the
-current pipeline config (CLOCK_TRAINING_COHORTS, bulk, GRN target genes, tuned ridge).
+current pipeline config (CLOCK_TRAINING_COHORTS, bulk, age-associated genes, tuned ridge --
+the same only_sig_genes feature set src/clock/run_train.py trains the published clock on).
 
 Readouts:
   cv     -- spearman/r2 on the held-out CLOCK_TEST_COHORTS, every major cell type
   sle    -- perez_sle age acceleration, SLE vs healthy, overall + Young/Old bins (T cells)
   rejuv  -- signed effect on predicted age for IL-10 (parsebioscience), Ruxolitinib (op),
-            and Ruxolitinib in CXCL9 against both the RPMI and the LPS baseline (T cells)
+            LPS in CXCL9 against RPMI, and Ruxolitinib in CXCL9 against both the RPMI and
+            the LPS baseline (T cells)
 
 Usage:
   python src/exp_analysis/clock_stress.py --variant baseline      # one variant, one sbatch job
@@ -40,15 +42,17 @@ VARIANTS = {
     'gradientboosting': {'reg_type': 'gradientboosting'},
     'nn':               {'reg_type': 'nn'},
     'metacell':         {'data_type': 'metacell'},
-    'wholegenome':      {'only_net_genes': False},
+    'wholegenome':      {'only_sig_genes': False},
 }
-BASELINE = dict(reg_type='ridge', data_type='bulk', only_net_genes=True)
+BASELINE = dict(reg_type='ridge', data_type='bulk', only_sig_genes=True)
 
-# Rejuvenation contrasts: (dataset, control, treatment). Restricted to the T cell types
-# the published rejuvenation claims are made on.
+# Condition contrasts: (dataset, control, treatment). Restricted to the T cell types
+# the published claims are made on. LPS vs RPMI is the acceleration claim, the rest
+# are the rejuvenation ones -- same signed readout either way.
 REJUV_CONTRASTS = [
     ('parsebioscience', 'PBS', 'IL-10'),
     ('op', 'DMSO', 'Ruxolitinib'),
+    ('CXCL9', 'RPMI', 'LPS'),
     ('CXCL9', 'RPMI', 'RPMI + ruxolitinib'),
     ('CXCL9', 'LPS', 'LPS + ruxolitinib'),
 ]
@@ -85,7 +89,7 @@ def predict(variant, datasets, cell_types, condition=None):
         condition=condition,
         version=CLOCK_V,
         model_dir=f'{STRESS_DIR}/{variant}/models',
-        only_net_genes=cfg['only_net_genes'],
+        only_sig_genes=cfg['only_sig_genes'],
     )
     return median_per_donor(obs) if cfg['data_type'] != 'bulk' else obs
 
@@ -97,7 +101,7 @@ def train(variant):
         print(f"\n{'='*60}\n[{variant}] training {cell_type}\n{'='*60}", flush=True)
         adata = ad.concat([
             retrieve_adata(dataset=d, data_type=cfg['data_type'], cell_type=cell_type,
-                           only_net_genes=cfg['only_net_genes'])
+                           only_sig_genes=cfg['only_sig_genes'])
             for d in CLOCK_TRAINING_COHORTS
         ])
         train_aging_clock(
@@ -310,7 +314,8 @@ def plot(df):
 FIG_LABEL = {'baseline': 'Baseline', 'lasso': 'Lasso', 'elasticnet': 'ElasticNet',
              'wholegenome': 'Whole genome', 'metacell': 'Metacell',
              'gradientboosting': 'Gradient boosting', 'nn': 'Neural net'}
-FIG_CONTRAST = {'op:Ruxolitinib_vs_DMSO': 'Ruxolitinib (OPSCA)',
+FIG_CONTRAST = {'CXCL9:LPS_vs_RPMI': 'LPS (ctr: RPMI)',
+                'op:Ruxolitinib_vs_DMSO': 'Ruxolitinib (OPSCA)',
                 'parsebioscience:IL-10_vs_PBS': 'IL-10 (Parse)',
                 'CXCL9:LPS + ruxolitinib_vs_LPS': 'Ruxolitinib (ctr: LPS)',
                 'CXCL9:RPMI + ruxolitinib_vs_RPMI': 'Ruxolitinib (ctr: RPMI)'}
