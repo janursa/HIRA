@@ -143,6 +143,61 @@ Results (`results_folder/`, git-tracked, everything lightweight):
 - `plots/` — all figures, `plots/exp_analysis/` for the supplementary-analysis plots (one subfolder
   per task), `plots/assembled/` for multi-panel manuscript figures
 
+## Key outputs → code
+
+Where each headline result lives and which code produced it.
+
+### 1. Processed single-cell and pseudobulk data
+
+`$HIRA_BASE_DIR/datasets/`, one `<cohort>.h5ad` per cohort in each subfolder:
+
+| Output | Produced by |
+|---|---|
+| `sc/` — QC'd, cell-type-annotated single cells | `src/process_data/preprocess/script.py` |
+| `bulk/` — donor × major-cell-type pseudobulk (carries minor-cell-type counts in `.obs`) | `src/process_data/bulkify/script.py` |
+| `bulk_minor/` — donor × minor-cell-type pseudobulk | `src/process_data/bulkify/script.py` |
+| `metacell/` — metacells (clock stress test only) | `src/process_data/metacell/script.py` |
+
+Entry point: `bash scripts/process_data/wrapper_run_preprocess.sh` (one SLURM job per cohort,
+all three stages per job). Raw inputs come from `$HIRA_RAW_DIR` — see Data acquisition.
+
+### 2. GRN models
+
+`results_folder/grns/`:
+
+| Output | Produced by |
+|---|---|
+| `<cohort>/{sc,bulk}/net_<celltype>.csv` — per-cohort GRN | `src/grn_inference/script.py` |
+| `consensus_net_<celltype>.csv` — edges shared by ≥ `CONSENSUS_MIN_DEGREE` discovery cohorts | `src/feature_association/consensus_nets.py` |
+
+Cell types: B, CD4T, CD8T, MONO, NK. Discovery cohorts in `DISCOVERY_COHORTS` (`src/config.py`).
+Entry point: `bash scripts/grn_inference/wrapper_grn_inference.sh`. The consensus nets are rebuilt
+at the top of `wrapper_feature_analysis.sh`, so stage 5 refreshes them automatically.
+
+### 3. Summary statistics — aging, SLE, perturbation
+
+All under `results_folder/features/<analysis_name>/stats/`, same schema (`gene`, `slope`,
+`meta_p_adj`, `cell_type`, `dataset`, `comparison`, `trend`, …). `tfa_major_b` is TF activity on
+pseudobulk — the main analysis; `ge_major_b` is the gene-expression counterpart.
+
+| File | Contrast | Cohorts |
+|---|---|---|
+| `stats_multi_cohort.csv` | aging (meta-analysis) | `DISCOVERY_COHORTS` |
+| `stats_soundlife.csv` | aging (validation) | soundlife |
+| `stats_perez_sle.csv` | SLE vs healthy | perez_sle |
+| `stats_parsebioscience.csv` | IL-10 | parsebioscience |
+| `stats_op.csv` | Ruxolitinib | op |
+| `stats_CXCL9.csv` | LPS, Ruxolitinib (vs RPMI and vs LPS) | CXCL9 |
+
+All produced by `src/feature_association/run_analysis.py` (one task per file; association logic in
+`helper.py` / `helper_condition.py`). Entry point:
+`bash scripts/feature_association/wrapper_feature_analysis.sh [analysis_name] [task ...]` — the
+`aging` task runs first because the condition tasks read `stats_multi_cohort.csv`.
+
+Read them in python with `retrieve_stats` / `retrieve_sig_stats` from
+`src/feature_association/helper.py` rather than parsing the CSVs directly — they apply the
+significance and consistency filters used in the manuscript.
+
 ## License
 
 MIT, see `LICENSE`.
