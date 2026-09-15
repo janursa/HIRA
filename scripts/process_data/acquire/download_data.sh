@@ -43,11 +43,13 @@ case "$cohort" in
     download_cellxgene 436154da-bcf1-4130-9c8b-120ff9a888f2 "$out" ""
     ;;
   aida)
+    # Freeze v2 — the version the CIIM copy used for preprocessing (1,265,624 cells).
     out="${RAW_DIR}/aida/aida.h5ad"; mkdir -p "$(dirname "$out")"
-    download_cellxgene ced320a1-29f3-47c1-a735-513c7084d508 "$out" "Freeze v1"
+    download_cellxgene ced320a1-29f3-47c1-a735-513c7084d508 "$out" "Freeze v2"
     ;;
   parsebioscience)
-    bash "$(dirname "$0")/download_pbmc_cytokines.sh"
+    out="${RAW_DIR}/perturbation_data/Parse_10M_PBMC_cytokines.h5ad"; mkdir -p "$(dirname "$out")"
+    wget -c -O "$out" https://parse-wget.s3.us-west-2.amazonaws.com/10m/Parse_10M_PBMC_cytokines.h5ad
     ;;
   abf300)
     cat <<EOF
@@ -92,10 +94,3 @@ EOF
     exit 1
     ;;
 esac
-
-
-# ParseBioscience cohort raw counts (publicly hosted, direct download).
-RAW_DATA_DIR="${HIRA_RAW_DIR:?set HIRA_RAW_DIR in .env}"
-OUT="${RAW_DATA_DIR}/perturbation_data/Parse_10M_PBMC_cytokines.h5ad"
-mkdir -p "$(dirname "$OUT")"
-wget -O "$OUT" https://parse-wget.s3.us-west-2.amazonaws.com/10m/Parse_10M_PBMC_cytokines.h5ad

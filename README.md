@@ -100,7 +100,7 @@ bash scripts/process_data/acquire/download_data.sh <cohort>
 |---|---|---|
 | OneK1K (`onek1k`) | direct download | [CELLxGENE collection](https://cellxgene.cziscience.com/collections/dde06e0f-ab3b-46be-96a2-a8082383c4a1) |
 | Perez SLE (`perez_sle`) | direct download | [CELLxGENE collection](https://cellxgene.cziscience.com/collections/436154da-bcf1-4130-9c8b-120ff9a888f2) |
-| AIDA (`aida`) | direct download | [CELLxGENE collection](https://cellxgene.cziscience.com/collections/ced320a1-29f3-47c1-a735-513c7084d508) (Freeze v1) |
+| AIDA (`aida`) | direct download | [CELLxGENE collection](https://cellxgene.cziscience.com/collections/ced320a1-29f3-47c1-a735-513c7084d508) (Freeze v2) |
 | ParseBioscience (`parsebioscience`) | direct download | Parse Biosciences S3 bucket |
 | ABF300 (`abf300`) | manual, gated | Synapse `syn49637038` (account + data use agreement required) |
 | Wang (`wang`) | manual, gated | Synapse `syn61609846` (account + data use agreement required) |
