@@ -1,0 +1,16 @@
+cell_type,dataset,spearman,r2,n
+B,aida,0.494,0.063,616
+B,perez_sle,0.513,-3.187,99
+B,wang,0.506,0.153,32
+CD4T,aida,0.851,0.587,623
+CD4T,perez_sle,0.766,0.513,99
+CD4T,wang,0.746,0.496,33
+CD8T,aida,0.737,0.161,621
+CD8T,perez_sle,0.691,0.633,99
+CD8T,wang,0.733,0.392,33
+MONO,aida,0.531,0.044,622
+MONO,perez_sle,0.486,-1.164,99
+MONO,wang,-0.024,-0.182,33
+NK,aida,0.423,-0.166,619
+NK,perez_sle,0.486,-2.631,99
+NK,wang,0.449,0.158,33

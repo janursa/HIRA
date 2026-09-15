@@ -12,14 +12,25 @@ target/
 out/
 local/
 datasets_raw/
-results_folder/
+# results_folder: only what notebooks/summary.ipynb needs (stats, consensus GRNs, clock models)
+/results_folder/*
+!/results_folder/grns/
+/results_folder/grns/*/
+!/results_folder/clock/
+!/results_folder/features/
+/results_folder/features/*/*
+!/results_folder/features/*/stats/
+!/results_folder/features/tfa_major_b/*.h5ad
 state*
 manuscript/
 plan*
 trace*
 tw*
 datasets/*
-prior/*
+/prior/*
+!/prior/tf_all.csv
+!/prior/gene_names.txt
+!/prior/MSigDB_Hallmark_2020.json
 sync.sh
 tmp/*   
 

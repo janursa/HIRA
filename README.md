@@ -34,9 +34,11 @@ Verify either way with `bash -c 'source scripts/_env.sh; python -c "import hira"
 
 Copy `.env.example` to `.env` and set:
 
-- `HIRA_BASE_DIR` — where heavy data (datasets/priors/feature matrices) is stored. Required.
-  Lightweight results (GRNs, summary stats, clock models, plots) are git-tracked and always
-  live in `<repo>/results_folder`.
+- `HIRA_BASE_DIR` — where the processed datasets (`datasets/`) are stored. Defaults to the repo.
+  Priors live in `<repo>/prior`, results (GRNs, feature matrices, summary stats, clock models,
+  plots) in `<repo>/results_folder`. Git tracks only what `notebooks/summary.ipynb` needs:
+  summary stats, consensus GRNs, clock models and predictions, the `tfa_major_b` TF-activity
+  matrices, and three prior files.
 - `HIRA_RAW_DIR` — downloaded public cohorts (see Data acquisition below). Required for preprocessing.
 - `HIRA_SIF` — path to the Singularity image. Defaults to `singularity/hira.sif`; set it
   empty to use the host/conda interpreter instead. The `.sif` is not in git — build it locally.
@@ -53,7 +55,7 @@ Run in order; each stage consumes the previous one's output.
 
 | # | Stage | Command | Writes |
 |---|---|---|---|
-| 1 | Prior files | `bash scripts/prior/acquire.sh <file>` | `$HIRA_BASE_DIR/prior/` |
+| 1 | Prior files | `bash scripts/prior/acquire.sh <file>` | `prior/` |
 | 2 | Raw data | `bash scripts/process_data/acquire/download_data.sh <cohort>` | `$HIRA_RAW_DIR/` |
 | 3 | Preprocess | `bash scripts/process_data/wrapper_run_preprocess.sh` | `$HIRA_BASE_DIR/datasets/{sc,bulk,bulk_minor,metacell}/` |
 | 4 | GRN inference | `bash scripts/grn_inference/wrapper_grn_inference.sh` | `results_folder/grns/` |
@@ -107,6 +109,52 @@ bash scripts/process_data/acquire/download_data.sh <cohort>
 | OPSCA (`op`) | manual, gated | Kaggle competition `open-problems-single-cell-perturbations` (account + API token required) |
 | SoundLife (`soundlife`) | manual, private | not publicly hosted — obtained via direct data transfer from study authors |
 | CXCL9 (`CXCL9`) | internal | CIIM-only, no public source |
+
+### Pinning CELLxGENE versions
+
+**A collection id is not reproducible.** CELLxGENE republishes collections in place, so the
+same collection URL returns a different gene set over time and the curated count matrices
+stop matching. Pin the **dataset version id** instead:
+
+```
+https://datasets.cellxgene.cziscience.com/<dataset_version_id>.h5ad
+```
+
+| Cohort | `dataset_version_id` | Published | Genes |
+|---|---|---|---|
+| `onek1k` | `08984b3c-3189-4732-be22-62f1fe8f15a4` | 2024-11 | 36,469 |
+| `perez_sle` | `cc4284ca-8118-4b18-b66a-46c279dc56a1` | 2023-08-22 | 30,933 |
+| `aida` | `d991ef8d-7f98-4617-ad56-42d78b1f417a` | 2025-03 | 36,406 |
+
+List every version of a dataset (newest first) to re-derive these:
+
+```bash
+curl -s https://api.cellxgene.cziscience.com/curation/v1/datasets/<dataset_id>/versions \
+  | python -c 'import json,sys; [print(v["dataset_version_id"], v["published_at"]) for v in json.load(sys.stdin)]'
+```
+
+### From the download to the pipeline's input
+
+`src/process_data/preprocess/curate_raw.py` rebuilds, in Python, the CIIM-curated
+`count_matrix/*_CMtx.h5ad` schema (gene symbols, `age`/`sex`/`batch_info`/`donor_id`/
+`ct_major_published`) directly from the pinned download. `RAW_SOURCES` in that file lists
+which cohorts are rebuilt this way — `run_preprocess.sh` uses the download when one is
+listed and the CIIM count matrix otherwise. Self-check against the CIIM files:
+
+```bash
+python -m hira.src.process_data.preprocess.curate_raw
+```
+
+The curated matrices use symbols, not Ensembl ids. Two different recipes produced them
+(source: `/vol/projects/CIIM/Healthy_Single_Cell_Data/scripts/data_collection.r`):
+
+- `aida`, `perez_sle` — `var.index = var["feature_name"]`, verbatim from the pinned h5ad.
+- `onek1k` — `org.Hs.eg.db` `ENSEMBL`→`SYMBOL`, first hit per Ensembl id, drop unmapped,
+  `make.unique`, input order preserved. **Version-sensitive: org.Hs.eg.db 3.16.0.** Newer
+  releases rename genes (`KIAA1522`→`NHSL3`) and yield 24,454 instead of 24,281.
+
+No R needed — org.Hs.eg.db ships a plain SQLite file, kept at
+`prior/org.Hs.eg.db_3.16.0.sqlite` and read with stdlib `sqlite3`.
 
 To use raw files from a location other than `$HIRA_RAW_DIR`'s default layout, either set
 `HIRA_RAW_DIR` in `.env`, or set `INPUT_FILE_OVERRIDE` when invoking `run_preprocess.sh` to

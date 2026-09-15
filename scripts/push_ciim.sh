@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Push a history-free, data-free snapshot of HEAD to the CiiM org mirror.
-# The org repo is a snapshot, not a clone: no history, no *.h5ad. So a plain
+# The org repo is a snapshot, not a clone: no history, no *.h5ad outside results_folder/. So a plain
 # push can't work -- we rebuild the single commit and force-push it.
 # ponytail: force-push rewrites the mirror each time; fine while nobody
 # commits directly to the org repo. If they do, switch to a tracked branch.
@@ -14,7 +14,7 @@ SNAP=$(mktemp -d "$SRC/temp/ciim-snap.XXXXXX")
 trap 'rm -rf "$SNAP"' EXIT
 
 git -C "$SRC" archive HEAD | tar -x -C "$SNAP"
-find "$SNAP" -name '*.h5ad' -delete
+find "$SNAP" -name '*.h5ad' -not -path "$SNAP/results_folder/*" -delete  # results_folder ones feed notebooks/summary.ipynb
 find "$SNAP" -name '__pycache__' -type d -prune -exec rm -rf {} +
 
 cd "$SNAP"

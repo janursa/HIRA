@@ -20,7 +20,7 @@ from matplotlib.patches import Patch
 from hira.src.config import FEATURES_DIR, MAJOR_CT_LABEL, PRIOR_DIR, MAJOR_CTS, SUB_CTS , PLOTS_DIR, AGING_PLOTS_DIR, colors_blind, DISCOVERY_COHORTS, \
     surrogate_names, palette_datasets, palette_trend, palette_datasets_pretty, mapping_minor_2_major, \
     palette_trend_2, palette_major_cts, palette_sub_cts, palette_datasets, palette_trend_2, colors_blind, \
-        get_config_fa, cmap_trend, REF_GE_ANALYSIS
+        get_config_fa, cmap_trend, REF_GE_ANALYSIS, DATA_DIR
 from hira.src.feature_association.helper import bin_feature_values, retrieve_feature_data, \
                                                     retrieve_sig_stats, retrieve_stats
 from hira.src.utils.util import retrieve_net, retrieve_adata, retrieve_net_consensus
@@ -747,7 +747,8 @@ def plot_case_tf(args):
     selected_cell_types = [ct for ct in ['CD8T', 'CD4T', 'NK']
                            if ct in get_config_fa(args.analysis_name).get('cell_types', MAJOR_CTS)]
     datasets = DISCOVERY_COHORTS
-    plot_genexpression = True
+    # gene-expression row needs the bulk datasets, which a git-only checkout doesn't have
+    plot_genexpression = all(os.path.exists(f'{DATA_DIR}/bulk/{d}.h5ad') for d in datasets)
     show_cbar=False
     for case_tf in ['SATB1', 'GATA3']:  # 'TCF7' 'SATB1' 
         for i, cell_type in enumerate(selected_cell_types):

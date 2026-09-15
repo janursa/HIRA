@@ -15,22 +15,18 @@ import os
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message=".*anndata.*", category=FutureWarning)
 
-HIRA_DIR = os.environ.get('HIRA_DIR')
-if not HIRA_DIR:
-    raise RuntimeError("HIRA_DIR is not set. Set it in .env or export it in your shell.")
+HIRA_DIR = os.environ.get('HIRA_DIR') or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Heavy omics data (raw + processed datasets, priors, per-cell feature matrices).
-base_dir = os.environ.get('HIRA_BASE_DIR')
-if not base_dir:
-    raise RuntimeError("HIRA_BASE_DIR is not set. Set it in .env or export it in your shell.")
+# Heavy processed datasets. Defaults to the repo (datasets/ is git-ignored).
+base_dir = os.environ.get('HIRA_BASE_DIR') or HIRA_DIR
 DATA_DIR = f'{base_dir}/datasets/'
-PRIOR_DIR = f'{base_dir}/prior/'
-FEATURE_DATA_DIR = f'{base_dir}/features/'  # heavy per-cell/per-dataset feature matrices (.h5ad)
+PRIOR_DIR = f'{HIRA_DIR}/prior/'  # git-ignored except the small files notebooks/summary.ipynb needs
 
-# Lightweight results (GRNs, summary stats, clock models, plots). Git-tracked, lives in the repo.
+# Results (GRNs, summary stats, clock models, plots). Lives in the repo; .gitignore picks what is tracked.
 OUTPUT_DIR = os.path.join(HIRA_DIR, 'results_folder')
 GRNS_DIR = f'{OUTPUT_DIR}/grns'
 FEATURES_DIR = f'{OUTPUT_DIR}/features/'
+FEATURE_DATA_DIR = FEATURES_DIR  # per-dataset feature matrices (.h5ad), next to their stats/
 CLOCKS_DIR = f"{OUTPUT_DIR}/clock/"
 CLOCK_STATS_DIR = f"{OUTPUT_DIR}/clock/stats/"  # summary numbers behind the clock figures
 PLOTS_DIR = f"{OUTPUT_DIR}/plots/"

@@ -101,7 +101,7 @@ def compare_adata(new, baseline, obs_cols=(), atol=1e-8):
 def sandbox_env(sandbox_root):
     """Env overrides that point HIRA_DIR/HIRA_BASE_DIR at a self-contained sandbox directory.
 
-    sandbox_root must contain: datasets/, prior/, features/, results_folder/ (grns/ symlinked
+    sandbox_root must contain: datasets/, prior/, results_folder/ (feature matrices under results_folder/features/), (grns/ symlinked
     to the real repo's committed GRN networks, features/ writable & disposable).
     """
     return {'HIRA_DIR': sandbox_root, 'HIRA_BASE_DIR': sandbox_root}
@@ -116,10 +116,18 @@ def prepare_sandbox_run(template_dir, run_root):
     instead, needed for lookups like the meta-analysis R script.
     """
     os.makedirs(run_root, exist_ok=True)
-    for name in ('features', 'prior', 'datasets'):
+    for name in ('prior', 'datasets'):
         src = os.path.join(template_dir, name)
         if os.path.isdir(src) or os.path.islink(src):
             os.symlink(os.path.realpath(src), os.path.join(run_root, name))
     os.symlink(os.path.join(HIRA_DIR, 'src'), os.path.join(run_root, 'src'))
     os.makedirs(os.path.join(run_root, 'results_folder'), exist_ok=True)
+    # feature matrices sit next to their (writable) stats/ in results_folder/features/<analysis>/,
+    # so link the files, not the directory, to keep run output out of the template
+    features = os.path.join(template_dir, 'features')
+    for analysis in (os.listdir(features) if os.path.isdir(features) else []):
+        dst = os.path.join(run_root, 'results_folder', 'features', analysis)
+        os.makedirs(dst, exist_ok=True)
+        for f in os.listdir(os.path.join(features, analysis)):
+            os.symlink(os.path.realpath(os.path.join(features, analysis, f)), os.path.join(dst, f))
     return sandbox_env(run_root)
