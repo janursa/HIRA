@@ -11,7 +11,55 @@ import seaborn as sns
 import pandas as pd
 import anndata as ad
 import gc
-from hira.src.config import get_config, SUB_CT_LABEL, MAJOR_CT_LABEL, DISCOVERY_COHORTS
+import sqlite3
+from hira.src.config import (get_config, PRIOR_DIR, SUB_CT_LABEL, MAJOR_CT_LABEL,
+                             DISCOVERY_COHORTS)
+
+RAW_DIR = os.path.join(os.environ.get('HIRA_RAW_DIR', '/vol/projects/CIIM'),
+                       'Healthy_Single_Cell_Data', 'initial_data_downloaded')
+
+# Cohorts read straight from the pinned public download instead of a CIIM
+# `count_matrix/*_CMtx.h5ad`. Same files Ali's data_collection.r reads; versions pinned
+# by CELLxGENE dataset_version_id (see README > Pinning CELLxGENE versions).
+RAW_SOURCES = {
+    'onek1k': f'{RAW_DIR}/OneK1K/08984b3c-3189-4732-be22-62f1fe8f15a4.h5ad',
+    'aida': f'{RAW_DIR}/AIDA_v2/d991ef8d-7f98-4617-ad56-42d78b1f417a.h5ad',
+}
+
+# CellTypist's majority_voting over-clusters (HVG -> scale -> PCA -> kNN -> leiden), which is
+# precision-sensitive: the same counts at float32 move ~3.5% of the votes. The public download
+# stores float32 where the CMtx stored float64, so pin the cohort's original dtype.
+RAW_X_DTYPE = {'onek1k': 'float64'}
+
+# Cohorts whose X isn't integer counts, and where the counts actually live.
+# Can't be folded into curate_raw: X is unassignable on a read-only backed file,
+# so this is applied once at the point a chunk is materialised.
+COUNTS_SOURCE = {'aida': 'raw', 'op': 'layer:counts'}
+
+def use_counts_X(chunk, dataset, cell_mask=None, gene_mask=None):
+    """Point chunk.X at the cohort's integer counts. No-op when X already is."""
+    import scipy.sparse as sp
+    src = COUNTS_SOURCE.get(dataset)
+    if src == 'layer:counts' and 'counts' in chunk.layers:
+        X = chunk.layers.pop('counts')
+        chunk.X = (X.tocsr() if sp.issparse(X) else sp.csr_matrix(X)).astype(np.int32)
+    elif src == 'raw':
+        # format_data strips .raw, so go back to the file; .raw there has the same
+        # var order as X, which is what cell_mask/gene_mask are positioned against.
+        src_ad = ad.read_h5ad(RAW_SOURCES[dataset], backed='r')
+        if cell_mask is None:  # test path: no masks, align on obs names in file order
+            cell_mask = src_ad.obs_names.isin(chunk.obs_names)
+            chunk = chunk[src_ad.obs_names[cell_mask]].copy()
+        X = src_ad.raw.X[np.asarray(cell_mask)]  # backed sparse indexer rejects a pandas Series
+        if gene_mask is not None:
+            X = X[:, gene_mask]
+        assert X.shape == chunk.shape, f'counts {X.shape} != chunk {chunk.shape}'
+        chunk.X = X.tocsr() if sp.issparse(X) else sp.csr_matrix(X)
+    return chunk
+
+# org.Hs.eg.db ships a plain SQLite; stdlib sqlite3 reproduces AnnotationDbi::select
+# byte-for-byte, so no R and no extra image. Version matters: 3.19 renames ~322 genes.
+ORG_HS_SQLITE = f'{PRIOR_DIR}/org.Hs.eg.db_3.16.0.sqlite'
 
 def format_columns_soundlife(adata):
     """
@@ -159,7 +207,107 @@ def remove_attributes(adata, keep_layers=False):
         if hasattr(adata, attr):
             delattr(adata, attr)
     return adata
+def _ens2sym(db=ORG_HS_SQLITE):
+    """{ENSG: SYMBOL}, first hit per ENSG — matches select() + !duplicated(ENSEMBL)."""
+    q = 'select e.ensembl_id, g.symbol from ensembl e join gene_info g on g._id = e._id'
+    out = {}
+    with sqlite3.connect(db) as con:
+        for e, s in con.execute(q):
+            out.setdefault(e, s)
+    return out
+
+
+def _make_unique(names):
+    """R's make.unique: first occurrence bare, then .1, .2, ..."""
+    seen, out = {}, []
+    for n in names:
+        if n in seen:
+            seen[n] += 1
+            n = f'{n}.{seen[n]}'
+            seen.setdefault(n, 0)
+        else:
+            seen[n] = 0
+        out.append(n)
+    return out
+
+
+def _seurat_counts(adata, keep, chunk=200_000):
+    """Seurat nCount_RNA / nFeature_RNA over the kept genes, streamed over backed X."""
+    n_count = np.empty(adata.n_obs, dtype=np.float64)
+    n_feat = np.empty(adata.n_obs, dtype=np.int32)
+    for i in range(0, adata.n_obs, chunk):
+        x = adata.X[i:i + chunk][:, keep]
+        n_count[i:i + chunk] = np.asarray(x.sum(axis=1)).ravel()
+        n_feat[i:i + chunk] = x.getnnz(axis=1)
+    return n_count, n_feat
+
+
+def _raw_var(names):
+    """The gene-name column format_data looks up below, plus the index."""
+    return pd.DataFrame({'gene_name': names}, index=pd.Index(names, name='gene_name'))
+
+
+def _curate_onek1k(adata):
+    ens = adata.var_names.to_numpy(dtype=str)
+    sym = _ens2sym()
+    keep = np.array([e in sym for e in ens])
+
+    names = ens.astype(object)  # not <U15: symbols are longer than an ENSG id
+    names[keep] = _make_unique([sym[e] for e in ens[keep]])
+    adata.var = _raw_var(names)
+
+    n_count, n_feat = _seurat_counts(adata, keep)
+    obs = adata.obs
+    adata.obs = pd.DataFrame({
+        'age': obs['age'].to_numpy(),
+        'batch_info': 'Data1_' + obs['pool_number'].astype(str),
+        # CMtx strips the spaces from Seurat's Azimuth labels ("CD4 TCM" -> "CD4TCM")
+        'ct_major_published': obs['predicted.celltype.l2'].astype(str).str.replace(' ', '', regex=False),
+        'donor_id': 'Data1_' + obs['donor_id'].astype(str),
+        'nCount_RNA': n_count,
+        'nFeature_RNA': n_feat,
+        'orig.ident': 'Data1',
+        'sex': obs['sex'].astype(str).map({'male': 'M', 'female': 'F'}),
+    }, index=obs.index)
+    # ponytail: genes with no symbol keep their ENSG id and are dropped by the
+    # gene_names.txt mask in script.py — no second backed slice needed here.
+    return adata
+
+
+def _curate_aida(adata):
+    obs = adata.obs
+    adata.var = _raw_var(adata.var['feature_name'].astype(str).to_numpy())
+    adata.obs = pd.DataFrame({
+        'age': obs['development_stage'].astype(str).str.extract(r'(\d+)', expand=False).astype(float),
+        # barcode suffix is "<library>_L00x"; CMtx keeps the library part
+        'batch_info': obs.index.str.rsplit('-', n=1).str[-1].str.rsplit('_', n=1).str[0],
+        'ct_major_published': obs['author_cell_type'].astype(str),
+        'donor_id': obs['donor_id'].astype(str),
+        'orig.ident': 'Data13',
+        'race': obs['self_reported_ethnicity'].astype(str),
+        'sex': obs['sex'].astype(str).map({'male': 'M', 'female': 'F'}),
+    }, index=obs.index)
+    return adata
+
+
+_CURATORS = {'onek1k': _curate_onek1k, 'aida': _curate_aida}
+
+
+def curate_raw(adata, dataset_name):
+    """Pinned public download -> the var/obs schema the pipeline expects from a CMtx.
+
+    Provenance: /vol/projects/CIIM/Healthy_Single_Cell_Data/scripts/data_collection.r
+    (onek1k) and /vol/projects/aehsani/ImmuneAgeing/.../scripts/AIDAv2.ipynb (aida).
+    """
+    return _CURATORS[dataset_name](adata)
+
+
 def format_data(adata, dataset_name):
+    # Read from the public download rather than a CIIM count matrix? rebuild the
+    # CMtx schema first so everything below is unchanged.
+    if str(getattr(adata, 'filename', '') or '') == RAW_SOURCES.get(dataset_name):
+        adata = curate_raw(adata, dataset_name)
+
     config = get_config(dataset_name)
     bulk_group = config.bulk_group
     bulk_group_col = 'bulk_group'
@@ -858,3 +1006,33 @@ def map_cell_types_parsebioscience(adata):
     print(adata.obs['Sub_CT_original'].value_counts())
     
     return adata
+
+def _selfcheck_curation():
+    """`python -m hira.src.process_data.preprocess.helper` — curate_raw vs the CIIM CMtx."""
+    import h5py
+
+    def col(grp, k):
+        o = grp[k]
+        return o['categories'][:].astype(str)[o['codes'][:]] if hasattr(o, 'keys') else o[:]
+
+    for dataset, key in {'onek1k': 'data1', 'aida': 'data13'}.items():
+        adata = curate_raw(ad.read_h5ad(RAW_SOURCES[dataset], backed='r'), dataset)
+        with h5py.File(os.path.join(os.path.dirname(RAW_DIR), 'count_matrix',
+                                    f'{key}_CMtx.h5ad')) as f:
+            want_var = col(f['var'], f['var'].attrs['_index']).astype(str)
+            want = {k: col(f['obs'], k) for k in f['obs'] if not k.startswith('_')}
+        got_var = adata.var_names.to_numpy(dtype=str)
+        if dataset == 'onek1k':  # unmapped genes keep their ENSG id, dropped downstream
+            got_var = np.array([s for s in got_var if not s.startswith('ENSG')])
+        assert np.array_equal(got_var, want_var), f'{dataset}: var mismatch'
+        for k, w in want.items():
+            g = adata.obs[k].to_numpy()
+            ok = np.allclose(g.astype(float), w.astype(float)) if w.dtype.kind in 'if' \
+                else np.array_equal(g.astype(str), w.astype(str))
+            assert ok, f'{dataset}: {k} mismatch, {g[:3]} vs {w[:3]}'
+        print(f'{dataset}: ok, {len(got_var)} genes, {adata.n_obs} cells, '
+              f'{len(want)} obs columns')
+
+
+if __name__ == '__main__':
+    _selfcheck_curation()

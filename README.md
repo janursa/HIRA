@@ -3,6 +3,9 @@
 Analysis pipeline for immune aging: cell-type-resolved GRN inference, aging clocks,
 feature association, pathway/motif/trajectory analysis.
 
+## Quick look
+Once the repo pulled, the main results can be found in `results_folder` (e.g. inferred GRN models and summary stats of aging, disease, and perturbations). Run `notebooks/summary.ipynb` to produce the main figures.
+
 ## Setup
 
 ```bash
@@ -110,58 +113,6 @@ bash scripts/process_data/acquire/download_data.sh <cohort>
 | SoundLife (`soundlife`) | manual, private | not publicly hosted — obtained via direct data transfer from study authors |
 | CXCL9 (`CXCL9`) | internal | CIIM-only, no public source |
 
-### Pinning CELLxGENE versions
-
-**A collection id is not reproducible.** CELLxGENE republishes collections in place, so the
-same collection URL returns a different gene set over time and the curated count matrices
-stop matching. Pin the **dataset version id** instead:
-
-```
-https://datasets.cellxgene.cziscience.com/<dataset_version_id>.h5ad
-```
-
-| Cohort | `dataset_version_id` | Published | Genes |
-|---|---|---|---|
-| `onek1k` | `08984b3c-3189-4732-be22-62f1fe8f15a4` | 2024-11 | 36,469 |
-| `perez_sle` | `cc4284ca-8118-4b18-b66a-46c279dc56a1` | 2023-08-22 | 30,933 |
-| `aida` | `d991ef8d-7f98-4617-ad56-42d78b1f417a` | 2025-03 | 36,406 |
-
-List every version of a dataset (newest first) to re-derive these:
-
-```bash
-curl -s https://api.cellxgene.cziscience.com/curation/v1/datasets/<dataset_id>/versions \
-  | python -c 'import json,sys; [print(v["dataset_version_id"], v["published_at"]) for v in json.load(sys.stdin)]'
-```
-
-### From the download to the pipeline's input
-
-`src/process_data/preprocess/curate_raw.py` rebuilds, in Python, the CIIM-curated
-`count_matrix/*_CMtx.h5ad` schema (gene symbols, `age`/`sex`/`batch_info`/`donor_id`/
-`ct_major_published`) directly from the pinned download. `RAW_SOURCES` in that file lists
-which cohorts are rebuilt this way — `run_preprocess.sh` uses the download when one is
-listed and the CIIM count matrix otherwise. Self-check against the CIIM files:
-
-```bash
-python -m hira.src.process_data.preprocess.curate_raw
-```
-
-The curated matrices use symbols, not Ensembl ids. Two different recipes produced them
-(source: `/vol/projects/CIIM/Healthy_Single_Cell_Data/scripts/data_collection.r`):
-
-- `aida`, `perez_sle` — `var.index = var["feature_name"]`, verbatim from the pinned h5ad.
-- `onek1k` — `org.Hs.eg.db` `ENSEMBL`→`SYMBOL`, first hit per Ensembl id, drop unmapped,
-  `make.unique`, input order preserved. **Version-sensitive: org.Hs.eg.db 3.16.0.** Newer
-  releases rename genes (`KIAA1522`→`NHSL3`) and yield 24,454 instead of 24,281.
-
-No R needed — org.Hs.eg.db ships a plain SQLite file, kept at
-`prior/org.Hs.eg.db_3.16.0.sqlite` and read with stdlib `sqlite3`.
-
-To use raw files from a location other than `$HIRA_RAW_DIR`'s default layout, either set
-`HIRA_RAW_DIR` in `.env`, or set `INPUT_FILE_OVERRIDE` when invoking `run_preprocess.sh` to
-point at a single custom path. Downloaded files may need light column-name harmonization
-(donor/age/condition fields) to match what
-`src/process_data/preprocess/helper.py:format_data` expects — it already recognizes several
-common CELLxGENE/Synapse schema variants.
 
 ## Repo layout
 
