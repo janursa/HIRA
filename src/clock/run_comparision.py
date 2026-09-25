@@ -30,7 +30,7 @@ def train_clocks():
 
     for cell_type in cell_types:
         print(f"\n{'='*60}")
-        print(f"Training {cell_type} aging clock for Wenchao comparison")
+        print(f"Training {cell_type} aging clock for Li et al. comparison")
         print(f"{'='*60}")
         
         adata_train = ad.concat([
@@ -48,23 +48,12 @@ def train_clocks():
             verbose=True
         )
 def extract_w_results():
-    # - read the results of predictions
-    df_store = []
-    for dataset in ['C4', 'C5']:
-        df = pd.read_csv(f'{OUTPUT_DIR}/wenchao/val_data_majorCT_Wenchao_AC_{dataset}_predicted_age_donor.tsv', sep='\t')
-        df['dataset'] = 'aida' if dataset=='C4' else 'perez_sle'
-        df_store.append(df)
-    df = pd.concat(df_store, axis=0)
-    df['donor_age'] = df['donor_id'].astype(str) + '_' + df['age'].astype(str)
-    # - format 
-    df.rename(columns={'Prediction': 'predicted_age', 'CT': 'cell_type'}, inplace=True)
-    df['sex'] = df['sex'].map({'M': 'Male', 'F': 'Female'})
-    # - median prediction
-    median_prediction = df.groupby(['cell_type', 'donor_age', 'dataset'])['predicted_age'].median().reset_index()
-    median_prediction = df[['cell_type', 'donor_age', 'age', 'sex', 'dataset']].drop_duplicates().merge(median_prediction, on=['cell_type', 'donor_age', 'dataset'], how='left')
-    return median_prediction
+    # published scImmuAging clocks, rerun by scripts/clock_benchmark/script.sh
+    df = pd.read_csv(f'{OUTPUT_DIR}/clock_benchmark/predictions.csv')
+    df = df[df['condition'] == 'healthy']  # as for the GRN clock below
+    return df[['cell_type', 'donor_age', 'age', 'sex', 'dataset', 'predicted_age']]
 if __name__ == "__main__":
-    test_datasets = ['perez_sle', 'aida']
+    test_datasets = ['perez_sle', 'aida', 'wang']
     train_clocks()
     W_median_prediction = extract_w_results()
     predictions_all = wrapper_clock_predictions(get_clock_cell_types(), evaluate_datasets=test_datasets, version=version, only_sig_genes=True)
@@ -94,7 +83,7 @@ if __name__ == "__main__":
                 'R2': ss1['R2']
             })
 
-            # Wenchao's model
+            # Li et al. (scImmuAging)
             df2 = W_median_prediction[
                 (W_median_prediction['dataset'] == dataset) & 
                 (W_median_prediction['cell_type'] == cell_type)
@@ -103,7 +92,7 @@ if __name__ == "__main__":
             all_scores.append({
                 'dataset': dataset,
                 'cell_type': cell_type,
-                'model': 'Wenchao',
+                'model': 'Li et al.',
                 'Spearman': ss2['Spearman'],
                 'R2': ss2['R2']
             })
@@ -113,7 +102,7 @@ if __name__ == "__main__":
     assert score_df.shape[0] > 0, "Some issues here."
     save_clock_stats(score_df, 'comparison_scores')
     palette_models = {
-        'Wenchao': colors_blind[1], 
+        'Li et al.': colors_blind[1], 
         'GRNdrived': colors_blind[0]
     }
     # Clip R2 to [0, 1]score_df['R2'] = score_df['R2'].clip(0, 1)
@@ -158,7 +147,7 @@ if __name__ == "__main__":
         print(f"Saving figure to {file_name}")
         plt.savefig(file_name, bbox_inches='tight', dpi=300)
 
-    W_median_prediction['model'] = 'Wenchao'
+    W_median_prediction['model'] = 'Li et al.'
     test_predictions['model'] = 'GRNdrived'
 
     obs = pd.concat([test_predictions, W_median_prediction], axis=0)

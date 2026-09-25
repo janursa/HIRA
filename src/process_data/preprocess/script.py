@@ -11,7 +11,8 @@ import argparse
 import glob
 import os
 import numpy as np
-from hira.src.process_data.preprocess.helper import annotate_celltypes, basic_qc, format_data
+from hira.src.process_data.preprocess.helper import (RAW_X_DTYPE, annotate_celltypes, basic_qc,
+                                                     format_data, use_counts_X)
 
 def subset_to_test(adata):
     print('Test mode: subsetting data', flush=True)
@@ -65,12 +66,7 @@ def load_sc_data(file_name, dataset, run_test, gene_names=None):
         if run_test:
             adata = subset_to_test(adata)
             print(f'Kept {adata.shape[0]} cells from groups', flush=True)
-            if dataset == 'op' and 'counts' in adata.layers:
-                import scipy.sparse as sp
-                raw = adata.layers['counts']
-                raw = raw.tocsr() if sp.issparse(raw) else sp.csr_matrix(raw)
-                adata.X = raw.astype(np.int32)
-                del adata.layers['counts']
+            adata = use_counts_X(adata, dataset)
         # Non-test: return backed — main() will chunk by bulk_group + gene filter
         # in a single combined mask to avoid chained masks on backed objects.
     return adata
@@ -133,7 +129,11 @@ def main(par):
         # to avoid chained masking on backed objects (only one mask allowed).
         chunk_max = 500_000
         gene_mask = adata.var_names.isin(gene_names)
-        group_sizes = adata.obs['bulk_group'].value_counts()
+        # value_counts() breaks size ties with an unstable sort, so a tie sitting on a
+        # chunk boundary reshuffles chunks between pandas builds (onek1k, aida both hit
+        # this). Appearance order + a stable sort pins the split.
+        bg = adata.obs['bulk_group']
+        group_sizes = bg.groupby(bg, sort=False).size().sort_values(ascending=False, kind='stable')
         chunk_groups_list = _build_chunk_groups(group_sizes, chunk_max)
         print(f'Chunked loading: {len(chunk_groups_list)} chunk(s), max {chunk_max:,} cells each', flush=True)
 
@@ -142,13 +142,11 @@ def main(par):
         for i, chunk_groups in enumerate(chunk_groups_list):
             cell_mask = adata.obs['bulk_group'].isin(chunk_groups)
             chunk = adata[cell_mask, gene_mask].to_memory()
+            dt = RAW_X_DTYPE.get(dataset)
+            if dt and chunk.X.dtype != dt:  # no-op when read from the CMtx, which already has it
+                chunk.X = chunk.X.astype(dt)
             print(f'Chunk {i+1}/{len(chunk_groups_list)}: {chunk.n_obs:,} cells loaded to memory', flush=True)
-            if dataset == 'op' and 'counts' in chunk.layers:
-                import scipy.sparse as sp
-                raw = chunk.layers['counts']
-                raw = raw.tocsr() if sp.issparse(raw) else sp.csr_matrix(raw)
-                chunk.X = raw.astype(np.int32)
-                del chunk.layers['counts']
+            chunk = use_counts_X(chunk, dataset, cell_mask, gene_mask)
             chunk = basic_qc(chunk, par['run_test'], doublets=(dataset == 'CXCL9'))
             chunk = annotate_celltypes(chunk, dataset)
             if 'annotation_qc' in chunk.uns:

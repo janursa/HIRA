@@ -3,6 +3,9 @@
 Analysis pipeline for immune aging: cell-type-resolved GRN inference, aging clocks,
 feature association, pathway/motif/trajectory analysis.
 
+## Quick look
+Once the repo pulled, the main results can be found in `results_folder` (e.g. inferred GRN models and summary stats of aging, disease, and perturbations). Run `notebooks/summary.ipynb` to produce the main figures.
+
 ## Setup
 
 ```bash
@@ -34,9 +37,11 @@ Verify either way with `bash -c 'source scripts/_env.sh; python -c "import hira"
 
 Copy `.env.example` to `.env` and set:
 
-- `HIRA_BASE_DIR` — where heavy data (datasets/priors/feature matrices) is stored. Required.
-  Lightweight results (GRNs, summary stats, clock models, plots) are git-tracked and always
-  live in `<repo>/results_folder`.
+- `HIRA_BASE_DIR` — where the processed datasets (`datasets/`) are stored. Defaults to the repo.
+  Priors live in `<repo>/prior`, results (GRNs, feature matrices, summary stats, clock models,
+  plots) in `<repo>/results_folder`. Git tracks only what `notebooks/summary.ipynb` needs:
+  summary stats, consensus GRNs, clock models and predictions, the `tfa_major_b` TF-activity
+  matrices, and three prior files.
 - `HIRA_RAW_DIR` — downloaded public cohorts (see Data acquisition below). Required for preprocessing.
 - `HIRA_SIF` — path to the Singularity image. Defaults to `singularity/hira.sif`; set it
   empty to use the host/conda interpreter instead. The `.sif` is not in git — build it locally.
@@ -53,7 +58,7 @@ Run in order; each stage consumes the previous one's output.
 
 | # | Stage | Command | Writes |
 |---|---|---|---|
-| 1 | Prior files | `bash scripts/prior/acquire.sh <file>` | `$HIRA_BASE_DIR/prior/` |
+| 1 | Prior files | `bash scripts/prior/acquire.sh <file>` | `prior/` |
 | 2 | Raw data | `bash scripts/process_data/acquire/download_data.sh <cohort>` | `$HIRA_RAW_DIR/` |
 | 3 | Preprocess | `bash scripts/process_data/wrapper_run_preprocess.sh` | `$HIRA_BASE_DIR/datasets/{sc,bulk,bulk_minor,metacell}/` |
 | 4 | GRN inference | `bash scripts/grn_inference/wrapper_grn_inference.sh` | `results_folder/grns/` |
@@ -100,7 +105,7 @@ bash scripts/process_data/acquire/download_data.sh <cohort>
 |---|---|---|
 | OneK1K (`onek1k`) | direct download | [CELLxGENE collection](https://cellxgene.cziscience.com/collections/dde06e0f-ab3b-46be-96a2-a8082383c4a1) |
 | Perez SLE (`perez_sle`) | direct download | [CELLxGENE collection](https://cellxgene.cziscience.com/collections/436154da-bcf1-4130-9c8b-120ff9a888f2) |
-| AIDA (`aida`) | direct download | [CELLxGENE collection](https://cellxgene.cziscience.com/collections/ced320a1-29f3-47c1-a735-513c7084d508) (Freeze v1) |
+| AIDA (`aida`) | direct download | [CELLxGENE collection](https://cellxgene.cziscience.com/collections/ced320a1-29f3-47c1-a735-513c7084d508) (Freeze v2) |
 | ParseBioscience (`parsebioscience`) | direct download | Parse Biosciences S3 bucket |
 | ABF300 (`abf300`) | manual, gated | Synapse `syn49637038` (account + data use agreement required) |
 | Wang (`wang`) | manual, gated | Synapse `syn61609846` (account + data use agreement required) |
@@ -108,12 +113,6 @@ bash scripts/process_data/acquire/download_data.sh <cohort>
 | SoundLife (`soundlife`) | manual, private | not publicly hosted — obtained via direct data transfer from study authors |
 | CXCL9 (`CXCL9`) | internal | CIIM-only, no public source |
 
-To use raw files from a location other than `$HIRA_RAW_DIR`'s default layout, either set
-`HIRA_RAW_DIR` in `.env`, or set `INPUT_FILE_OVERRIDE` when invoking `run_preprocess.sh` to
-point at a single custom path. Downloaded files may need light column-name harmonization
-(donor/age/condition fields) to match what
-`src/process_data/preprocess/helper.py:format_data` expects — it already recognizes several
-common CELLxGENE/Synapse schema variants.
 
 ## Repo layout
 
@@ -142,6 +141,61 @@ Results (`results_folder/`, git-tracked, everything lightweight):
 - `exp_analysis/` — confounder tables; `clock_stress/` — stress test outputs
 - `plots/` — all figures, `plots/exp_analysis/` for the supplementary-analysis plots (one subfolder
   per task), `plots/assembled/` for multi-panel manuscript figures
+
+## Key outputs → code
+
+Where each headline result lives and which code produced it.
+
+### 1. Processed single-cell and pseudobulk data
+
+`$HIRA_BASE_DIR/datasets/`, one `<cohort>.h5ad` per cohort in each subfolder:
+
+| Output | Produced by |
+|---|---|
+| `sc/` — QC'd, cell-type-annotated single cells | `src/process_data/preprocess/script.py` |
+| `bulk/` — donor × major-cell-type pseudobulk (carries minor-cell-type counts in `.obs`) | `src/process_data/bulkify/script.py` |
+| `bulk_minor/` — donor × minor-cell-type pseudobulk | `src/process_data/bulkify/script.py` |
+| `metacell/` — metacells (clock stress test only) | `src/process_data/metacell/script.py` |
+
+Entry point: `bash scripts/process_data/wrapper_run_preprocess.sh` (one SLURM job per cohort,
+all three stages per job). Raw inputs come from `$HIRA_RAW_DIR` — see Data acquisition.
+
+### 2. GRN models
+
+`results_folder/grns/`:
+
+| Output | Produced by |
+|---|---|
+| `<cohort>/{sc,bulk}/net_<celltype>.csv` — per-cohort GRN | `src/grn_inference/script.py` |
+| `consensus_net_<celltype>.csv` — edges shared by ≥ `CONSENSUS_MIN_DEGREE` discovery cohorts | `src/feature_association/consensus_nets.py` |
+
+Cell types: B, CD4T, CD8T, MONO, NK. Discovery cohorts in `DISCOVERY_COHORTS` (`src/config.py`).
+Entry point: `bash scripts/grn_inference/wrapper_grn_inference.sh`. The consensus nets are rebuilt
+at the top of `wrapper_feature_analysis.sh`, so stage 5 refreshes them automatically.
+
+### 3. Summary statistics — aging, SLE, perturbation
+
+All under `results_folder/features/<analysis_name>/stats/`, same schema (`gene`, `slope`,
+`meta_p_adj`, `cell_type`, `dataset`, `comparison`, `trend`, …). `tfa_major_b` is TF activity on
+pseudobulk — the main analysis; `ge_major_b` is the gene-expression counterpart.
+
+| File | Contrast | Cohorts |
+|---|---|---|
+| `stats_multi_cohort.csv` | aging (meta-analysis) | `DISCOVERY_COHORTS` |
+| `stats_soundlife.csv` | aging (validation) | soundlife |
+| `stats_perez_sle.csv` | SLE vs healthy | perez_sle |
+| `stats_parsebioscience.csv` | IL-10 | parsebioscience |
+| `stats_op.csv` | Ruxolitinib | op |
+| `stats_CXCL9.csv` | LPS, Ruxolitinib (vs RPMI and vs LPS) | CXCL9 |
+
+All produced by `src/feature_association/run_analysis.py` (one task per file; association logic in
+`helper.py` / `helper_condition.py`). Entry point:
+`bash scripts/feature_association/wrapper_feature_analysis.sh [analysis_name] [task ...]` — the
+`aging` task runs first because the condition tasks read `stats_multi_cohort.csv`.
+
+Read them in python with `retrieve_stats` / `retrieve_sig_stats` from
+`src/feature_association/helper.py` rather than parsing the CSVs directly — they apply the
+significance and consistency filters used in the manuscript.
 
 ## License
 

@@ -64,8 +64,16 @@ elif [ "$dataset" = "op" ]; then
 elif [ "$dataset" = "CXCL9" ]; then
         input_file="${RAW_DATA_DIR}/Healthy_Single_Cell_Data/count_matrix/CXCL9_TI.h5ad"
 else
-        raw_key="${raw_key_for[$dataset]:-$dataset}"
-        input_file="${RAW_DATA_DIR}/Healthy_Single_Cell_Data/count_matrix/${raw_key}_CMtx.h5ad"
+        # Cohorts with a pinned public download are rebuilt from it (see helper.py: curate_raw);
+        # the rest still read the CIIM-curated count matrices.
+        input_file=$(python -c "
+from hira.src.process_data.preprocess.helper import RAW_SOURCES
+print(RAW_SOURCES.get('${dataset_mapping[$dataset]:-$dataset}', ''))
+")
+        if [ -z "$input_file" ]; then
+                raw_key="${raw_key_for[$dataset]:-$dataset}"
+                input_file="${RAW_DATA_DIR}/Healthy_Single_Cell_Data/count_matrix/${raw_key}_CMtx.h5ad"
+        fi
 fi
 
 PROCESSED_FILES_DIR="${MAIN_DIR}/datasets/sc/"

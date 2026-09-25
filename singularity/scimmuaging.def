@@ -1,0 +1,15 @@
+Bootstrap: docker
+From: rocker/r-ver:4.2.1
+
+# Published cell-type aging clocks (Li et al., Nat Aging 2025) used as the external
+# benchmark in scripts/clock_benchmark/. Separate from hira.sif: R-only, and the
+# models ship inside the package.
+
+%post
+    set -e
+    R -q -e 'install.packages(c("glmnet", "dplyr", "tibble", "data.table", "remotes"))'
+    R -q -e 'remotes::install_github("CiiM-Bioinformatics-group/scImmuAging", upgrade = "never")'
+    R -q -e 'library(scImmuAging); stopifnot(length(readRDS(system.file("data", "all_model.RDS", package = "scImmuAging"))) == 5)'
+
+%runscript
+    exec Rscript "$@"

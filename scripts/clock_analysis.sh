@@ -19,10 +19,6 @@ python src/clock/run_exp_analysis.py
 echo "--------------------------------------------------------------cv--------------------------------------------------------------"
 python src/clock/run_cv.py
 
-echo "--------------------------------------------------------------comparision to previous models --------------------------------------------------------------"
-python src/clock/run_comparision.py
-
-
 echo "--------------------------------------------------------------comparision: sle --------------------------------------------------------------"
 python src/clock/clock_analysis.py --dataset perez_sle --analysis-type disease --cell-types CD4T CD8T
 
@@ -34,4 +30,11 @@ echo "--------------------------------------------------------------comparision:
 python src/clock/clock_analysis.py --dataset op --analysis-type perturbation --cell-types CD4T CD8T 
 
 echo "--------------------------------------------------------------comparision: CLCX9 --------------------------------------------------------------"
-python src/clock/clock_analysis.py --dataset CXCL9 --analysis-type perturbation --cell-types CD4T CD8T 
+python src/clock/clock_analysis.py --dataset CXCL9 --analysis-type perturbation --cell-types CD4T CD8T
+
+# last: the published scImmuAging clocks are slow and nothing else depends on them
+echo "--------------------------------------------------------------external clock benchmark --------------------------------------------------------------"
+bash scripts/clock_benchmark/script.sh
+
+echo "--------------------------------------------------------------comparision to previous models --------------------------------------------------------------"
+python src/clock/run_comparision.py

@@ -23,11 +23,8 @@ plt.rcParams["font.family"] = "Arial"
 plt.rcParams["font.size"] = 9
 
 SCATTER_CELL_TYPES = ['CD4T', 'CD8T']
-PALETTE_MODELS = {'Wenchao': colors_blind[1], 'GRNdrived': colors_blind[0]}
-
-
-def n_comp():
-    return pd.read_csv(f'{CLOCK_STATS_DIR}/comparison_scores.csv')['dataset'].nunique()
+MODEL_NAMES = {'GRNdrived': 'GRN-derived', 'Li et al.': 'Li et al.'}
+PALETTE_MODELS = {'Li et al.': colors_blind[1], 'GRN-derived': colors_blind[0]}
 
 
 def banner(fig, axes, label, dy=.34):
@@ -81,17 +78,18 @@ def draw_performance(fig, gs, col0=0):
 
 
 def draw_benchmark(fig, gs, col0=0):
-    """Benchmark against the published clock. Returns (axes, legend handles)."""
-    cell_types = get_clock_cell_types()
+    """Benchmark against the published clock: mean Spearman over cohorts (dots). Returns (axes, legend handles)."""
     comp = pd.read_csv(f'{CLOCK_STATS_DIR}/comparison_scores.csv')
-    comp_datasets = comp['dataset'].unique()
-    axes = [fig.add_subplot(gs[0, col0 + i]) for i in range(len(comp_datasets))]
-    for ax, dataset in zip(axes, comp_datasets):
-        sns.barplot(data=comp[comp['dataset'] == dataset], x='cell_type', y='Spearman',
-                    hue='model', order=cell_types, alpha=.8, palette=PALETTE_MODELS, ax=ax)
-        ax.set(xlabel='', ylabel='Spearman', title=surrogate_names.get(dataset, dataset))
-        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
-        ax.margins(x=.1, y=.1)
-        ax.spines[['top', 'right']].set_visible(False)
-        ax.get_legend().remove()
-    return axes, axes[0].get_legend_handles_labels()[0]
+    comp['model'] = comp['model'].map(MODEL_NAMES)
+    kw = dict(data=comp, x='cell_type', y='Spearman', hue='model', order=get_clock_cell_types(),
+              hue_order=list(PALETTE_MODELS), palette=PALETTE_MODELS)
+    ax = fig.add_subplot(gs[0, col0])
+    sns.barplot(**kw, estimator='mean', errorbar=None, alpha=.6, ax=ax)
+    handles = ax.get_legend_handles_labels()[0]
+    sns.stripplot(**kw, dodge=True, jitter=False, s=4, linewidth=.5, edgecolor='gray', ax=ax)
+    ax.set(xlabel='', ylabel='Spearman')
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+    ax.margins(x=.1, y=.1)
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.get_legend().remove()
+    return [ax], handles

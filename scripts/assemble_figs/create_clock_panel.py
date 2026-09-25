@@ -28,14 +28,13 @@ def main():
     top, bottom = fig.subfigures(2, 1, hspace=.42)
 
     # ponytail: one subfigure per group, top and bottom -- tight inside, wide between
-    n_comp = val.n_comp()
-    g1, g2, g3 = top.subfigures(1, 3, width_ratios=[3, n_comp, 2.6], wspace=.1)
+    g1, g2, g3 = top.subfigures(1, 3, width_ratios=[3, 1.6, 2.6], wspace=.1)
 
     axes, handles = val.draw_performance(g1, g1.add_gridspec(1, 3, wspace=.55))
     val.banner(g1, axes, 'Performance on held-out samples', dy=BANNER_DY)
     interp.legend_below(g1, handles, ncol=4)
 
-    axes, handles = val.draw_benchmark(g2, g2.add_gridspec(1, n_comp, wspace=.55))
+    axes, handles = val.draw_benchmark(g2, g2.add_gridspec(1, 1))
     val.banner(g2, axes, 'Comparitive performance', dy=BANNER_DY)
     interp.legend_below(g2, handles, 'Model')
 

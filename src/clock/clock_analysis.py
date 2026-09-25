@@ -25,6 +25,7 @@ from statsmodels.stats.multitest import multipletests
 from hira.src.config import (
     CLOCK_PLOTS_DIR as PLOTS_DIR,
     OUTPUT_DIR,
+    CLOCK_STATS_DIR,
     MAJOR_CTS as default_cell_types,
     surrogate_names,
     colors_blind
@@ -765,6 +766,11 @@ def main():
         default=['CD4T', 'CD8T'],
         help='Cell types to analyze (default: CD4T CD8T)'
     )
+    parser.add_argument(
+        '--from-stats',
+        action='store_true',
+        help='Plot from the predictions_<dataset>.csv an earlier run saved, instead of predicting (no bulk data needed)'
+    )
     
     args = parser.parse_args()
     
@@ -783,16 +789,21 @@ def main():
 
     # Get predictions
     print("\nLoading predictions...")
-    obs = wrapper_clock_predictions(
-        args.cell_types,
-        [args.dataset],
-        only_sig_genes=True
-    )
+    if args.from_stats:
+        obs = pd.read_csv(f'{CLOCK_STATS_DIR}/predictions_{args.dataset}.csv', index_col=0)
+        obs = obs[obs['cell_type'].isin(args.cell_types)]
+    else:
+        obs = wrapper_clock_predictions(
+            args.cell_types,
+            [args.dataset],
+            only_sig_genes=True
+        )
     
     if len(obs) == 0:
         raise ValueError("Error: No predictions loaded. Check that data files exist.")
 
-    save_clock_stats(obs.reset_index(), f'predictions_{args.dataset}')
+    if not args.from_stats:
+        save_clock_stats(obs.reset_index(), f'predictions_{args.dataset}')
     
     if args.analysis_type == 'disease':
         # obs = obs[obs['age_group'] == 'young']  # Filter out young samples for disease analysis
