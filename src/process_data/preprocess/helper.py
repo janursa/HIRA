@@ -277,10 +277,17 @@ def _curate_onek1k(adata):
 def _curate_aida(adata):
     obs = adata.obs
     adata.var = _raw_var(adata.var['feature_name'].astype(str).to_numpy())
+    # batch_info per donor_id from the AIDA supplementary metadata, same source and mapping
+    # as Ali's AIDAv2.ipynb (cells 9-10) -- reproduces the backup's batch_info 1:1 (625/625
+    # donors). The barcode suffix ("<library>_L00x") looks similar but is per-library, not
+    # per-donor, and does not match the backup.
+    metadata = pd.read_excel(f'{RAW_DIR}/AIDA_v2/mmc1.xlsx', sheet_name=0, header=1).rename(
+        columns={'DCP_ID': 'donor_id', 'scRNA-seq Experimental Batch': 'batch_info'})
+    batch_by_donor = metadata[['donor_id', 'batch_info']].drop_duplicates(
+        subset='donor_id').set_index('donor_id')['batch_info']
     adata.obs = pd.DataFrame({
         'age': obs['development_stage'].astype(str).str.extract(r'(\d+)', expand=False).astype(float),
-        # barcode suffix is "<library>_L00x"; CMtx keeps the library part
-        'batch_info': obs.index.str.rsplit('-', n=1).str[-1].str.rsplit('_', n=1).str[0],
+        'batch_info': obs['donor_id'].astype(str).map(batch_by_donor),
         'ct_major_published': obs['author_cell_type'].astype(str),
         'donor_id': obs['donor_id'].astype(str),
         'orig.ident': 'Data13',
